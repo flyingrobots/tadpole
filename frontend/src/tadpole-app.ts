@@ -10,9 +10,16 @@ type FontRecord = {
 
 @customElement("tadpole-app")
 export class TadpoleApp extends LitElement {
-  @state() private fonts: FontRecord[] = [];
-  @state() private loading = true;
-  @state() private error = "";
+  @state() private fonts!: FontRecord[];
+  @state() private loading!: boolean;
+  @state() private error!: string;
+
+  constructor() {
+    super();
+    this.fonts = [];
+    this.loading = true;
+    this.error = "";
+  }
 
   connectedCallback(): void {
     super.connectedCallback();
