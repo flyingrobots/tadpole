@@ -9,11 +9,13 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": true,
+    "noImplicitAny": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "types": ["node", "svelte"]
   },
   "include": [
     "src/**/*",
-    "vite-env.d.ts"
+    "vite-env.d.ts",
+    "svelte-env.d.ts"
   ]
 }

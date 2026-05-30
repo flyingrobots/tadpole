@@ -1,2 +1,8 @@
 import "./styles.css";
-import "./tadpole-app";
+import App from "./App.svelte";
+
+const app = new App({
+  target: document.querySelector("#app") ?? document.body,
+});
+
+export default app;

@@ -3,7 +3,7 @@
 Monorepo for a local SVG timeline animation tool with:
 
 - TypeScript backend service for font loading and metadata
-- Lit + Vite frontend
+- Svelte + Vite frontend
 
 ## Layout
 
@@ -36,7 +36,7 @@ Drop your fonts into `backend/fonts/` (`.woff2`, `.woff`, `.ttf`, `.otf`) and re
 
 - Vue is a **UI framework** (like a set of reusable components and state rules)
 - Vite is a **build/dev tool** and dev server that Vue can run on (plus many others)
-- This repo uses **Lit components directly** with Vite.
+- This repo uses **Svelte** with Vite for lightweight reactive UI.
 
 ## GitHub
 
