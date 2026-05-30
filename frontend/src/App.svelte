@@ -1,21 +1,14 @@
-<script lang="ts">
+<script>
   import { onMount } from "svelte";
 
-  type FontRecord = {
-    file: string;
-    family: string;
-    format: string;
-    url: string;
-  };
-
-  let fonts: FontRecord[] = [];
+  let fonts = [];
   let loading = true;
   let error = "";
 
   const fetchFonts = async () => {
     try {
       const response = await fetch("/api/fonts");
-      const payload = (await response.json()) as FontRecord[];
+      const payload = await response.json();
       fonts = Array.isArray(payload) ? payload : [];
     } catch (e) {
       const message = e instanceof Error ? e.message : "Unknown error";
