@@ -106,5 +106,5 @@ app.get("/api/fonts/:filename/stylesheet", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`\ud83e\udd3a Tadpole backend running at http://localhost:${port}`);
+  console.log(`Tadpole backend running at http://localhost:${port}`);
 });
