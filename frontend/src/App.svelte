@@ -1453,8 +1453,6 @@
     <button
       type="button"
       class="layout-resizer"
-      role="separator"
-      aria-orientation="vertical"
       aria-label="Resize left drawer"
       tabindex="0"
       on:mousedown={startDrawerResize}
@@ -1594,11 +1592,10 @@
           </div>
         </div>
 
-        <div
+        <button
+          type="button"
           class="timeline-ruler"
           bind:this={timelineCursorElement}
-          role="button"
-          tabindex="0"
           aria-label="Timeline scrubber"
           on:mousedown={(event) => startScrub("timeline", event)}
           on:pointerup={stopScrub}
@@ -1613,7 +1610,7 @@
             <span class="scrubber" style={`left:${trackPercent(currentTime)}%;`}></span>
             <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{formatMs(currentTime)}</span>
           </div>
-        </div>
+        </button>
 
         <div class="track-scroll">
           <div class="track-list">
@@ -1729,19 +1726,20 @@
                   </div>
                   <ul>
                     {#each sortKeyframes(track.keyframes) as keyframe}
-                      <li
-                        class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === track.id}
-                        role="button"
-                        tabindex="0"
-                        on:click={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
-                        on:keydown={(event) => {
-                          if (event.key === " " || event.key === "Enter") {
-                            event.preventDefault();
-                            selectKeyframe(track.id, keyframe.id, keyframe.time);
-                          }
-                        }}
-                      >
-                        <span class="key-id">{keyframe.id}</span>
+                      <li class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === track.id}>
+                        <button
+                          type="button"
+                          class="key-id-button"
+                          on:click={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
+                          on:keydown={(event) => {
+                            if (event.key === " " || event.key === "Enter") {
+                              event.preventDefault();
+                              selectKeyframe(track.id, keyframe.id, keyframe.time);
+                            }
+                          }}
+                        >
+                          <span class="key-id">{keyframe.id}</span>
+                        </button>
                         <label class="inline-label">
                           <span>time</span>
                           <input
@@ -2480,6 +2478,12 @@
 
   .timeline-ruler {
     margin: var(--size-3) 0 var(--size-3);
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    text-align: initial;
   }
 
   .timeline-track {
@@ -2730,10 +2734,6 @@
     min-width: 0;
   }
 
-  .track-keys.mini ul {
-    margin: 0;
-  }
-
   .track-keys.mini .inline-label {
     grid-template-columns: 1fr;
   }
@@ -2761,6 +2761,16 @@
 
   .track-keys li .inline-label {
     min-width: 0;
+  }
+
+  .key-id-button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    border-radius: var(--radius-1);
   }
 
   .add-track {
