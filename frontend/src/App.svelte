@@ -26,6 +26,12 @@
     easing: KeyframeEasing;
   };
 
+  type PlayheadNeighborhood = {
+    at: Keyframe | null;
+    previous: Keyframe | null;
+    next: Keyframe | null;
+  };
+
   type DraggingKeyframe = {
     trackId: string;
     keyframeId: string;
@@ -115,6 +121,20 @@
   const trackPercent = (time: number): number =>
     timelineDurationMs === 0 ? 0 : clampPercent((clampMs(time) / timelineDurationMs) * 100);
 
+  const pointerTimeFromRect = (rect: DOMRect, event: MouseEvent): number =>
+    applySnap(clampMs(((event.clientX - rect.left) / rect.width) * timelineDurationMs));
+
+  const pointerTimeFromElement = (ref: HTMLDivElement | null, event: MouseEvent): number => {
+    if (!ref) {
+      return currentTime;
+    }
+    const rect = ref.getBoundingClientRect();
+    if (rect.width === 0) {
+      return currentTime;
+    }
+    return pointerTimeFromRect(rect, event);
+  };
+
   const makeTrackId = (): string => `track-${(trackCursor += 1)}`;
   const makeKeyframeId = (): string => `kf-${Math.floor(Math.random() * 100000)}`;
 
@@ -162,6 +182,7 @@
   let selectedKeyframe: Keyframe | null = null;
   let activeTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedTrackHasKeyframes = tracks[0]?.keyframes.length ? tracks[0].keyframes.length > 0 : false;
+  let selectedTrackNeighborhood: PlayheadNeighborhood = { at: null, previous: null, next: null };
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let timelineDurationMs = 1200;
@@ -446,6 +467,7 @@
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
     : null;
+  $: selectedTrackNeighborhood = getNeighborhoodForTime(selectedTrack, currentTime);
   $: {
     if (!selectedTrackId) {
       selectedKeyframeId = "";
@@ -517,8 +539,7 @@
     if (!ref) {
       return;
     }
-    const rect = ref.getBoundingClientRect();
-    currentTime = applySnap(((event.clientX - rect.left) / rect.width) * timelineDurationMs);
+    currentTime = pointerTimeFromElement(ref, event);
     pauseTimeline();
   };
   const startScrub = (source: "timeline" | "preview", event: MouseEvent): void => {
@@ -560,11 +581,40 @@
     showOnlySelected = !showOnlySelected;
   };
   const addKeyframeAtCurrentForSelected = (): void => {
-    if (selectedTrackId === "") {
-      return;
-    }
-    addKeyframeAtCurrent(selectedTrackId);
+    const created = addKeyframeAtTimeForSelected(currentTime);
+    selectedKeyframeId = created ?? "";
   };
+
+  const addKeyframeAtTimeForSelected = (time: number): string | null => {
+    if (selectedTrackId === "") {
+      return null;
+    }
+    const track = tracks.find((candidate) => candidate.id === selectedTrackId);
+    if (!track) {
+      return null;
+    }
+    const snapped = applySnap(clampMs(time));
+    const created = addKeyframe(selectedTrackId, snapped, keyframeValueAtTime(track, snapped));
+    selectedKeyframeId = created ?? "";
+    currentTime = snapped;
+    return created;
+  };
+
+  const addKeyframeAtTimeForTrack = (trackId: string, time: number): string | null => {
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track) {
+      return null;
+    }
+    const snapped = applySnap(clampMs(time));
+    const created = addKeyframe(trackId, snapped, keyframeValueAtTime(track, snapped));
+    if (created) {
+      selectedTrackId = trackId;
+      selectedKeyframeId = created;
+      currentTime = snapped;
+    }
+    return created;
+  };
+
   const togglePlay = (): void => {
     if (isPlaying) {
       pauseTimeline();
@@ -1050,13 +1100,40 @@
   const addKeyframeFromLane = (trackId: string, event: MouseEvent): void => {
     const clicked = event.currentTarget as HTMLDivElement;
     const rect = clicked.getBoundingClientRect();
-    const local = applySnap(clampMs(((event.clientX - rect.left) / rect.width) * timelineDurationMs));
-    const track = tracks.find((candidate) => candidate.id === trackId);
-    const value = track ? getCurrentValue(track, local) : undefined;
-    const created = addKeyframe(trackId, local, value);
+    const local = pointerTimeFromRect(rect, event);
+    const created = addKeyframeAtTimeForTrack(trackId, local);
     selectedTrackId = trackId;
     selectedKeyframeId = created ?? "";
     movePlayheadToTrack(local);
+  };
+
+  const getNeighborhoodForTime = (track: TimelineTrack | null, time: number): PlayheadNeighborhood => {
+    if (!track || track.keyframes.length === 0) {
+      return { at: null, previous: null, next: null };
+    }
+
+    const sorted = sortKeyframes(track.keyframes);
+    const snapped = clampMs(time);
+    const at = sorted.find((candidate) => candidate.time === snapped) ?? null;
+    const previous = [...sorted].reverse().find((candidate) => candidate.time < snapped) ?? null;
+    const next = sorted.find((candidate) => candidate.time > snapped) ?? null;
+    return { at, previous, next };
+  };
+
+  const addKeyframeFromPreviewScrubber = (event: MouseEvent): void => {
+    if (selectedTrackId === "") {
+      return;
+    }
+    const target = event.target as HTMLElement;
+    if (target.closest(".preview-keyframe") || target.closest(".preview-scrubber") || target.closest(".preview-scrubber-time")) {
+      return;
+    }
+    if (!previewScrubberElement) {
+      return;
+    }
+    const local = pointerTimeFromElement(previewScrubberElement, event);
+    const created = addKeyframeAtTimeForSelected(local);
+    selectedKeyframeId = created ?? "";
   };
 
   const removeKeyframe = (trackId: string, keyframeId: string): void => {
@@ -1199,10 +1276,7 @@
   };
 
   const dropKeyframeAtPlayhead = (): void => {
-    if (selectedTrackId === "") {
-      return;
-    }
-    const created = addKeyframeAtCurrent(selectedTrackId);
+    const created = addKeyframeAtTimeForSelected(currentTime);
     selectedKeyframeId = created ?? "";
   };
 
@@ -1441,6 +1515,7 @@
           <span>Space: Play/Pause</span>
           <span>Arrows: scrub by frame</span>
           <span>PgUp/PgDn: scrub by 10x</span>
+          <span>Double-click preview scrubber: drop keyframe</span>
           <span>K: Add keyframe @ playhead</span>
           <span>,: Previous keyframe</span>
           <span>.: Next keyframe</span>
@@ -1536,6 +1611,7 @@
               </div>
             {/each}
             <span class="scrubber" style={`left:${trackPercent(currentTime)}%;`}></span>
+            <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{formatMs(currentTime)}</span>
           </div>
         </div>
 
@@ -1610,7 +1686,7 @@
                     on:keydown={(event) => {
                       if (event.key === " " || event.key === "Enter") {
                         event.preventDefault();
-                        addKeyframeAtCurrent(track.id);
+                        addKeyframeAtTimeForTrack(track.id, currentTime);
                       }
                     }}
                   >
@@ -1647,7 +1723,7 @@
                 <div class="track-keys">
                   <div class="keyframe-header">
                     <h3>Keyframes</h3>
-                    <button type="button" on:click={() => addKeyframeAtCurrent(track.id)}>
+                    <button type="button" on:click={() => addKeyframeAtTimeForTrack(track.id, currentTime)}>
                       + Drop keyframe at {currentTime}ms
                     </button>
                   </div>
@@ -1751,7 +1827,7 @@
             </div>
 
             <div class="inspector-actions">
-              <button type="button" on:click={() => addKeyframeAtCurrent(selectedTrack.id)} disabled={selectedTrack === null}>
+              <button type="button" on:click={() => addKeyframeAtTimeForTrack(selectedTrack.id, currentTime)} disabled={selectedTrack === null}>
                 Drop keyframe @ {formatMs(currentTime)}
               </button>
               <button
@@ -1866,18 +1942,58 @@
         </div>
 
         <div class="preview-controls">
-          <label class="inline-label compact">
-            <span>Scrubber</span>
-            <input
-              type="range"
-              min="0"
-              max={timelineDurationMs}
-              step={snapToFrames ? snapMs : 1}
-              value={currentTime}
-              on:input={setCurrentTime}
-            />
-            <span>{formatMs(currentTime)} ({formatSec(currentTime)})</span>
-          </label>
+          <div class="preview-controls-row">
+            <label class="inline-label compact">
+              <span>Scrubber</span>
+              <input
+                type="range"
+                min="0"
+                max={timelineDurationMs}
+                step={snapToFrames ? snapMs : 1}
+                value={currentTime}
+                on:input={setCurrentTime}
+              />
+              <span>{formatMs(currentTime)} ({formatSec(currentTime)})</span>
+            </label>
+            <label class="inline-label compact">
+              <span>Drop keyframe</span>
+              <button type="button" on:click={dropKeyframeAtPlayhead} disabled={activeTrack === null}>
+                Drop on selected track
+              </button>
+              <span>
+                {#if selectedTrackNeighborhood.at}
+                  on frame {formatMs(selectedTrackNeighborhood.at.time)}
+                {:else if selectedTrackNeighborhood.previous}
+                  between {formatMs(selectedTrackNeighborhood.previous.time)} and {selectedTrackNeighborhood.next
+                    ? formatMs(selectedTrackNeighborhood.next.time)
+                    : "end"}
+                {:else if selectedTrackNeighborhood.next}
+                  before {formatMs(selectedTrackNeighborhood.next.time)}
+                {:else}
+                  no frames
+                {/if}
+              </span>
+            </label>
+          </div>
+          <div class="preview-metadata" aria-live="polite">
+            <span class="preview-metadata-item">
+              {#if selectedTrack === null}
+                No active track selected
+              {:else}
+                Selected: {targetNameById.get(selectedTrack.targetId) ?? selectedTrack.targetId} • {selectedTrack.property}
+              {/if}
+            </span>
+            <span class="preview-metadata-item">
+              {#if selectedTrackNeighborhood.previous}
+                Prev: {formatMs(selectedTrackNeighborhood.previous.time)}
+              {/if}
+            </span>
+            <span class="preview-metadata-item">
+              {#if selectedTrackNeighborhood.next}
+                Next: {formatMs(selectedTrackNeighborhood.next.time)}
+              {/if}
+            </span>
+          </div>
         </div>
 
         <div class="preview-shell">
@@ -1888,6 +2004,7 @@
             tabindex="0"
             aria-label="Preview scrubber"
             on:mousedown={(event) => startScrub("preview", event)}
+            on:dblclick={addKeyframeFromPreviewScrubber}
             on:pointerup={stopScrub}
             on:keydown={jumpByTimelineKey}
           >
@@ -1907,6 +2024,9 @@
               {/each}
             {/if}
             <span class="preview-scrubber" style={`left:${trackPercent(currentTime)}%;`}></span>
+            <span class="preview-scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>
+              {formatMs(currentTime)}
+            </span>
           </div>
           <div class="preview-stage">
             <svg class="preview-svg" viewBox="0 0 420 180" aria-label="Logo Animation Preview">
@@ -2176,6 +2296,27 @@
     margin: var(--size-3) 0;
   }
 
+  .preview-controls-row {
+    display: grid;
+    gap: var(--size-2);
+  }
+
+  .preview-metadata {
+    margin-top: var(--size-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+    color: var(--tadpole-text-muted);
+    align-items: center;
+  }
+
+  .preview-metadata-item {
+    border: 1px solid color-mix(in oklab, var(--tadpole-border), transparent);
+    border-radius: var(--radius-2);
+    padding: 0.2rem 0.5rem;
+    background: color-mix(in oklab, var(--color-13) 72%, transparent);
+  }
+
   .panel-heading {
     display: flex;
     justify-content: space-between;
@@ -2374,6 +2515,15 @@
     width: 2px;
     transform: translateX(-1px);
     background: var(--tadpole-accent);
+  }
+
+  .scrubber-time {
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, -100%);
+    font-size: var(--font-size-0);
+    color: var(--tadpole-text-muted);
+    pointer-events: none;
   }
 
   .track-list {
@@ -2713,6 +2863,19 @@
     width: 2px;
     transform: translateX(-1px);
     background: var(--tadpole-accent);
+  }
+
+  .preview-scrubber-time {
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, -100%);
+    font-size: var(--font-size-0);
+    color: var(--tadpole-text-muted);
+    pointer-events: none;
+    background: color-mix(in oklab, var(--color-13) 92%, transparent);
+    border-radius: var(--radius-2);
+    padding: 0.15rem 0.38rem;
+    border: 1px solid color-mix(in oklab, var(--tadpole-border), transparent);
   }
 
   .preview-stage {
