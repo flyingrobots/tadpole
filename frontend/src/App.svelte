@@ -15,6 +15,7 @@
   };
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
+  type TrackSortMode = "manual" | "target" | "property";
 
   type KeyframeEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 
@@ -160,6 +161,7 @@
   let selectedTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedKeyframe: Keyframe | null = null;
   let activeTrack: TimelineTrack | null = tracks[0] ?? null;
+  let selectedTrackHasKeyframes = tracks[0]?.keyframes.length ? tracks[0].keyframes.length > 0 : false;
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let timelineDurationMs = 1200;
@@ -184,6 +186,8 @@
   let previewScrubberElement: HTMLDivElement | null = null;
   let copiedExport = "";
   let showOnlySelected = false;
+  let trackFilterTerm = "";
+  let trackSortMode: TrackSortMode = "manual";
   let showKeyboardShortcuts = true;
   let selectedKeyframeId = "";
   let timelineGridDensity = defaultGridDivisions;
@@ -373,12 +377,55 @@
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
 
   $: activeTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
+  $: selectedTrackHasKeyframes = (activeTrack?.keyframes?.length ?? 0) > 0;
   $: clampedGridCount = Math.max(minGridDivisions, Math.min(maxGridDivisions, timelineGridDensity));
   $: timelineTicks = Array.from({ length: clampedGridCount + 1 }, (_, index) =>
     Math.round((index / clampedGridCount) * timelineDurationMs),
   );
-  $: visibleTracks =
-    showOnlySelected && selectedTrackId !== "" ? tracks.filter((track) => track.id === selectedTrackId) : tracks;
+  $: visibleTracks = (() => {
+    const selectedOnlyTracks =
+      showOnlySelected && selectedTrackId !== "" ? tracks.filter((track) => track.id === selectedTrackId) : tracks;
+    const normalizedFilter = trackFilterTerm.trim().toLowerCase();
+    const matchingFilter =
+      normalizedFilter === ""
+        ? selectedOnlyTracks
+        : selectedOnlyTracks.filter((track) => {
+            const targetName = (targetNameById.get(track.targetId) ?? track.targetId).toLowerCase();
+            return (
+              track.id.toLowerCase().includes(normalizedFilter) ||
+              track.targetId.toLowerCase().includes(normalizedFilter) ||
+              targetName.includes(normalizedFilter) ||
+              track.property.toLowerCase().includes(normalizedFilter)
+            );
+          });
+
+    if (trackSortMode === "target") {
+      return [...matchingFilter].sort((left, right) => {
+        const leftTarget = (targetNameById.get(left.targetId) ?? left.targetId).toLowerCase();
+        const rightTarget = (targetNameById.get(right.targetId) ?? right.targetId).toLowerCase();
+        if (leftTarget === rightTarget) {
+          const leftProperty = left.property.toLowerCase();
+          const rightProperty = right.property.toLowerCase();
+          if (leftProperty === rightProperty) {
+            return left.id.localeCompare(right.id);
+          }
+          return leftProperty.localeCompare(rightProperty);
+        }
+        return leftTarget.localeCompare(rightTarget);
+      });
+    }
+
+    if (trackSortMode === "property") {
+      return [...matchingFilter].sort((left, right) => {
+        if (left.property === right.property) {
+          return left.targetId.localeCompare(right.targetId) || left.id.localeCompare(right.id);
+        }
+        return left.property.localeCompare(right.property);
+      });
+    }
+
+    return matchingFilter;
+  })();
   $: totalTrackKeyframes = tracks.reduce((total, track) => total + track.keyframes.length, 0);
   $: playheadLabel = isPlaying ? "Playing" : currentTime === 0 ? "Idle" : "Paused";
   $: selectedTrackName =
@@ -453,6 +500,17 @@
   const setTimelineGridDensity = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     timelineGridDensity = clamp(Number(input.value), minGridDivisions, maxGridDivisions);
+  };
+  const setTrackFilterTerm = (event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement;
+    trackFilterTerm = input.value;
+  };
+  const setTrackSortMode = (mode: TrackSortMode): void => {
+    trackSortMode = mode;
+  };
+  const clearTrackFilters = (): void => {
+    trackFilterTerm = "";
+    showOnlySelected = false;
   };
 
   const jumpToUsingRef = (ref: HTMLDivElement | null, event: MouseEvent): void => {
@@ -573,6 +631,32 @@
     }
   };
 
+  const jumpToPreviousKeyframe = (): void => {
+    const track = selectedTrack;
+    if (track === null || track.keyframes.length === 0) {
+      return;
+    }
+    const sorted = sortKeyframes(track.keyframes);
+    const previous = [...sorted].reverse().find((candidate) => candidate.time < currentTime);
+    const fallback = sorted[0];
+    const nextFrame = previous ?? fallback;
+    currentTime = applySnap(clampMs(nextFrame.time));
+    selectedKeyframeId = nextFrame.id;
+  };
+
+  const jumpToNextKeyframe = (): void => {
+    const track = selectedTrack;
+    if (track === null || track.keyframes.length === 0) {
+      return;
+    }
+    const sorted = sortKeyframes(track.keyframes);
+    const next = sorted.find((candidate) => candidate.time > currentTime);
+    const fallback = sorted[sorted.length - 1];
+    const nextFrame = next ?? fallback;
+    currentTime = applySnap(clampMs(nextFrame.time));
+    selectedKeyframeId = nextFrame.id;
+  };
+
   const handleGlobalKeyboard = (event: KeyboardEvent): void => {
     if (isTextInputTarget(event.target)) {
       return;
@@ -613,6 +697,16 @@
       }
       selectedTrackId = tracks[nextIndex]!.id;
       selectedKeyframeId = "";
+      return;
+    }
+
+    if (key === "," || key === ".") {
+      event.preventDefault();
+      if (key === ",") {
+        jumpToPreviousKeyframe();
+        return;
+      }
+      jumpToNextKeyframe();
       return;
     }
 
@@ -1151,6 +1245,31 @@
           </div>
           <div class="inline-label compact">
             <span>Filters</span>
+            <input
+              type="search"
+              placeholder="Filter track id, target, property"
+              value={trackFilterTerm}
+              on:input={setTrackFilterTerm}
+            />
+            <div class="preset-row">
+              <button type="button" class:is-active={trackSortMode === "manual"} on:click={() => setTrackSortMode("manual")}>
+                Manual
+              </button>
+              <button type="button" class:is-active={trackSortMode === "target"} on:click={() => setTrackSortMode("target")}>
+                Target
+              </button>
+              <button
+                type="button"
+                class:is-active={trackSortMode === "property"}
+                on:click={() => setTrackSortMode("property")}
+              >
+                Property
+              </button>
+              <button type="button" on:click={clearTrackFilters}>Clear filters</button>
+            </div>
+          </div>
+          <div class="inline-label compact">
+            <span>Track visibility</span>
             <button type="button" class:is-active={showOnlySelected} on:click={toggleShowOnlySelected}>
               {showOnlySelected ? "Show all tracks" : "Show selected track only"}
             </button>
@@ -1293,15 +1412,21 @@
             <span class="status-chip">Keyframe: {selectedKeyframe?.id ?? "none"}</span>
           </div>
         </div>
-        <div class="toolbar">
-          <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
-          <button type="button" on:click={stopTimeline}>Stop</button>
-          <button type="button" on:click={toggleLoop} class:is-active={isLooping}>
-            Loop {isLooping ? "ON" : "OFF"}
-          </button>
-          <button type="button" on:click={addKeyframeAtCurrentForSelected} disabled={selectedTrackId === ""}>
-            Drop keyframe @ {formatMs(currentTime)}
-          </button>
+          <div class="toolbar">
+            <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
+            <button type="button" on:click={stopTimeline}>Stop</button>
+            <button type="button" on:click={toggleLoop} class:is-active={isLooping}>
+              Loop {isLooping ? "ON" : "OFF"}
+            </button>
+            <button type="button" on:click={jumpToPreviousKeyframe} disabled={!selectedTrackHasKeyframes}>
+              ← Prev keyframe
+            </button>
+            <button type="button" on:click={jumpToNextKeyframe} disabled={!selectedTrackHasKeyframes}>
+              Next keyframe →
+            </button>
+            <button type="button" on:click={addKeyframeAtCurrentForSelected} disabled={selectedTrackId === ""}>
+              Drop keyframe @ {formatMs(currentTime)}
+            </button>
           <button type="button" on:click={duplicateSelectedKeyframe} disabled={selectedTrackId === "" || selectedKeyframeId === ""}>
             Duplicate selected keyframe
           </button>
@@ -1317,6 +1442,8 @@
           <span>Arrows: scrub by frame</span>
           <span>PgUp/PgDn: scrub by 10x</span>
           <span>K: Add keyframe @ playhead</span>
+          <span>,: Previous keyframe</span>
+          <span>.: Next keyframe</span>
           <span>Delete: remove selected keyframe</span>
           <span>[ / ]: previous/next track</span>
           <span>M: Mute selected track</span>
