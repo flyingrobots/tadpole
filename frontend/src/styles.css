@@ -1,11 +1,41 @@
-* {
+@import "open-props/open-props.min.css";
+@import "open-props/normalize.min.css";
+@import "open-props/buttons.min.css";
+@import "open-props/palette.min.css";
+
+:root {
+  --tadpole-bg: var(--color-16);
+  --tadpole-text: var(--color-2);
+  --tadpole-text-muted: var(--color-6);
+  --tadpole-accent: var(--color-8);
+  --tadpole-panel: color-mix(in oklab, var(--color-14) 82%, var(--color-13));
+  --tadpole-border: color-mix(in oklab, var(--color-10) 38%, transparent);
+  --radius: var(--radius-3);
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.2), transparent 40%),
-    radial-gradient(circle at 80% 0%, rgba(129, 140, 248, 0.2), transparent 35%),
-    #0f172a;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--color-7) 22%, transparent), transparent 42%),
+    radial-gradient(circle at 80% 0%, color-mix(in oklab, var(--color-6) 20%, transparent), transparent 35%),
+    var(--tadpole-bg);
+  color: var(--tadpole-text);
+  padding: 1.5rem;
+}
+
+#app {
+  min-height: 100vh;
 }

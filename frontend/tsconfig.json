@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
     "noImplicitAny": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "svelte"]
