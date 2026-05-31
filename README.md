@@ -38,6 +38,14 @@ Drop your fonts into `backend/fonts/` (`.woff2`, `.woff`, `.ttf`, `.otf`) and re
 - Vite is a **build/dev tool** and dev server that Vue can run on (plus many others)
 - This repo uses **Svelte** with Vite for lightweight reactive UI.
 
+## Process
+
+This repository follows METHOD for cycle-based engineering:
+
+- Cycle branches use `cycles/<LEGEND>_<slug>`.
+- Ship to `main` via PRs with cycle artifacts (design/witness/retro as available).
+- Source-of-truth ship surfaces: `BEARING.md`, `CHANGELOG.md`, and METHOD backlog under `docs/method/`.
+
 ## GitHub
 
 Repo target: `https://github.com/flyingrobots/tadpole`
