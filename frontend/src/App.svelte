@@ -105,14 +105,123 @@
     strokeWidth: string;
   };
 
-  const availableTargets: AnimationTarget[] = [
-    { id: "logo", name: "Logo Group", kind: "group" },
-    { id: "q", name: "Tadpole Q", kind: "path" },
-    { id: "co", name: "CO Text", kind: "text" },
-    { id: "ui", name: "UI Text", kind: "text" },
-    { id: "arc", name: "Tadpole Arc", kind: "path" },
-    { id: "accent", name: "Arrow Accent", kind: "path" },
-  ];
+  const defaultSvgSource = `<svg class="preview-svg" viewBox="0 0 420 180" aria-label="Logo Animation Preview" xmlns="http://www.w3.org/2000/svg">
+  <g id="logo" data-tadpole-name="Logo Group">
+    <g id="q" data-tadpole-name="Tadpole Q" fill="var(--color-6)" stroke="var(--color-9)" stroke-width="1.2">
+      <ellipse cx="82" cy="88" rx="35" ry="38" fill="none" />
+      <ellipse cx="82" cy="88" rx="18" ry="20" />
+      <path d="M116 72 C132 66, 132 110, 116 104" />
+    </g>
+    <text
+      id="co"
+      class="preview-text"
+      data-tadpole-name="CO Text"
+      x="140"
+      y="72"
+      font-size="44"
+      font-family="var(--font-sans)"
+      font-weight="700"
+      fill="var(--color-6)"
+    >CO</text>
+    <text
+      id="ui"
+      class="preview-text"
+      data-tadpole-name="UI Text"
+      x="150"
+      y="114"
+      font-size="44"
+      font-family="var(--font-sans)"
+      font-weight="700"
+      fill="var(--color-6)"
+    >UI</text>
+    <path
+      id="arc"
+      data-tadpole-name="Tadpole Arc"
+      d="M154 104 C183 44 252 44 282 104"
+      fill="none"
+      stroke="var(--color-9)"
+      stroke-width="2.5"
+      stroke-linecap="round"
+    />
+    <path
+      id="accent"
+      data-tadpole-name="Arrow Accent"
+      d="M274 102 L292 86 L292 118 Z"
+      fill="var(--color-6)"
+      stroke="var(--color-9)"
+      stroke-width="1.2"
+    />
+  </g>
+</svg>`;
+  const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
+
+  const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
+    const tag = tagName.toLowerCase();
+    if (tag === "g" || tag === "svg") {
+      return "group";
+    }
+    if (tag === "path") {
+      return "path";
+    }
+    if (tag === "text") {
+      return "text";
+    }
+    return "shape";
+  };
+
+  const nameFromId = (id: string): string =>
+    id
+      .replace(/[-_]+/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  const nameFromSvgElement = (element: Element, id: string): string => {
+    const explicitName = element.getAttribute("data-tadpole-name") ?? element.getAttribute("aria-label");
+    if (explicitName?.trim()) {
+      return explicitName.trim();
+    }
+
+    if (element.tagName.toLowerCase() === "text") {
+      const textLabel = element.textContent?.trim();
+      if (textLabel) {
+        return `${textLabel} Text`;
+      }
+    }
+
+    return nameFromId(id) || id;
+  };
+
+  const discoverSvgTargets = (source: string): AnimationTarget[] => {
+    if (typeof DOMParser === "undefined") {
+      return [];
+    }
+
+    const doc = new DOMParser().parseFromString(source, "image/svg+xml");
+    if (doc.querySelector("parsererror")) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    return Array.from(doc.querySelectorAll(selectableSvgSelector)).reduce<AnimationTarget[]>((targets, element) => {
+      const id = element.getAttribute("id")?.trim();
+      if (!id || seen.has(id)) {
+        return targets;
+      }
+
+      seen.add(id);
+      targets.push({
+        id,
+        name: nameFromSvgElement(element, id),
+        kind: svgKindFromTag(element.tagName),
+      });
+      return targets;
+    }, []);
+  };
+
+  let svgSource = defaultSvgSource;
+  let svgMarkup = svgSource;
+  let availableTargets: AnimationTarget[] = discoverSvgTargets(svgMarkup);
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
   const clampMs = (value: number): number => clamp(Math.round(value), 0, timelineDurationMs);
@@ -175,7 +284,7 @@
       ],
     },
   ];
-  const targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
+  let targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
 
   let selectedTrackId = tracks[0]?.id ?? "";
   let selectedTrack: TimelineTrack | null = tracks[0] ?? null;
@@ -396,6 +505,7 @@
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
   }
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
+  $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
 
   $: activeTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
   $: selectedTrackHasKeyframes = (activeTrack?.keyframes?.length ?? 0) > 0;
@@ -2027,52 +2137,9 @@
             </span>
           </div>
           <div class="preview-stage">
-            <svg class="preview-svg" viewBox="0 0 420 180" aria-label="Logo Animation Preview">
-              <g id="logo" style={styleFromPreview("logo")}>
-                <g id="q" style={styleFromPreview("q")}>
-                  <ellipse cx="82" cy="88" rx="35" ry="38" fill="none" />
-                  <ellipse cx="82" cy="88" rx="18" ry="20" />
-                  <path d="M116 72 C132 66, 132 110, 116 104" />
-                </g>
-                <text
-                  id="co"
-                  class="preview-text"
-                  x="140"
-                  y="72"
-                  font-size="44"
-                  font-family="var(--font-sans)"
-                  font-weight="700"
-                  style={styleFromPreview("co")}
-                >
-                  CO
-                </text>
-                <text
-                  id="ui"
-                  class="preview-text"
-                  x="150"
-                  y="114"
-                  font-size="44"
-                  font-family="var(--font-sans)"
-                  font-weight="700"
-                  style={styleFromPreview("ui")}
-                >
-                  UI
-                </text>
-                <path
-                  id="arc"
-                  d="M154 104 C183 44 252 44 282 104"
-                  fill="none"
-                  stroke-linecap="round"
-                  style={styleFromPreview("arc")}
-                />
-                <path
-                  id="accent"
-                  d="M274 102 L292 86 L292 118 Z"
-                  fill="var(--color-8)"
-                  style={styleFromPreview("accent")}
-                />
-              </g>
-            </svg>
+            <div class="preview-svg-host" aria-label="Source SVG Animation Preview">
+              {@html svgMarkup}
+            </div>
           </div>
         </div>
       </section>
@@ -2899,13 +2966,23 @@
     height: 100%;
   }
 
-  .preview-svg {
+  .preview-svg-host {
+    width: min(420px, 100%);
+    max-width: 100%;
+    display: grid;
+    place-items: center;
+  }
+
+  .preview-svg,
+  .preview-svg-host :global(svg) {
     width: min(420px, 100%);
     max-width: 100%;
     height: auto;
+    display: block;
   }
 
-  .preview-text {
+  .preview-text,
+  .preview-svg-host :global(.preview-text) {
     letter-spacing: 0.02em;
   }
 
