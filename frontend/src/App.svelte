@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick as nextDomUpdate } from "svelte";
 
   type FontRecord = {
     file: string;
@@ -93,6 +93,7 @@
     { id: "strokeWidth", label: "Stroke Width", kind: "number", defaultValue: "1", min: 0.5, max: 8, step: 0.25, unit: "px", snap: 0.25 },
   ];
   const properties: AnimationProperty[] = propertyCatalog.map((property) => property.id);
+  const transformProperties: AnimationProperty[] = ["x", "y", "scale", "rotation"];
   const propertyById = new Map<AnimationProperty, PropertyDefinition>(
     propertyCatalog.map((property): [AnimationProperty, PropertyDefinition] => [property.id, property]),
   );
@@ -154,6 +155,9 @@
   </g>
 </svg>`;
   const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
+  const blockedSvgElements = new Set(["script", "foreignobject", "iframe", "object", "embed", "link", "meta"]);
+  const urlAttributeNames = new Set(["href", "xlink:href", "src"]);
+  const blockedUrlPattern = /^(?:javascript|data):/i;
 
   const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
     const tag = tagName.toLowerCase();
@@ -219,8 +223,41 @@
     }, []);
   };
 
+  const sanitizeSvgSource = (source: string): string => {
+    if (typeof DOMParser === "undefined" || typeof XMLSerializer === "undefined") {
+      return "";
+    }
+
+    const doc = new DOMParser().parseFromString(source, "image/svg+xml");
+    if (doc.querySelector("parsererror")) {
+      return "";
+    }
+
+    doc.querySelectorAll("*").forEach((element) => {
+      if (blockedSvgElements.has(element.tagName.toLowerCase())) {
+        element.remove();
+        return;
+      }
+
+      Array.from(element.attributes).forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        const value = attribute.value.trim();
+        if (name.startsWith("on")) {
+          element.removeAttribute(attribute.name);
+          return;
+        }
+        if (urlAttributeNames.has(name) && blockedUrlPattern.test(value)) {
+          element.removeAttribute(attribute.name);
+        }
+      });
+    });
+
+    const svg = doc.documentElement;
+    return svg?.tagName.toLowerCase() === "svg" ? new XMLSerializer().serializeToString(svg) : "";
+  };
+
   let svgSource = defaultSvgSource;
-  let svgMarkup = svgSource;
+  let svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   let availableTargets: AnimationTarget[] = discoverSvgTargets(svgMarkup);
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -314,6 +351,7 @@
   let drawerResizeStartWidth = 300;
   let timelineCursorElement: HTMLDivElement | null = null;
   let previewScrubberElement: HTMLDivElement | null = null;
+  let previewSvgHostElement: HTMLDivElement | null = null;
   let copiedExport = "";
   let showOnlySelected = false;
   let trackFilterTerm = "";
@@ -480,6 +518,7 @@
     document.documentElement.style.setProperty("--palette-chroma", `${paletteChroma}`);
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
     void fetchFonts();
+    void nextDomUpdate().then(applyTimelineToPreviewSvg);
     window.addEventListener("keydown", handleGlobalKeyboard);
   });
 
@@ -505,7 +544,18 @@
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
   }
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
+  $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
+  $: availableTargets = discoverSvgTargets(svgMarkup);
   $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
+  $: {
+    if (previewSvgHostElement) {
+      currentTime;
+      tracks;
+      availableTargets;
+      svgMarkup;
+      void applyTimelineToPreviewSvg();
+    }
+  }
 
   $: activeTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
   $: selectedTrackHasKeyframes = (activeTrack?.keyframes?.length ?? 0) > 0;
@@ -957,17 +1007,61 @@
     };
   };
 
-  const styleFromPreview = (targetId: string): string => {
-    const style = resolvePreviewStyle(targetId);
-    return [
-      `transform:${style.transform}`,
-      `transform-origin:center`,
-      `transform-box:fill-box`,
-      `opacity:${style.opacity}`,
-      `fill:${style.fill}`,
-      `stroke:${style.stroke}`,
-      `stroke-width:${style.strokeWidth}`,
-    ].join(";");
+  const targetSelector = (targetId: string): string => {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return `#${CSS.escape(targetId)}`;
+    }
+    const escaped = targetId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `[id="${escaped}"]`;
+  };
+
+  const applyTimelineToPreviewSvg = async (): Promise<void> => {
+    if (!previewSvgHostElement) {
+      return;
+    }
+
+    await nextDomUpdate();
+    availableTargets.forEach((target) => {
+      const element = previewSvgHostElement?.querySelector<SVGElement>(targetSelector(target.id));
+      if (!element) {
+        return;
+      }
+
+      const style = resolvePreviewStyle(target.id);
+      if (transformProperties.some((property) => getActiveTrackForTarget(target.id, property))) {
+        element.style.transform = style.transform;
+        element.style.transformOrigin = "center";
+        element.style.transformBox = "fill-box";
+      } else {
+        element.style.removeProperty("transform");
+        element.style.removeProperty("transform-origin");
+        element.style.removeProperty("transform-box");
+      }
+
+      if (getActiveTrackForTarget(target.id, "opacity")) {
+        element.style.opacity = style.opacity;
+      } else {
+        element.style.removeProperty("opacity");
+      }
+
+      if (getActiveTrackForTarget(target.id, "fill")) {
+        element.style.fill = style.fill;
+      } else {
+        element.style.removeProperty("fill");
+      }
+
+      if (getActiveTrackForTarget(target.id, "stroke")) {
+        element.style.stroke = style.stroke;
+      } else {
+        element.style.removeProperty("stroke");
+      }
+
+      if (getActiveTrackForTarget(target.id, "strokeWidth")) {
+        element.style.strokeWidth = style.strokeWidth;
+      } else {
+        element.style.removeProperty("stroke-width");
+      }
+    });
   };
 
   const movePlayheadToTrack = (time: number): void => {
@@ -1195,6 +1289,7 @@
       createdId = newFrame.id;
       if (existingIndex >= 0) {
         const next = [...track.keyframes];
+        createdId = next[existingIndex]?.id ?? null;
         next[existingIndex] = {
           ...next[existingIndex],
           value: newFrame.value,
@@ -2137,7 +2232,11 @@
             </span>
           </div>
           <div class="preview-stage">
-            <div class="preview-svg-host" aria-label="Source SVG Animation Preview">
+            <div
+              class="preview-svg-host"
+              bind:this={previewSvgHostElement}
+              aria-label="Source SVG Animation Preview"
+            >
               {@html svgMarkup}
             </div>
           </div>
