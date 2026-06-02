@@ -105,6 +105,18 @@
     stroke: string;
     strokeWidth: string;
   };
+  type PreviewStyleProperty =
+    | "transform"
+    | "transform-origin"
+    | "transform-box"
+    | "opacity"
+    | "fill"
+    | "stroke"
+    | "stroke-width";
+  type OriginalInlineStyle = {
+    value: string;
+    priority: string;
+  };
 
   const defaultSvgSource = `<svg class="preview-svg" viewBox="0 0 420 180" aria-label="Logo Animation Preview" xmlns="http://www.w3.org/2000/svg">
   <g id="logo" data-tadpole-name="Logo Group">
@@ -155,9 +167,55 @@
   </g>
 </svg>`;
   const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
-  const blockedSvgElements = new Set(["script", "foreignobject", "iframe", "object", "embed", "link", "meta"]);
-  const urlAttributeNames = new Set(["href", "xlink:href", "src"]);
-  const blockedUrlPattern = /^(?:javascript|data):/i;
+  const blockedSvgElements = new Set(["script", "style", "foreignobject", "iframe", "object", "embed", "link", "meta"]);
+  const strictReferenceAttributeNames = new Set(["href", "src", "xlink:href"]);
+  const urlStyleAttributeNames = new Set([
+    "clip-path",
+    "cursor",
+    "fill",
+    "filter",
+    "marker-end",
+    "marker-mid",
+    "marker-start",
+    "mask",
+    "stroke",
+  ]);
+  const safeStyleProperties = new Set([
+    "display",
+    "fill",
+    "fill-opacity",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "letter-spacing",
+    "opacity",
+    "stroke",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-opacity",
+    "stroke-width",
+    "transform",
+    "transform-box",
+    "transform-origin",
+    "visibility",
+  ]);
+  const unsafeCssValuePattern = /(?:url\s*\(|@import|expression\s*\(|(?:java|vb)script:|data:|https?:|\/\/)/i;
+  const externalReferencePattern = /(?:(?:java|vb)script:|data:|https?:|\/\/)/i;
+  const cssUrlReferencePattern = /url\s*\(\s*["']?([^"')]+)["']?\s*\)/gi;
+  const localReferencePattern = /^(?:#[-\w:.]+|url\(#[-\w:.]+\))$/;
+  const previewTrackedStyleProperties: PreviewStyleProperty[] = [
+    "transform",
+    "transform-origin",
+    "transform-box",
+    "opacity",
+    "fill",
+    "stroke",
+    "stroke-width",
+  ];
 
   const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
     const tag = tagName.toLowerCase();
@@ -194,6 +252,44 @@
     }
 
     return nameFromId(id) || id;
+  };
+
+  const isSafeSvgReference = (value: string): boolean => {
+    if (value === "") {
+      return true;
+    }
+    return localReferencePattern.test(value);
+  };
+
+  const hasUnsafeSvgReference = (value: string): boolean => {
+    if (externalReferencePattern.test(value)) {
+      return true;
+    }
+
+    return Array.from(value.matchAll(cssUrlReferencePattern)).some((match) => !isSafeSvgReference(match[1]?.trim() ?? ""));
+  };
+
+  const sanitizeStyleAttribute = (value: string): string => {
+    return value
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .reduce<string[]>((safeDeclarations, declaration) => {
+        const separatorIndex = declaration.indexOf(":");
+        if (separatorIndex <= 0) {
+          return safeDeclarations;
+        }
+
+        const property = declaration.slice(0, separatorIndex).trim().toLowerCase();
+        const propertyValue = declaration.slice(separatorIndex + 1).trim();
+        if (!safeStyleProperties.has(property) || unsafeCssValuePattern.test(propertyValue)) {
+          return safeDeclarations;
+        }
+
+        safeDeclarations.push(`${property}: ${propertyValue}`);
+        return safeDeclarations;
+      }, [])
+      .join("; ");
   };
 
   const discoverSvgTargets = (source: string): AnimationTarget[] => {
@@ -246,7 +342,23 @@
           element.removeAttribute(attribute.name);
           return;
         }
-        if (urlAttributeNames.has(name) && blockedUrlPattern.test(value)) {
+
+        if (name === "style") {
+          const sanitizedStyle = sanitizeStyleAttribute(value);
+          if (sanitizedStyle) {
+            element.setAttribute(attribute.name, sanitizedStyle);
+          } else {
+            element.removeAttribute(attribute.name);
+          }
+          return;
+        }
+
+        if (strictReferenceAttributeNames.has(name) && !isSafeSvgReference(value)) {
+          element.removeAttribute(attribute.name);
+          return;
+        }
+
+        if (urlStyleAttributeNames.has(name) && hasUnsafeSvgReference(value)) {
           element.removeAttribute(attribute.name);
         }
       });
@@ -270,7 +382,7 @@
   const pointerTimeFromRect = (rect: DOMRect, event: MouseEvent): number =>
     applySnap(clampMs(((event.clientX - rect.left) / rect.width) * timelineDurationMs));
 
-  const pointerTimeFromElement = (ref: HTMLDivElement | null, event: MouseEvent): number => {
+  const pointerTimeFromElement = (ref: HTMLElement | null, event: MouseEvent): number => {
     if (!ref) {
       return currentTime;
     }
@@ -349,9 +461,10 @@
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
-  let timelineCursorElement: HTMLDivElement | null = null;
+  let timelineCursorElement: HTMLButtonElement | null = null;
   let previewScrubberElement: HTMLDivElement | null = null;
   let previewSvgHostElement: HTMLDivElement | null = null;
+  let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let showOnlySelected = false;
   let trackFilterTerm = "";
@@ -695,7 +808,7 @@
     showOnlySelected = false;
   };
 
-  const jumpToUsingRef = (ref: HTMLDivElement | null, event: MouseEvent): void => {
+  const jumpToUsingRef = (ref: HTMLElement | null, event: MouseEvent): void => {
     if (!ref) {
       return;
     }
@@ -1015,6 +1128,37 @@
     return `[id="${escaped}"]`;
   };
 
+  const originalInlineStylesFor = (element: SVGElement): Map<PreviewStyleProperty, OriginalInlineStyle> => {
+    const existing = originalPreviewInlineStyles.get(element);
+    if (existing) {
+      return existing;
+    }
+
+    const snapshot = new Map<PreviewStyleProperty, OriginalInlineStyle>();
+    previewTrackedStyleProperties.forEach((property) => {
+      snapshot.set(property, {
+        value: element.style.getPropertyValue(property),
+        priority: element.style.getPropertyPriority(property),
+      });
+    });
+    originalPreviewInlineStyles.set(element, snapshot);
+    return snapshot;
+  };
+
+  const setPreviewStyleProperty = (element: SVGElement, property: PreviewStyleProperty, value: string): void => {
+    originalInlineStylesFor(element);
+    element.style.setProperty(property, value);
+  };
+
+  const restorePreviewStyleProperty = (element: SVGElement, property: PreviewStyleProperty): void => {
+    const original = originalInlineStylesFor(element).get(property);
+    if (!original || original.value === "") {
+      element.style.removeProperty(property);
+      return;
+    }
+    element.style.setProperty(property, original.value, original.priority);
+  };
+
   const applyTimelineToPreviewSvg = async (): Promise<void> => {
     if (!previewSvgHostElement) {
       return;
@@ -1029,37 +1173,37 @@
 
       const style = resolvePreviewStyle(target.id);
       if (transformProperties.some((property) => getActiveTrackForTarget(target.id, property))) {
-        element.style.transform = style.transform;
-        element.style.transformOrigin = "center";
-        element.style.transformBox = "fill-box";
+        setPreviewStyleProperty(element, "transform", style.transform);
+        setPreviewStyleProperty(element, "transform-origin", "center");
+        setPreviewStyleProperty(element, "transform-box", "fill-box");
       } else {
-        element.style.removeProperty("transform");
-        element.style.removeProperty("transform-origin");
-        element.style.removeProperty("transform-box");
+        restorePreviewStyleProperty(element, "transform");
+        restorePreviewStyleProperty(element, "transform-origin");
+        restorePreviewStyleProperty(element, "transform-box");
       }
 
       if (getActiveTrackForTarget(target.id, "opacity")) {
-        element.style.opacity = style.opacity;
+        setPreviewStyleProperty(element, "opacity", style.opacity);
       } else {
-        element.style.removeProperty("opacity");
+        restorePreviewStyleProperty(element, "opacity");
       }
 
       if (getActiveTrackForTarget(target.id, "fill")) {
-        element.style.fill = style.fill;
+        setPreviewStyleProperty(element, "fill", style.fill);
       } else {
-        element.style.removeProperty("fill");
+        restorePreviewStyleProperty(element, "fill");
       }
 
       if (getActiveTrackForTarget(target.id, "stroke")) {
-        element.style.stroke = style.stroke;
+        setPreviewStyleProperty(element, "stroke", style.stroke);
       } else {
-        element.style.removeProperty("stroke");
+        restorePreviewStyleProperty(element, "stroke");
       }
 
       if (getActiveTrackForTarget(target.id, "strokeWidth")) {
-        element.style.strokeWidth = style.strokeWidth;
+        setPreviewStyleProperty(element, "stroke-width", style.strokeWidth);
       } else {
-        element.style.removeProperty("stroke-width");
+        restorePreviewStyleProperty(element, "stroke-width");
       }
     });
   };

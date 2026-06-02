@@ -13,18 +13,17 @@
 - [x] Render the SVG source in the live preview through the imported/source SVG
       path.
 - [ ] Verify the existing demo SVG still appears and target controls populate
-      from the parsed SVG. Build passes; browser visual check is pending drift
-      review.
+      from the parsed SVG. Build/check pass; browser visual check remains open.
 
 ## Goal 2: Bind Timeline Tracks To Rendered SVG Elements
 
-- [ ] Bind the preview SVG container so timeline state can be applied to mounted
+- [x] Bind the preview SVG container so timeline state can be applied to mounted
       SVG DOM nodes.
-- [ ] Apply unmuted track values to SVG target elements at the current playhead
+- [x] Apply unmuted track values to SVG target elements at the current playhead
       time.
-- [ ] Combine transform tracks per target for translate, scale, and rotation.
-- [ ] Apply visual tracks for opacity, fill, stroke, and stroke width.
-- [ ] Verify scrub and playback update the rendered SVG.
+- [x] Combine transform tracks per target for translate, scale, and rotation.
+- [x] Apply visual tracks for opacity, fill, stroke, and stroke width.
+- [ ] Verify scrub and playback update the rendered SVG in browser.
 
 ## Goal 3: Select SVG Elements
 
