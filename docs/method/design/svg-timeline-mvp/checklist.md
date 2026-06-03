@@ -71,3 +71,19 @@
 - [x] Add witness notes after build and browser verification.
 - [x] Add retro notes when the cycle closes.
 - [x] Update `BEARING.md` if the current-state summary changes materially.
+
+## Goal 8: Export Runnable Animation
+
+- [ ] Generate a self-contained runnable animation artifact from the current
+      sanitized SVG and non-muted timeline tracks.
+- [ ] Add an inspectable workbench surface for copying runnable output.
+- [ ] Prove exported output runs outside Tadpole with a browser witness.
+- [ ] Update changelog, witness docs, BEARING, and retro notes.
+
+## Goal 9: Import Existing SVG Animation Timelines
+
+- [ ] Parse existing SVG SMIL/CSS/Web Animations where safe and map them into
+      Tadpole tracks.
+- [ ] Preserve the current import sanitizer trust boundary while extracting
+      animation intent.
+- [ ] Prove imported animation timelines become editable Tadpole keyframes.

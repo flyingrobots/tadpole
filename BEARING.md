@@ -22,9 +22,11 @@ deterministic keyframe-based motion for logo/diagram targets.
 ## Priority
 
 1. Add runnable animation export for downstream use outside the editor.
-2. Improve editing ergonomics for complex SVGs, including target navigation,
+2. Import or extract existing SVG animation timelines into editable Tadpole
+   tracks after runnable export lands.
+3. Improve editing ergonomics for complex SVGs, including target navigation,
    undo/redo, and denser timeline workflows.
-3. Keep import/project persistence contracts covered by browser witnesses as
+4. Keep import/project persistence contracts covered by browser witnesses as
    the editor grows.
 
 ## Recent ship notes
@@ -43,6 +45,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 - Goal 8 remains open: export a runnable animation, not only a Tadpole project
   JSON payload.
+- Goal 9 is queued after Goal 8: infer editable Tadpole tracks from existing
+  SVG animation data when possible.
 - A layer tree, undo/redo, and multi-select target editing remain deferred.
 
 ## Risks

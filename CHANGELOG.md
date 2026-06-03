@@ -18,7 +18,7 @@ All notable changes for Tadpole are documented here.
   rediscovery, incompatible-track reconciliation, and reset-to-sample restore.
 - Added Tadpole METHOD design and GitHub task templates with an explicit
   runtime-proof quality bar.
-- Added a cycle-start workflow that syncs the merge target, opens a draft PR
+- Added a cycle-start workflow that syncs the merge target, opens a non-draft PR
   from the initial design/issue scaffold, and tracks in-flight work with a
   `work-in-progress` issue label.
 - Added project-level Tadpole JSON export and restore with SVG source,
