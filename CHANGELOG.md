@@ -24,6 +24,9 @@ All notable changes for Tadpole are documented here.
 - Added project-level Tadpole JSON export and restore with SVG source,
   discovered target metadata, timeline settings, tracks, project import
   validation, and visible skipped-track reporting for missing SVG targets.
+- Added Goal 6 rough UX hardening for explicit empty states, selected-target
+  quick track actions, SVG title-based target labels, a preview selected-target
+  chip, and clear-tracks recovery.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

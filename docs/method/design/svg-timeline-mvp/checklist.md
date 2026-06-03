@@ -58,12 +58,12 @@
 
 ## Goal 6: Rough UX Hardening
 
-- [ ] Add empty states for missing SVG, missing targets, and selected targets
+- [x] Add empty states for missing SVG, missing targets, and selected targets
       with no tracks.
-- [ ] Add quick track creation actions from the selected target.
-- [ ] Improve discovered target labels.
-- [ ] Add a visible selected-target chip near the preview.
-- [ ] Add a clear-tracks action for SVG changes.
+- [x] Add quick track creation actions from the selected target.
+- [x] Improve discovered target labels.
+- [x] Add a visible selected-target chip near the preview.
+- [x] Add a clear-tracks action for SVG changes.
 
 ## Goal 7: Cycle Documentation And Witness
 
