@@ -95,6 +95,7 @@ npm run check
 npm run build
 cd /tmp/tadpole-playwright
 node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs
+node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs
 npx --yes markdownlint-cli2 \
   CHANGELOG.md \
   BEARING.md \
@@ -102,6 +103,7 @@ npx --yes markdownlint-cli2 \
   docs/method/design/svg-timeline-mvp/runnable-animation-export.md \
   docs/method/witness/svg-timeline-mvp/runnable-animation-export.md \
   docs/method/retro/svg-timeline-mvp/retro.md
+ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
 ```
 

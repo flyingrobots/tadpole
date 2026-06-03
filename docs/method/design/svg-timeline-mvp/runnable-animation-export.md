@@ -309,6 +309,8 @@ npm run check
 npm run build
 (cd /tmp/tadpole-playwright && \
   node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs)
+(cd /tmp/tadpole-playwright && \
+  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs)
 npx --yes markdownlint-cli2 \
   CHANGELOG.md \
   BEARING.md \

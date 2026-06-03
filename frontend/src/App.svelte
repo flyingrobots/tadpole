@@ -726,9 +726,16 @@
 
   const runnableTracksFor = (items: TimelineTrack[], targets: AnimationTarget[], duration: number): TimelineTrack[] => {
     const targetIds = new Set(targets.map((target) => target.id));
-    return normalizeTrackList(items, duration).filter(
-      (track) => !track.muted && targetIds.has(track.targetId) && track.keyframes.length > 0,
-    );
+    return normalizeTrackList(items, duration)
+      .filter((track) => !track.muted && targetIds.has(track.targetId) && track.keyframes.length > 0)
+      .map((track) => ({
+        ...track,
+        keyframes: track.keyframes.flatMap((keyframe) => {
+          const value = normalizeProjectKeyframeValue(track.property, keyframe.value);
+          return value === null ? [] : [{ ...keyframe, value }];
+        }),
+      }))
+      .filter((track) => track.keyframes.length > 0);
   };
 
   const escapeHtml = (value: string): string =>
@@ -1886,7 +1893,7 @@ ${runnableRuntimeScript}
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
     setRunnableExportStatus(`Downloaded ${runnableExportFile}`);
   };
 
@@ -2640,8 +2647,13 @@ ${runnableRuntimeScript}
   const updateKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     const keyframeTrack = tracks.find((track) => track.id === trackId);
-    const spec = keyframeTrack ? propertySpec(keyframeTrack.property) : null;
-    const nextValue = spec?.kind === "number" ? String(Number(input.value) || 0) : input.value;
+    if (!keyframeTrack) {
+      return;
+    }
+    const nextValue = normalizeProjectKeyframeValue(keyframeTrack.property, input.value);
+    if (nextValue === null) {
+      return;
+    }
     tracks = tracks.map((track) =>
       track.id === trackId
         ? {

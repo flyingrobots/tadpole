@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
 
 const requireFromCwd = createRequire(`${process.cwd()}/`);
 const { chromium } = requireFromCwd("playwright");
@@ -40,6 +41,37 @@ const runRunnableExportSmoke = async (browser) => {
   assert(runnableHtml.includes("track-ui-x"), "runnable export track payload missing");
   assert(!runnableHtml.includes("tadpole-project-1"), "runnable export leaked project JSON version");
 
+  await editor.page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value) => {
+          window.__tadpoleCopiedRunnableHtml = value;
+        },
+      },
+    });
+  });
+  await editor.page.getByRole("button", { name: "Copy Runnable HTML" }).click();
+  await editor.page.waitForFunction(() => window.__tadpoleCopiedRunnableHtml?.includes("tadpole-runnable-html-1"));
+  assert(
+    (await editor.page.getByText("Runnable HTML copied").count()) === 1,
+    "copy runnable HTML status did not update",
+  );
+
+  const downloadPromise = editor.page.waitForEvent("download");
+  await editor.page.getByRole("button", { name: "Download Runnable HTML" }).click();
+  const download = await downloadPromise;
+  assert(download.suggestedFilename() === "sample-logo.html", `unexpected runnable filename: ${download.suggestedFilename()}`);
+  const downloadPath = await download.path();
+  assert(downloadPath, "runnable download path missing");
+  const downloadedHtml = await readFile(downloadPath, "utf8");
+  assert(downloadedHtml.includes("tadpole-runnable-html-1"), "downloaded runnable HTML version missing");
+  assert(downloadedHtml.includes("track-ui-x"), "downloaded runnable HTML track payload missing");
+  assert(
+    (await editor.page.getByText("Downloaded sample-logo.html").count()) === 1,
+    "download runnable HTML status did not update",
+  );
+
   const artifact = await createPage(browser);
   await artifact.page.setContent(runnableHtml, { waitUntil: "domcontentloaded" });
   await artifact.page.waitForSelector("[data-tadpole-stage] svg #ui");
@@ -73,9 +105,28 @@ const runRunnableExportSmoke = async (browser) => {
   await editor.page.close();
 };
 
+const runRunnableExportTrustBoundarySmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+
+  const unsafePaintValue = "url(https://example.com/paint.svg#p)";
+  const coFillTrack = page.locator(".track-card", { hasText: "CO Text • fill" }).first();
+  const firstKeyframe = coFillTrack.locator("li", { hasText: "track-co-fill-1" });
+  await firstKeyframe.locator(".inline-label", { hasText: "value" }).locator("input").fill(unsafePaintValue);
+  await page.waitForTimeout(50);
+
+  const runnableHtml = await page.locator("[data-tadpole-runnable-output]").textContent();
+  assert(runnableHtml && !runnableHtml.includes(unsafePaintValue), "unsafe CSS URL leaked into runnable export");
+
+  assertCleanBrowser("trust-boundary", consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runRunnableExportSmoke(browser);
+  await runRunnableExportTrustBoundarySmoke(browser);
   console.log("runnable export browser smoke passed");
 } finally {
   await browser.close();
