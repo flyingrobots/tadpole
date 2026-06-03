@@ -474,7 +474,7 @@
   let drawerResizeStartWidth = 300;
   let timelineCursorElement: HTMLButtonElement | null = null;
   let previewScrubberElement: HTMLDivElement | null = null;
-  let previewSvgHostElement: HTMLButtonElement | null = null;
+  let previewSvgHostElement: HTMLDivElement | null = null;
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let showOnlySelected = false;
@@ -1367,10 +1367,14 @@
     if (matchingTrack) {
       selectedTrackId = matchingTrack.id;
       selectedKeyframeId = "";
+      return;
     }
+
+    selectedTrackId = "";
+    selectedKeyframeId = "";
   };
 
-  const selectPreviewTarget = (event: MouseEvent): void => {
+  const selectPreviewTarget = (event: PointerEvent): void => {
     const targetId = resolvePreviewTargetId(event.target);
     if (!targetId) {
       return;
@@ -2490,15 +2494,15 @@
             </span>
           </div>
           <div class="preview-stage">
-            <button
-              type="button"
+            <div
               class="preview-svg-host"
               bind:this={previewSvgHostElement}
+              role="group"
               aria-label={`Source SVG Animation Preview${selectedTarget ? `, selected target ${selectedTarget.name}` : ""}`}
-              on:click={selectPreviewTarget}
+              on:pointerup={selectPreviewTarget}
             >
               {@html svgMarkup}
-            </button>
+            </div>
           </div>
         </div>
       </section>

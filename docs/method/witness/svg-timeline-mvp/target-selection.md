@@ -8,7 +8,8 @@ the rendered preview and syncing that target through editing controls.
 ## Environment
 
 - Branch: `cycles/UIUX_svg-target-selection`
-- Base synced to `origin/main` at `219707e`
+- Implementation base synced to `origin/main` at `219707e`
+- Current review base merged from `origin/main` at `816992e`
 - App URL: `http://localhost:5173/`
 
 ## Automated Browser Smoke
@@ -45,6 +46,7 @@ Assertions covered:
 ## Local Checks
 
 - `npm run check`
+- `npm run build`
 
 ## Acceptance
 
