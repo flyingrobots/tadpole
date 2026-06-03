@@ -49,13 +49,12 @@ This repository follows METHOD for cycle-based engineering:
 - New cycle designs start from `docs/method/design/TEMPLATE.md`.
 - GitHub tasks use the `Tadpole Task` issue form and must name executable proof
   for runtime or product changes.
-- Cycle-start work uses a draft PR: sync the merge target after `git fetch`,
-  create the cycle branch, write the design doc and GitHub issue, stage and
-  commit that scaffold, push the branch, open a draft PR, and apply the
+- Cycle-start work uses a non-draft PR: sync the merge target after
+  `git fetch`, create the cycle branch, write the design doc and GitHub issue,
+  stage and commit that scaffold, push the branch, open a PR, and apply the
   `work-in-progress` label to the issue.
-- Draft PRs are for cycle-start scaffolding only. Move the PR to ready for
-  review when implementation and witness evidence are ready, then remove the
-  issue's `work-in-progress` label.
+- Remove the issue's `work-in-progress` label when implementation and witness
+  evidence are ready for review.
 - Source-of-truth ship surfaces: `BEARING.md`, `CHANGELOG.md`, and METHOD
   backlog under `docs/method/`.
 

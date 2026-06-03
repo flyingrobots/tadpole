@@ -69,5 +69,5 @@
 
 - [x] Update `CHANGELOG.md` with the SVG timeline MVP slice.
 - [x] Add witness notes after build and browser verification.
-- [ ] Add retro notes when the cycle closes.
-- [ ] Update `BEARING.md` if the current-state summary changes materially.
+- [x] Add retro notes when the cycle closes.
+- [x] Update `BEARING.md` if the current-state summary changes materially.

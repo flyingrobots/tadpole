@@ -33,8 +33,8 @@ body:
   - type: input
     id: draft_pr
     attributes:
-      label: Draft PR
-      description: Link the cycle-start draft PR after the branch is pushed.
+      label: Pull Request
+      description: Link the cycle-start PR after the branch is pushed.
       placeholder: https://github.com/flyingrobots/tadpole/pull/<number>
     validations:
       required: false
@@ -49,7 +49,7 @@ body:
         - label: "Cycle branch checked out from the synced merge target."
         - label: "Design doc written from `docs/method/design/TEMPLATE.md` and linked above."
         - label: "Initial cycle scaffold staged, committed, and pushed."
-        - label: "Draft PR opened to the merge target and linked above."
+        - label: "Non-draft PR opened to the merge target and linked above."
         - label: "`work-in-progress` label applied while cycle work is in flight."
   - type: textarea
     id: hill

@@ -35,7 +35,7 @@ Example:
 - [ ] GitHub issue created from the `Tadpole Task` issue form.
 - [ ] `work-in-progress` label applied to the GitHub issue.
 - [ ] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and draft PR opened to the merge target.
+- [ ] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 

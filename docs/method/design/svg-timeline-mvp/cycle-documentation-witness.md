@@ -88,6 +88,7 @@ This cycle includes:
 - Add SVG timeline MVP retrospective notes.
 - Refresh `BEARING.md` to reflect imported SVG editing, project JSON
   persistence, witnesses, and the remaining export gap.
+- Align cycle-start docs with the repo instruction that PRs are non-draft.
 - Mark Goal 7 checklist items complete after docs and validation land.
 - Remove the work-in-progress label from issue #13 when the PR is ready.
 
@@ -178,21 +179,22 @@ checklist-only change would undercut the gate.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Cycle scaffold and PR.
-- [ ] Slice 2: SVG timeline MVP retrospective notes.
-- [ ] Slice 3: BEARING refresh.
-- [ ] Slice 4: Checklist closure and validation notes.
+- [x] Slice 1: Cycle scaffold and PR.
+- [x] Slice 2: SVG timeline MVP retrospective notes.
+- [x] Slice 3: BEARING refresh.
+- [x] Slice 4: Process-doc non-draft PR alignment.
+- [x] Slice 5: Checklist closure and validation notes.
 
 ## Tests To Write First
 
 Documentation checks required:
 
-- [ ] Markdown lint for changed docs.
-- [ ] `git diff --check`.
+- [x] Markdown lint for changed docs.
+- [x] `git diff --check`.
 
 Runtime checks:
 
-- [ ] Not required; no runtime code changes.
+- [x] Not required; no runtime code changes.
 
 ## Proof Matrix
 
@@ -200,6 +202,7 @@ Runtime checks:
 | --- | --- |
 | Retrospective exists and names shipped work | Markdown lint and file review |
 | BEARING reflects current editor state | Markdown lint and file review |
+| Cycle-start docs require non-draft PRs | Markdown lint and file review |
 | Goal 7 checklist closes only after docs land | Markdown lint and diff review |
 | No runtime changes are included | `git diff --stat` |
 
@@ -207,18 +210,21 @@ Runtime checks:
 
 The work is done when:
 
-- [ ] SVG timeline MVP retrospective notes are added.
-- [ ] `BEARING.md` reflects the imported-SVG editor workflow.
-- [ ] Goal 7 checklist items are checked.
-- [ ] Changed docs pass Markdown lint.
-- [ ] `git diff --check` passes.
-- [ ] Issue and PR are linked correctly.
+- [x] SVG timeline MVP retrospective notes are added.
+- [x] `BEARING.md` reflects the imported-SVG editor workflow.
+- [x] Cycle-start docs require non-draft PRs.
+- [x] Goal 7 checklist items are checked.
+- [x] Changed docs pass Markdown lint.
+- [x] `git diff --check` passes.
+- [x] Issue and PR are linked correctly.
 
 ## Validation Plan
 
 ```bash
 npx --yes markdownlint-cli2 \
+  README.md \
   BEARING.md \
+  docs/method/design/TEMPLATE.md \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md \
   docs/method/retro/svg-timeline-mvp/retro.md
@@ -230,7 +236,10 @@ git diff --check
 Reviewers can inspect:
 
 ```bash
+README.md
 BEARING.md
+docs/method/design/TEMPLATE.md
+.github/ISSUE_TEMPLATE/task.yml
 docs/method/design/svg-timeline-mvp/checklist.md
 docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md
 docs/method/retro/svg-timeline-mvp/retro.md
@@ -247,19 +256,20 @@ docs/method/retro/svg-timeline-mvp/retro.md
 
 ## Retrospective
 
-Fill this in after implementation.
-
 What changed from the design:
 
-- ...
+- Process docs were also aligned with the repo instruction that cycle PRs are
+  non-draft. No runtime checks were added because implementation stayed
+  documentation-only.
 
 What the tests proved:
 
-- ...
+- Markdown lint and `git diff --check` prove the changed docs meet the repo's
+  style and whitespace gates.
 
 What remains open:
 
-- ...
+- Goal 8 runnable animation export.
 
 PR:
 
