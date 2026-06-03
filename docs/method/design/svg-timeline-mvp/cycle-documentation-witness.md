@@ -3,7 +3,7 @@ title: "G7-001 - Cycle Documentation And Witness"
 lane: "design"
 goal: "Goal 7"
 issue: "https://github.com/flyingrobots/tadpole/issues/13"
-pr: ""
+pr: "https://github.com/flyingrobots/tadpole/pull/14"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -31,7 +31,7 @@ updated: "2026-06-03"
 - [x] GitHub issue created from the `Tadpole Task` issue form.
 - [x] `work-in-progress` label applied to the GitHub issue.
 - [x] Design doc and issue link staged for the initial cycle commit.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -263,4 +263,4 @@ What remains open:
 
 PR:
 
-- ...
+- [#14](https://github.com/flyingrobots/tadpole/pull/14)
