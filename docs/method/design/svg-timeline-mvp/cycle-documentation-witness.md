@@ -190,6 +190,7 @@ checklist-only change would undercut the gate.
 Documentation checks required:
 
 - [x] Markdown lint for changed docs.
+- [x] YAML parse for the GitHub issue template.
 - [x] `git diff --check`.
 
 Runtime checks:
@@ -203,6 +204,7 @@ Runtime checks:
 | Retrospective exists and names shipped work | Markdown lint and file review |
 | BEARING reflects current editor state | Markdown lint and file review |
 | Cycle-start docs require non-draft PRs | Markdown lint and file review |
+| GitHub issue template remains parseable | Ruby YAML parse |
 | Goal 7 checklist closes only after docs land | Markdown lint and diff review |
 | No runtime changes are included | `git diff --stat` |
 
@@ -215,6 +217,7 @@ The work is done when:
 - [x] Cycle-start docs require non-draft PRs.
 - [x] Goal 7 checklist items are checked.
 - [x] Changed docs pass Markdown lint.
+- [x] GitHub issue template parses as YAML.
 - [x] `git diff --check` passes.
 - [x] Issue and PR are linked correctly.
 
@@ -228,6 +231,7 @@ npx --yes markdownlint-cli2 \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md \
   docs/method/retro/svg-timeline-mvp/retro.md
+ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
 ```
 
@@ -266,6 +270,8 @@ What the tests proved:
 
 - Markdown lint and `git diff --check` prove the changed docs meet the repo's
   style and whitespace gates.
+- Ruby YAML parsing proves the edited GitHub issue form remains syntactically
+  valid.
 
 What remains open:
 

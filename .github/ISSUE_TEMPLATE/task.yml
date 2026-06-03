@@ -31,7 +31,7 @@ body:
     validations:
       required: true
   - type: input
-    id: draft_pr
+    id: pull_request
     attributes:
       label: Pull Request
       description: Link the cycle-start PR after the branch is pushed.

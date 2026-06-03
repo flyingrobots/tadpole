@@ -22,6 +22,8 @@ outside Tadpole.
 - Rough UX states for blank SVG input, no editable targets, no tracks, selected
   targets with no tracks, preview selected-target context, and clear-tracks
   recovery.
+- Cycle-start process docs now require non-draft PRs, matching repo
+  instructions.
 
 ## What went well
 
@@ -70,10 +72,13 @@ Goal 7 documentation closure uses:
 
 ```bash
 npx --yes markdownlint-cli2 \
+  README.md \
   BEARING.md \
+  docs/method/design/TEMPLATE.md \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md \
   docs/method/retro/svg-timeline-mvp/retro.md
+ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
 ```
 
@@ -83,5 +88,3 @@ git diff --check
 - Add layer-tree navigation if target-library chips are not enough for complex
   imported SVGs.
 - Add undo/redo once timeline and import operations become more destructive.
-- Resolve the workflow-doc mismatch around draft PR language versus current
-  repo instructions requiring non-draft PRs.
