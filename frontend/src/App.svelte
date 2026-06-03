@@ -1519,6 +1519,7 @@ ${runnableRuntimeScript}
     const isSvgFile = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
     if (!isSvgFile) {
       svgImportError = "Import failed: choose an SVG file.";
+      animationImportWarnings = [];
       input.value = "";
       return;
     }
@@ -1529,6 +1530,7 @@ ${runnableRuntimeScript}
     } catch {
       if (revision === svgImportRevision) {
         svgImportError = "Import failed: could not read the SVG file.";
+        animationImportWarnings = [];
       }
     } finally {
       input.value = "";
@@ -1595,20 +1597,23 @@ ${runnableRuntimeScript}
       return null;
     }
 
-    const simpleMatch = /^(-?\d+(?:\.\d+)?)(ms|s|min)?$/i.exec(trimmed);
+    const simpleMatch = /^(-?\d+(?:\.\d+)?)(ms|s|min|h)?$/i.exec(trimmed);
     if (simpleMatch) {
       const amount = Number(simpleMatch[1]);
       if (!Number.isFinite(amount) || amount < 0) {
         return null;
       }
-      const unit = simpleMatch[2]?.toLowerCase() ?? "ms";
+      const unit = simpleMatch[2]?.toLowerCase();
+      if (unit === "ms") {
+        return amount;
+      }
       if (unit === "min") {
         return amount * 60_000;
       }
-      if (unit === "s") {
-        return amount * 1000;
+      if (unit === "h") {
+        return amount * 3_600_000;
       }
-      return amount;
+      return amount * 1000;
     }
 
     const clockParts = trimmed.split(":").map((part) => Number(part));
@@ -1864,7 +1869,7 @@ ${runnableRuntimeScript}
       }
 
       const calcMode = element.getAttribute("calcMode")?.trim().toLowerCase();
-      if (calcMode && calcMode !== "linear" && calcMode !== "discrete") {
+      if (calcMode && calcMode !== "linear") {
         warnings.push(`Unsupported calcMode "${calcMode}" on #${targetId}.`);
         return;
       }
@@ -3165,7 +3170,7 @@ ${runnableRuntimeScript}
           {:else}
             <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
           {/if}
-          {#if animationImportWarnings.length > 0}
+          {#if !svgImportError && animationImportWarnings.length > 0}
             <div class="warning tiny animation-import-warnings" aria-live="polite" data-tadpole-animation-import-warnings>
               <strong>Animation import warnings</strong>
               <ul>

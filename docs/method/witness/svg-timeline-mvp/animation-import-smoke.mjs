@@ -36,6 +36,18 @@ const animatedSvg = `<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg
   <circle id="css-only" data-tadpole-name="CSS Only" cx="88" cy="22" r="7" fill="#64748b" />
 </svg>`;
 
+const unitlessDurationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Unitless Duration Fixture">
+  <rect id="clock" data-tadpole-name="Clock Box" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="2" />
+  </rect>
+</svg>`;
+
+const discreteCalcModeSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Discrete CalcMode Fixture">
+  <rect id="snap" data-tadpole-name="Snap Box" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="800ms" calcMode="discrete" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -54,12 +66,11 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(pageErrors.length === 0, `browser page errors: ${pageErrors.join(" | ")}`);
 };
 
-const importAnimatedSvg = async (page) => {
+const importSvgMarkup = async (page, svgMarkup) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
-  await page.locator(".panel-svg-source textarea").fill(animatedSvg);
+  await page.locator(".panel-svg-source textarea").fill(svgMarkup);
   await page.locator(".panel-svg-source button", { hasText: "Import Paste" }).click();
-  await page.waitForSelector(".preview-svg-host #box");
 };
 
 const projectPayload = async (page) => {
@@ -70,7 +81,8 @@ const projectPayload = async (page) => {
 
 const runAnimationImportSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
-  await importAnimatedSvg(page);
+  await importSvgMarkup(page, animatedSvg);
+  await page.waitForSelector(".preview-svg-host #box");
 
   const sourcePanelText = await textOf(page.locator(".panel-svg-source"));
   assert(sourcePanelText.includes("Imported 5 animation tracks."), "SMIL tracks were not imported");
@@ -122,9 +134,64 @@ const runAnimationImportSmoke = async (browser) => {
   await page.close();
 };
 
+const runUnitlessDurationSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, unitlessDurationSvg);
+  await page.waitForSelector(".preview-svg-host #clock");
+
+  const payload = await projectPayload(page);
+  assert(payload.timeline.duration === 2000, `unitless SMIL dur should import as seconds: ${payload.timeline.duration}`);
+  const opacityTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "clock" && track.property === "opacity",
+  );
+  assert(opacityTrack, "unitless duration opacity track missing");
+  assert(
+    opacityTrack.keyframes.some((keyframe) => keyframe.time === 2000 && keyframe.value === "1"),
+    `unitless duration keyframe was not placed at 2000ms: ${JSON.stringify(opacityTrack.keyframes)}`,
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDiscreteCalcModeWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, discreteCalcModeSvg);
+  await page.waitForSelector(".preview-svg-host #snap");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes('Unsupported calcMode "discrete" on #snap.'), "discrete calcMode warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `discrete calcMode should not import as linear tracks: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runFailedFileClearsWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, animatedSvg);
+  await page.waitForSelector("[data-tadpole-animation-import-warnings]");
+
+  await page.locator(".panel-svg-source input[type=file]").setInputFiles({
+    name: "not-svg.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("not an svg"),
+  });
+  await page.locator(".panel-svg-source .error", { hasText: "Import failed: choose an SVG file." }).waitFor();
+  const warningCount = await page.locator("[data-tadpole-animation-import-warnings]").count();
+  assert(warningCount === 0, "failed file import left stale animation warnings visible");
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
+  await runUnitlessDurationSmoke(browser);
+  await runDiscreteCalcModeWarningSmoke(browser);
+  await runFailedFileClearsWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

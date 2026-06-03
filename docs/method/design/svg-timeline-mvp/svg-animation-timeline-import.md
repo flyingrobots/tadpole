@@ -81,6 +81,8 @@ This cycle includes:
   parent element ID.
 - Convert `values` or `from`/`to` pairs plus `dur` and optional `keyTimes` into
   Tadpole keyframes.
+- Parse SVG clock values with SVG semantics, including unitless timecounts as
+  seconds.
 - Keep sanitized SVG output free of animation nodes.
 - Show imported-track counts and unsupported-animation warnings in the SVG
   Source panel.
@@ -148,6 +150,8 @@ Unsupported input behavior:
 
 - Unsafe or external target references are ignored and warned.
 - Unsupported animation attributes are ignored and warned.
+- Non-linear or discrete `calcMode` values are ignored and warned until Tadpole
+  has a timeline representation that preserves them faithfully.
 - CSS animation and Web Animations script surfaces remain non-executed and are
   warned when detectable.
 - The sanitized SVG source never keeps SMIL animation nodes.
@@ -267,6 +271,10 @@ Behavior tests required:
 - [x] Browser witness proves sanitized preview contains no SMIL animation nodes.
 - [x] Browser witness edits an imported keyframe and sees project export update.
 - [x] Browser witness reports unsupported animation constructs.
+- [x] Browser witness proves unitless SMIL clock values import as seconds.
+- [x] Browser witness proves unsupported `calcMode` values do not import as
+      linear tracks.
+- [x] Browser witness proves failed file imports clear stale animation warnings.
 
 Documentation/process tests:
 
@@ -282,6 +290,8 @@ The work is done when:
 - [x] Sanitized preview/export does not retain animation nodes.
 - [x] Project JSON export preserves converted tracks.
 - [x] Browser witness covers import, edit, scrub, and export.
+- [x] Browser witness covers unitless clock values, unsupported discrete timing,
+      and failed-import warning cleanup.
 - [x] Local validation is green.
 
 ## Validation Plan
@@ -350,7 +360,9 @@ What the tests proved:
 - `animation-import-smoke.mjs` imports five supported SMIL-derived tracks,
   reports three unsupported animation notes, proves sanitized preview/export do
   not retain animation/style/script nodes, scrubs imported motion, edits an
-  imported keyframe, and observes the edited value in project JSON.
+  imported keyframe, observes the edited value in project JSON, proves unitless
+  SMIL clock values import as seconds, rejects unsupported discrete timing as a
+  warning, and clears stale warnings after failed file import.
 
 What remains open:
 

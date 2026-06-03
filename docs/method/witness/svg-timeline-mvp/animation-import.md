@@ -16,6 +16,9 @@ turn the motion into editable timeline tracks.
 - The rendered preview and project export keep sanitized SVG without animation,
   style, or script nodes.
 - Editing an imported keyframe updates project JSON export.
+- Unitless SVG clock values import as seconds.
+- Unsupported discrete timing is warned and not imported as linear motion.
+- Failed file imports clear stale animation warning UI.
 
 ## Command
 
