@@ -1730,6 +1730,9 @@ ${runnableRuntimeScript}
       return numbers.length > 1 && numbers[1] !== numbers[0];
     });
 
+  const hasExplicitRotatePivotValues = (values: string[]): boolean =>
+    values.some((value) => numbersFromSmilValue(value).length > 1);
+
   const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);
 
   const extractAnimateElementTrack = (
@@ -1814,6 +1817,10 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "rotate") {
+      if (hasExplicitRotatePivotValues(values)) {
+        warnings.push(`Unsupported pivoted rotate values on #${targetId}.`);
+        return [];
+      }
       const rotationValues = dimensionValuesFromTransformValues(values, 0);
       const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration);
       if (!keyframes) {

@@ -66,6 +66,12 @@ const nonUniformScaleSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/20
   </rect>
 </svg>`;
 
+const pivotRotateSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Pivot Rotate Fixture">
+  <rect id="spinner" data-tadpole-name="Spinner" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="rotate" values="0 40 20;90 40 20" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -247,6 +253,20 @@ const runNonUniformScaleWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runPivotRotateWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, pivotRotateSvg);
+  await page.waitForSelector(".preview-svg-host #spinner");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported pivoted rotate values on #spinner."), "pivoted rotate warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `pivoted rotate imported without pivot semantics: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -256,6 +276,7 @@ try {
   await runUnsafeHrefWarningSmoke(browser);
   await runOneArgumentTranslateSmoke(browser);
   await runNonUniformScaleWarningSmoke(browser);
+  await runPivotRotateWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
