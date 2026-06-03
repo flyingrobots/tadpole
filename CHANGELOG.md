@@ -12,6 +12,8 @@ All notable changes for Tadpole are documented here.
   Vite + Open Props architecture.
 - Added preview scrubber parity and preview-pane keyframe insertion workflow in
   the timeline editor.
+- Added source-rendered SVG target selection from the live preview, including
+  target library, inspector, and new-track synchronization.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

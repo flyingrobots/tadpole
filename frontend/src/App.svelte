@@ -453,6 +453,7 @@
   let selectedTrackNeighborhood: PlayheadNeighborhood = { at: null, previous: null, next: null };
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
+  let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let timelineDurationMs = 1200;
   let currentTime = 0;
   let isPlaying = false;
@@ -473,7 +474,7 @@
   let drawerResizeStartWidth = 300;
   let timelineCursorElement: HTMLButtonElement | null = null;
   let previewScrubberElement: HTMLDivElement | null = null;
-  let previewSvgHostElement: HTMLDivElement | null = null;
+  let previewSvgHostElement: HTMLButtonElement | null = null;
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let showOnlySelected = false;
@@ -694,11 +695,23 @@
   $: availableTargets = discoverSvgTargets(svgMarkup);
   $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
   $: {
+    const selectedTargetExists = availableTargets.some((target) => target.id === selectedTargetId);
+    const firstTargetId = availableTargets[0]?.id ?? "";
+    if (!selectedTargetExists) {
+      selectedTargetId = firstTargetId;
+      newTrackTargetId = firstTargetId;
+    } else if (!availableTargets.some((target) => target.id === newTrackTargetId)) {
+      newTrackTargetId = selectedTargetId;
+    }
+  }
+  $: selectedTarget = availableTargets.find((target) => target.id === selectedTargetId) ?? null;
+  $: {
     if (previewSvgHostElement) {
       currentTime;
       tracks;
       availableTargets;
       svgMarkup;
+      selectedTargetId;
       void applyTimelineToPreviewSvg();
     }
   }
@@ -1204,6 +1217,9 @@
         return;
       }
 
+      element.classList.toggle("tadpole-selected-target", target.id === selectedTargetId);
+      element.setAttribute("data-tadpole-target", "true");
+
       const style = resolvePreviewStyle(target.id);
       if (transformProperties.some((property) => getActiveTrackForTarget(target.id, property))) {
         setPreviewStyleProperty(element, "transform", style.transform);
@@ -1319,9 +1335,49 @@
     snapToFrames = !snapToFrames;
   };
 
-  const selectTarget = (targetId: string): void => {
+  const resolvePreviewTargetId = (eventTarget: EventTarget | null): string | null => {
+    if (!(eventTarget instanceof Element) || !previewSvgHostElement) {
+      return null;
+    }
+
+    const targetIds = new Set(availableTargets.map((target) => target.id));
+    let candidate: Element | null = eventTarget;
+    while (candidate && candidate !== previewSvgHostElement) {
+      const id = candidate.getAttribute("id")?.trim();
+      if (id && targetIds.has(id)) {
+        return id;
+      }
+      candidate = candidate.parentElement;
+    }
+    return null;
+  };
+
+  const selectTarget = (targetId: string, options: { syncTrack?: boolean } = {}): void => {
+    if (!availableTargets.some((target) => target.id === targetId)) {
+      return;
+    }
     selectedTargetId = targetId;
     newTrackTargetId = targetId;
+
+    if (!options.syncTrack || activeTrack?.targetId === targetId) {
+      return;
+    }
+
+    const matchingTrack = tracks.find((track) => track.targetId === targetId);
+    if (matchingTrack) {
+      selectedTrackId = matchingTrack.id;
+      selectedKeyframeId = "";
+    }
+  };
+
+  const selectPreviewTarget = (event: MouseEvent): void => {
+    const targetId = resolvePreviewTargetId(event.target);
+    if (!targetId) {
+      return;
+    }
+
+    event.stopPropagation();
+    selectTarget(targetId, { syncTrack: true });
   };
 
   const addTrack = (): void => {
@@ -1334,6 +1390,7 @@
     };
     tracks = [...tracks, newTrack];
     selectedTrackId = newTrack.id;
+    selectedTargetId = newTrack.targetId;
     selectedKeyframeId = "";
   };
 
@@ -1413,6 +1470,9 @@
     const input = event.currentTarget as HTMLSelectElement;
     const targetId = input.value;
     tracks = tracks.map((track) => (track.id === trackId ? { ...track, targetId } : track));
+    if (selectedTrackId === trackId) {
+      selectTarget(targetId);
+    }
   };
 
   const setTrackProperty = (trackId: string, event: Event): void => {
@@ -1549,6 +1609,10 @@
   const selectTrack = (trackId: string): void => {
     selectedTrackId = trackId;
     selectedKeyframeId = "";
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (track) {
+      selectTarget(track.targetId);
+    }
   };
 
   const selectKeyframe = (trackId: string, keyframeId: string, time: number): void => {
@@ -1794,10 +1858,8 @@
               type="button"
               class="target-chip"
               class:is-active={target.id === selectedTargetId}
-              on:click={() => {
-                selectTarget(target.id);
-                newTrackTargetId = target.id;
-              }}
+              aria-pressed={target.id === selectedTargetId}
+              on:click={() => selectTarget(target.id, { syncTrack: true })}
             >
               <span class="target-name">{target.name}</span>
               <span class="target-kind">{target.kind}</span>
@@ -2168,6 +2230,25 @@
               <p class="muted">Quickly inspect and edit the selected track and keyframe.</p>
             </div>
           </div>
+          {#if selectedTarget}
+            <div class="selected-target-summary">
+              <h3>Selected SVG Target</h3>
+              <div class="inspector-grid">
+                <label class="inline-label compact">
+                  <span>Name</span>
+                  <input value={selectedTarget.name} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>ID</span>
+                  <input value={selectedTarget.id} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Kind</span>
+                  <input value={selectedTarget.kind} readonly />
+                </label>
+              </div>
+            </div>
+          {/if}
           {#if selectedTrack}
             <div class="inspector-grid">
               <label class="inline-label compact">
@@ -2409,13 +2490,15 @@
             </span>
           </div>
           <div class="preview-stage">
-            <div
+            <button
+              type="button"
               class="preview-svg-host"
               bind:this={previewSvgHostElement}
-              aria-label="Source SVG Animation Preview"
+              aria-label={`Source SVG Animation Preview${selectedTarget ? `, selected target ${selectedTarget.name}` : ""}`}
+              on:click={selectPreviewTarget}
             >
               {@html svgMarkup}
-            </div>
+            </button>
           </div>
         </div>
       </section>
@@ -3050,6 +3133,15 @@
     grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   }
 
+  .selected-target-summary {
+    display: grid;
+    gap: var(--size-2);
+    border: 1px solid color-mix(in oklab, var(--tadpole-accent) 34%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-8) 12%, transparent);
+    padding: var(--size-3);
+  }
+
   .inspector-grid .inline-label.compact {
     min-width: 0;
   }
@@ -3247,6 +3339,16 @@
     max-width: 100%;
     display: grid;
     place-items: center;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    cursor: crosshair;
+  }
+
+  .preview-svg-host:focus-visible {
+    outline: 2px solid var(--tadpole-accent);
+    outline-offset: 4px;
   }
 
   .preview-svg,
@@ -3260,6 +3362,16 @@
   .preview-text,
   .preview-svg-host :global(.preview-text) {
     letter-spacing: 0.02em;
+  }
+
+  .preview-svg-host :global([data-tadpole-target="true"]) {
+    cursor: pointer;
+  }
+
+  .preview-svg-host :global(.tadpole-selected-target) {
+    filter: drop-shadow(0 0 0.35rem color-mix(in oklab, var(--tadpole-accent) 68%, transparent));
+    outline: 2px solid color-mix(in oklab, var(--tadpole-accent) 72%, white);
+    outline-offset: 2px;
   }
 
   .font-list {

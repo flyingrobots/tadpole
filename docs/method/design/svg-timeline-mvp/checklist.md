@@ -12,8 +12,9 @@
       preserving existing timeline controls.
 - [x] Render the SVG source in the live preview through the imported/source SVG
       path.
-- [ ] Verify the existing demo SVG still appears and target controls populate
-      from the parsed SVG. Build/check pass; browser visual check remains open.
+- [x] Verify the existing demo SVG still appears and target controls populate
+      from the parsed SVG. Browser smoke confirms `UI Text` and `Tadpole Q`
+      target chips from the source-rendered SVG.
 
 ## Goal 2: Bind Timeline Tracks To Rendered SVG Elements
 
@@ -23,15 +24,17 @@
       time.
 - [x] Combine transform tracks per target for translate, scale, and rotation.
 - [x] Apply visual tracks for opacity, fill, stroke, and stroke width.
-- [ ] Verify scrub and playback update the rendered SVG in browser.
+- [x] Verify scrub and playback update the rendered SVG in browser. Browser
+      smoke confirms the preview scrubber moves `#ui` through the rendered SVG
+      DOM.
 
 ## Goal 3: Select SVG Elements
 
-- [ ] Add delegated preview click handling for selecting SVG elements.
-- [ ] Resolve clicked elements to discovered target IDs.
-- [ ] Sync selected preview target with the target library, new-track controls,
+- [x] Add delegated preview click handling for selecting SVG elements.
+- [x] Resolve clicked elements to discovered target IDs.
+- [x] Sync selected preview target with the target library, new-track controls,
       and inspector.
-- [ ] Add a rough selected-target visual affordance in the preview.
+- [x] Add a rough selected-target visual affordance in the preview.
 
 ## Goal 4: Import External SVGs
 
@@ -62,7 +65,7 @@
 
 ## Goal 7: Cycle Documentation And Witness
 
-- [ ] Update `CHANGELOG.md` with the SVG timeline MVP slice.
-- [ ] Add witness notes after build and manual verification.
+- [x] Update `CHANGELOG.md` with the SVG timeline MVP slice.
+- [x] Add witness notes after build and manual verification.
 - [ ] Add retro notes when the cycle closes.
 - [ ] Update `BEARING.md` if the current-state summary changes materially.
