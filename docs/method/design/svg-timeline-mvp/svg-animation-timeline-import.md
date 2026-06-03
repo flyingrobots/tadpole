@@ -352,4 +352,4 @@ What remains open:
 
 PR:
 
-- TBD
+- https://github.com/flyingrobots/tadpole/pull/26
