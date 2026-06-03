@@ -5,11 +5,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [
     svelte({
-      preprocess: sveltePreprocess({
-        typescript: {
-          transpileOnly: true,
-        },
-      }),
+      preprocess: sveltePreprocess(),
     }),
   ],
   server: {
