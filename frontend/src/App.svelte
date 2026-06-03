@@ -52,6 +52,25 @@
     restoreSampleTracks?: boolean;
   };
 
+  type TadpoleProject = {
+    version: "tadpole-project-1";
+    svg: {
+      label: string;
+      source: string;
+      targets: AnimationTarget[];
+    };
+    timeline: {
+      duration: number;
+      currentTime: number;
+      frameRate: number;
+      isLooping: boolean;
+      snapToFrames: boolean;
+      snapMs: number;
+      gridDensity: number;
+      tracks: TimelineTrack[];
+    };
+  };
+
   type PropertyDefinition = {
     id: AnimationProperty;
     label: string;
@@ -85,6 +104,8 @@
   const minGridDivisions = 5;
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
+  const projectExportVersion = "tadpole-project-1";
+  const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
 
   // Animation timeline state.
   const easingModes: KeyframeEasing[] = ["linear", "power1.inOut", "power2.out", "power3.inOut", "expo.out", "back.inOut"];
@@ -227,6 +248,7 @@
     "visibility",
   ]);
   const unsafeCssValuePattern = /(?:url\s*\(|@import|expression\s*\(|(?:java|vb)script:|data:|https?:|\/\/)/i;
+  const unsafeProjectStyleValuePattern = /[;{}<>]/;
   const externalReferencePattern = /(?:(?:java|vb)script:|data:|https?:|\/\/)/i;
   const cssUrlReferencePattern = /url\s*\(\s*["']?([^"')]+)["']?\s*\)/gi;
   const localReferencePattern = /^(?:#[-\w:.]+|url\(#[-\w:.]+\))$/;
@@ -418,7 +440,8 @@
   let svgImportRevision = 0;
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
-  const clampMs = (value: number): number => clamp(Math.round(value), 0, timelineDurationMs);
+  const clampMsForDuration = (value: number, duration: number): number => clamp(Math.round(value), 0, duration);
+  const clampMs = (value: number): number => clampMsForDuration(value, timelineDurationMs);
   const clampPercent = (value: number): number => clamp(value, 0, 100);
 
   const trackPercent = (time: number): number =>
@@ -450,6 +473,20 @@
       id = `kf-${(keyframeCursor += 1)}`;
     } while (existing.has(id));
     return id;
+  };
+  const syncIdCursorsFromTracks = (items: TimelineTrack[]): void => {
+    items.forEach((track) => {
+      const trackMatch = /^track-(\d+)$/.exec(track.id);
+      if (trackMatch) {
+        trackCursor = Math.max(trackCursor, Number(trackMatch[1]));
+      }
+      track.keyframes.forEach((keyframe) => {
+        const keyframeMatch = /^kf-(\d+)$/.exec(keyframe.id);
+        if (keyframeMatch) {
+          keyframeCursor = Math.max(keyframeCursor, Number(keyframeMatch[1]));
+        }
+      });
+    });
   };
 
   const formatMs = (value: number): string => `${value}ms`;
@@ -524,6 +561,10 @@
   let previewSvgHostElement: HTMLDivElement | null = null;
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
+  let projectDraftSource = "";
+  let projectImportStatus = defaultProjectImportStatus;
+  let projectImportError = "";
+  let projectMissingTargetIds: string[] = [];
   let showOnlySelected = false;
   let trackFilterTerm = "";
   let trackSortMode: TrackSortMode = "manual";
@@ -619,10 +660,10 @@
   const sortKeyframes = (items: Keyframe[]): Keyframe[] =>
     [...items].sort((first, second) => first.time - second.time);
 
-  const normalizeTrackList = (items: TimelineTrack[]): TimelineTrack[] =>
+  const normalizeTrackList = (items: TimelineTrack[], duration = timelineDurationMs): TimelineTrack[] =>
     items.map((track) => ({
       ...track,
-      keyframes: sortKeyframes(track.keyframes).map((keyframe) => ({ ...keyframe, time: clampMs(keyframe.time) })),
+      keyframes: sortKeyframes(track.keyframes).map((keyframe) => ({ ...keyframe, time: clampMsForDuration(keyframe.time, duration) })),
     }));
 
   const normalizeTracks = (): void => {
@@ -822,16 +863,26 @@
     activeTrack === null
       ? "No track selected"
       : `${targetNameById.get(activeTrack.targetId) ?? activeTrack.targetId} • ${activeTrack.property}`;
-  $: exportPayload = JSON.stringify(
-    {
-      version: "tadpole-timeline-1",
+  $: projectExport = {
+    version: projectExportVersion,
+    svg: {
+      label: svgSourceLabel,
+      source: svgMarkup,
+      targets: availableTargets,
+    },
+    timeline: {
       duration: timelineDurationMs,
+      currentTime,
       frameRate,
+      isLooping,
+      snapToFrames,
+      snapMs,
+      gridDensity: timelineGridDensity,
       tracks,
     },
-    null,
-    2,
-  );
+  } as TadpoleProject;
+
+  $: exportPayload = JSON.stringify(projectExport, null, 2);
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -955,6 +1006,12 @@
     return svgImportRevision;
   };
 
+  const clearProjectImportStatus = (): void => {
+    projectImportStatus = defaultProjectImportStatus;
+    projectImportError = "";
+    projectMissingTargetIds = [];
+  };
+
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
     const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
     if (!track) {
@@ -1024,6 +1081,7 @@
     svgDraftSource = parsed.markup;
     svgSourceLabel = options.label;
     svgImportError = "";
+    clearProjectImportStatus();
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
@@ -1068,6 +1126,339 @@
     } finally {
       input.value = "";
     }
+  };
+
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+  const hasUniqueNonEmptyIds = <T,>(items: T[], getId: (item: T) => string): boolean => {
+    const ids = new Set<string>();
+    return items.every((item) => {
+      const id = getId(item).trim();
+      if (id === "" || ids.has(id)) {
+        return false;
+      }
+      ids.add(id);
+      return true;
+    });
+  };
+
+  const isAnimationTargetKind = (value: unknown): value is AnimationTarget["kind"] =>
+    value === "group" || value === "path" || value === "text" || value === "shape";
+
+  const isAnimationProperty = (value: unknown): value is AnimationProperty =>
+    typeof value === "string" && properties.includes(value as AnimationProperty);
+
+  const isKeyframeEasing = (value: unknown): value is KeyframeEasing =>
+    typeof value === "string" && easingModes.includes(value as KeyframeEasing);
+
+  const normalizeProjectKeyframeValue = (property: AnimationProperty, value: string): string | null => {
+    const trimmedValue = value.trim();
+    if (trimmedValue === "") {
+      return null;
+    }
+
+    if (numericProperties.has(property)) {
+      const numericValue = Number(trimmedValue);
+      const definition = propertyById.get(property);
+      if (
+        !Number.isFinite(numericValue) ||
+        (definition?.min !== undefined && numericValue < definition.min) ||
+        (definition?.max !== undefined && numericValue > definition.max)
+      ) {
+        return null;
+      }
+      return String(numericValue);
+    }
+
+    if (
+      unsafeCssValuePattern.test(trimmedValue) ||
+      hasUnsafeSvgReference(trimmedValue) ||
+      unsafeProjectStyleValuePattern.test(trimmedValue)
+    ) {
+      return null;
+    }
+
+    return trimmedValue;
+  };
+
+  const parseProjectTargets = (value: unknown): AnimationTarget[] | null => {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const targets = value.map((candidate): AnimationTarget | null => {
+      if (!isRecord(candidate) || typeof candidate.id !== "string" || typeof candidate.name !== "string") {
+        return null;
+      }
+      if (!isAnimationTargetKind(candidate.kind)) {
+        return null;
+      }
+      return {
+        id: candidate.id,
+        name: candidate.name,
+        kind: candidate.kind,
+      };
+    });
+
+    if (!targets.every((target) => target !== null)) {
+      return null;
+    }
+    const parsedTargets = targets as AnimationTarget[];
+    return hasUniqueNonEmptyIds(parsedTargets, (target) => target.id) ? parsedTargets : null;
+  };
+
+  const projectTargetsMatchParsedSvg = (projectTargets: AnimationTarget[], parsedTargets: AnimationTarget[]): boolean => {
+    if (projectTargets.length !== parsedTargets.length) {
+      return false;
+    }
+
+    const projectTargetsById = new Map(projectTargets.map((target) => [target.id, target]));
+    return parsedTargets.every((parsedTarget) => {
+      const projectTarget = projectTargetsById.get(parsedTarget.id);
+      return projectTarget?.name === parsedTarget.name && projectTarget.kind === parsedTarget.kind;
+    });
+  };
+
+  const parseProjectTracks = (value: unknown): TimelineTrack[] | null => {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const tracksFromProject = value.map((candidate): TimelineTrack | null => {
+      if (
+        !isRecord(candidate) ||
+        typeof candidate.id !== "string" ||
+        typeof candidate.targetId !== "string" ||
+        !isAnimationProperty(candidate.property) ||
+        typeof candidate.muted !== "boolean" ||
+        !Array.isArray(candidate.keyframes)
+      ) {
+        return null;
+      }
+
+      const property = candidate.property;
+      const keyframes = candidate.keyframes.map((keyframe): Keyframe | null => {
+        if (
+          !isRecord(keyframe) ||
+          typeof keyframe.id !== "string" ||
+          typeof keyframe.time !== "number" ||
+          !Number.isFinite(keyframe.time) ||
+          typeof keyframe.value !== "string" ||
+          !isKeyframeEasing(keyframe.easing)
+        ) {
+          return null;
+        }
+
+        const value = normalizeProjectKeyframeValue(property, keyframe.value);
+        if (value === null) {
+          return null;
+        }
+
+        return {
+          id: keyframe.id,
+          time: keyframe.time,
+          value,
+          easing: keyframe.easing,
+        };
+      });
+
+      if (!keyframes.every((keyframe) => keyframe !== null)) {
+        return null;
+      }
+      const parsedKeyframes = keyframes as Keyframe[];
+      if (!hasUniqueNonEmptyIds(parsedKeyframes, (keyframe) => keyframe.id)) {
+        return null;
+      }
+
+      return {
+        id: candidate.id,
+        targetId: candidate.targetId,
+        property,
+        muted: candidate.muted,
+        keyframes: parsedKeyframes,
+      };
+    });
+
+    if (!tracksFromProject.every((track) => track !== null)) {
+      return null;
+    }
+    const tracks = tracksFromProject as TimelineTrack[];
+    return hasUniqueNonEmptyIds(tracks, (track) => track.id) ? tracks : null;
+  };
+
+  const parseProjectImport = (
+    source: string,
+  ): { project: TadpoleProject; parsedSvg: { markup: string; targets: AnimationTarget[] } } | { error: string } => {
+    const sourceText = source.trim();
+    if (sourceText === "") {
+      return { error: "Project import failed: paste project JSON." };
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(sourceText);
+    } catch {
+      return { error: "Project import failed: enter valid JSON." };
+    }
+
+    if (!isRecord(payload) || payload.version !== projectExportVersion) {
+      return { error: `Project import failed: expected ${projectExportVersion}.` };
+    }
+
+    const svg = payload.svg;
+    const timeline = payload.timeline;
+    if (!isRecord(svg) || typeof svg.label !== "string" || typeof svg.source !== "string") {
+      return { error: "Project import failed: SVG source metadata is missing." };
+    }
+    const parsedSvg = parseSvgImport(svg.source);
+    if (!parsedSvg) {
+      return { error: "Project import failed: SVG source is not valid importable SVG." };
+    }
+
+    const targets = parseProjectTargets(svg.targets);
+    if (!targets) {
+      return { error: "Project import failed: target metadata is invalid." };
+    }
+    if (!projectTargetsMatchParsedSvg(targets, parsedSvg.targets)) {
+      return { error: "Project import failed: target metadata does not match SVG source." };
+    }
+
+    if (
+      !isRecord(timeline) ||
+      typeof timeline.duration !== "number" ||
+      !Number.isFinite(timeline.duration) ||
+      typeof timeline.currentTime !== "number" ||
+      !Number.isFinite(timeline.currentTime) ||
+      typeof timeline.frameRate !== "number" ||
+      !Number.isFinite(timeline.frameRate) ||
+      typeof timeline.isLooping !== "boolean" ||
+      typeof timeline.snapToFrames !== "boolean" ||
+      typeof timeline.snapMs !== "number" ||
+      !Number.isFinite(timeline.snapMs) ||
+      typeof timeline.gridDensity !== "number" ||
+      !Number.isFinite(timeline.gridDensity)
+    ) {
+      return { error: "Project import failed: timeline settings are invalid." };
+    }
+
+    const projectTracks = parseProjectTracks(timeline.tracks);
+    if (!projectTracks) {
+      return { error: "Project import failed: timeline tracks are invalid." };
+    }
+
+    return {
+      project: {
+        version: projectExportVersion,
+        svg: {
+          label: svg.label,
+          source: svg.source,
+          targets,
+        },
+        timeline: {
+          duration: timeline.duration,
+          currentTime: timeline.currentTime,
+          frameRate: timeline.frameRate,
+          isLooping: timeline.isLooping,
+          snapToFrames: timeline.snapToFrames,
+          snapMs: timeline.snapMs,
+          gridDensity: timeline.gridDensity,
+          tracks: projectTracks,
+        },
+      },
+      parsedSvg,
+    };
+  };
+
+  const validateProjectDraft = (): void => {
+    const parsed = parseProjectImport(projectDraftSource);
+    if ("error" in parsed) {
+      projectImportError = parsed.error;
+      return;
+    }
+
+    projectImportError = "";
+    projectMissingTargetIds = [];
+    projectImportStatus = `Project JSON validated: ${parsed.project.svg.label} with ${parsed.project.svg.targets.length} targets and ${parsed.project.timeline.tracks.length} tracks.`;
+  };
+
+  const useCurrentProjectExport = (): void => {
+    projectDraftSource = exportPayload;
+    validateProjectDraft();
+  };
+
+  const importProjectFile = async (event: Event): Promise<void> => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const isJsonFile = file.type === "application/json" || file.name.toLowerCase().endsWith(".json");
+    if (!isJsonFile) {
+      projectImportError = "Project import failed: choose a JSON file.";
+      input.value = "";
+      return;
+    }
+
+    try {
+      projectDraftSource = await file.text();
+      validateProjectDraft();
+    } catch {
+      projectImportError = "Project import failed: could not read the JSON file.";
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const formatSkippedTargetSummary = (missingTargetIds: string[]): string => {
+    if (missingTargetIds.length === 0) {
+      return "";
+    }
+    const suffix = missingTargetIds.length === 1 ? "target" : "targets";
+    return ` Skipped tracks for missing ${suffix}: ${missingTargetIds.join(", ")}.`;
+  };
+
+  const restoreProjectDraft = (): void => {
+    const parsed = parseProjectImport(projectDraftSource);
+    if ("error" in parsed) {
+      projectImportError = parsed.error;
+      return;
+    }
+
+    pauseTimeline();
+    beginSvgImport();
+
+    const label = parsed.project.svg.label.trim() || "Imported Project";
+    const nextDuration = clamp(Math.max(250, parsed.project.timeline.duration), 250, 30000);
+    const targetIds = new Set(parsed.parsedSvg.targets.map((target) => target.id));
+    const normalizedTracks = normalizeTrackList(parsed.project.timeline.tracks, nextDuration);
+    const restoredTracks = normalizedTracks.filter((track) => targetIds.has(track.targetId));
+    const missingTargetIds = Array.from(
+      new Set(normalizedTracks.filter((track) => !targetIds.has(track.targetId)).map((track) => track.targetId)),
+    ).sort();
+
+    svgSource = parsed.parsedSvg.markup;
+    svgDraftSource = parsed.parsedSvg.markup;
+    svgSourceLabel = label;
+    svgImportError = "";
+    timelineDurationMs = nextDuration;
+    currentTime = clampMsForDuration(parsed.project.timeline.currentTime, nextDuration);
+    frameRate = clamp(parsed.project.timeline.frameRate, 12, 144);
+    isLooping = parsed.project.timeline.isLooping;
+    snapToFrames = parsed.project.timeline.snapToFrames;
+    snapMs = clamp(Math.round(parsed.project.timeline.snapMs), 1, 250);
+    timelineGridDensity = clamp(Math.round(parsed.project.timeline.gridDensity), minGridDivisions, maxGridDivisions);
+    tracks = restoredTracks;
+    syncIdCursorsFromTracks(restoredTracks);
+    originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
+    settleSelectionForTargets(parsed.parsedSvg.targets);
+
+    const skippedSummary = formatSkippedTargetSummary(missingTargetIds);
+    projectImportError = "";
+    projectMissingTargetIds = missingTargetIds;
+    projectImportStatus = `Project restored: ${label} with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
+    svgImportStatus = `${label} restored from project with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
   };
 
   const addKeyframeAtCurrentForSelected = (): void => {
@@ -2141,7 +2532,7 @@
           <button type="button" on:click={duplicateSelectedKeyframe} disabled={selectedTrackId === "" || selectedKeyframeId === ""}>
             Duplicate selected keyframe
           </button>
-          <button type="button" on:click={copyExport}>Export JSON {copiedExport ? `• ${copiedExport}` : ""}</button>
+          <button type="button" on:click={copyExport}>Copy Project JSON {copiedExport ? `• ${copiedExport}` : ""}</button>
           <button type="button" on:click={() => (showKeyboardShortcuts = !showKeyboardShortcuts)}>
             {showKeyboardShortcuts ? "Hide shortcuts" : "Show shortcuts"}
           </button>
@@ -2573,11 +2964,33 @@
         </div>
 
         <div class="export-block">
-          <h3>Timeline Export</h3>
+          <h3>Project Export</h3>
           <p class="muted">
-            Use this JSON payload in a future player / render step.
+            Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
           </p>
           <pre><code>{exportPayload}</code></pre>
+          <h3>Project JSON Import</h3>
+          <label class="inline-label compact">
+            <span>Upload Project</span>
+            <input type="file" accept=".json,application/json" on:change={importProjectFile} />
+          </label>
+          <label class="inline-label compact">
+            <span>Project JSON</span>
+            <textarea rows="6" spellcheck="false" bind:value={projectDraftSource}></textarea>
+          </label>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={validateProjectDraft}>Validate Project JSON</button>
+            <button type="button" on:click={restoreProjectDraft}>Restore Project</button>
+            <button type="button" on:click={useCurrentProjectExport}>Use Current Export</button>
+          </div>
+          {#if projectImportError}
+            <p class="error tiny" aria-live="assertive">{projectImportError}</p>
+          {:else}
+            <p class="muted tiny" aria-live="polite">{projectImportStatus}</p>
+          {/if}
+          {#if projectMissingTargetIds.length > 0}
+            <p class="warning tiny" aria-live="polite">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
+          {/if}
         </div>
       </section>
 
@@ -3612,6 +4025,10 @@
 
   .error {
     color: var(--red-3);
+  }
+
+  .warning {
+    color: var(--yellow-3);
   }
 
   a {

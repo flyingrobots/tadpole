@@ -16,6 +16,14 @@ All notable changes for Tadpole are documented here.
   target library, inspector, and new-track synchronization.
 - Added rough external SVG import with file upload, raw paste import, target
   rediscovery, incompatible-track reconciliation, and reset-to-sample restore.
+- Added Tadpole METHOD design and GitHub task templates with an explicit
+  runtime-proof quality bar.
+- Added a cycle-start workflow that syncs the merge target, opens a draft PR
+  from the initial design/issue scaffold, and tracks in-flight work with a
+  `work-in-progress` issue label.
+- Added project-level Tadpole JSON export and restore with SVG source,
+  discovered target metadata, timeline settings, tracks, project import
+  validation, and visible skipped-track reporting for missing SVG targets.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

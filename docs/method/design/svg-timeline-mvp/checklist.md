@@ -48,13 +48,13 @@
 
 ## Goal 5: Export And Reopen Rough Projects
 
-- [ ] Extend export JSON from timeline-only to project-level SVG plus timeline
+- [x] Extend export JSON from timeline-only to project-level SVG plus timeline
       data.
-- [ ] Include discovered target metadata in export.
-- [ ] Add project JSON import.
-- [ ] Restore SVG source, targets, timeline settings, and tracks from imported
+- [x] Include discovered target metadata in export.
+- [x] Add project JSON import with validation for pasted/uploaded project JSON.
+- [x] Restore SVG source, targets, timeline settings, and tracks from imported
       JSON.
-- [ ] Handle missing target IDs visibly after import.
+- [x] Handle missing target IDs visibly after import.
 
 ## Goal 6: Rough UX Hardening
 

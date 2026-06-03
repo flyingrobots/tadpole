@@ -1,0 +1,150 @@
+name: Tadpole Task
+description: Track a scoped Tadpole implementation, design, or process task.
+title: "<GOAL>-<ID> - <short title>"
+labels:
+  - work-in-progress
+body:
+  - type: dropdown
+    id: roadmap_gate
+    attributes:
+      label: Roadmap Gate
+      description: Choose the roadmap gate this task advances.
+      options:
+        - "Goal 1: Use A Real SVG As The Timeline Target"
+        - "Goal 2: Bind Timeline Tracks To Rendered SVG Elements"
+        - "Goal 3: Select SVG Elements"
+        - "Goal 4: Import External SVGs"
+        - "Goal 5: Export And Reopen Rough Projects"
+        - "Goal 6: Rough UX Hardening"
+        - "Goal 7: Cycle Documentation And Witness"
+        - "Goal 8: Export Runnable Animation"
+        - "Process / maintenance"
+        - "Not roadmap-related"
+    validations:
+      required: true
+  - type: input
+    id: design_doc
+    attributes:
+      label: Design Doc
+      description: Link the design doc, or write "Not required" for tiny tasks.
+      placeholder: docs/method/design/<cycle>/design.md
+    validations:
+      required: true
+  - type: input
+    id: draft_pr
+    attributes:
+      label: Draft PR
+      description: Link the cycle-start draft PR after the branch is pushed.
+      placeholder: https://github.com/flyingrobots/tadpole/pull/<number>
+    validations:
+      required: false
+  - type: checkboxes
+    id: cycle_start
+    attributes:
+      label: Cycle Start Checklist
+      description: Complete this scaffold before implementation begins.
+      options:
+        - label: "`git fetch origin` completed."
+        - label: "Local merge target branch synced to `origin/main` or the named merge target."
+        - label: "Cycle branch checked out from the synced merge target."
+        - label: "Design doc written from `docs/method/design/TEMPLATE.md` and linked above."
+        - label: "Initial cycle scaffold staged, committed, and pushed."
+        - label: "Draft PR opened to the merge target and linked above."
+        - label: "`work-in-progress` label applied while cycle work is in flight."
+  - type: textarea
+    id: hill
+    attributes:
+      label: Hill
+      description: State the observable outcome and proof.
+      value: |-
+        By the end of this issue, <user/agent> can <observable outcome> through <surface/API/command>, and the repo proves it with <tests/witnesses>.
+    validations:
+      required: true
+  - type: textarea
+    id: current_gap
+    attributes:
+      label: Current Failure / Gap
+      description: What cannot be done today? Include files, commands, or issue links where useful.
+      placeholder: The current editor can ..., but cannot ...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Checkable items this task includes.
+      value: |-
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-Goals
+      description: Explicitly name work this task does not include.
+      value: |-
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_slices
+    attributes:
+      label: Implementation Slices
+      description: Small reviewable slices, ideally one commit or proof per slice.
+      value: |-
+        - [ ] Slice 1:
+        - [ ] Slice 2:
+        - [ ] Slice 3:
+    validations:
+      required: true
+  - type: textarea
+    id: red_tests
+    attributes:
+      label: RED Tests / First Proof
+      description: Name the first failing tests, browser witnesses, schema checks, or command assertions.
+      value: |-
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Done means runtime behavior is proven, not only documented.
+      value: |-
+        - [ ] Runtime, rendered, schema, or command behavior is proven by tests or witness.
+        - [ ] User-visible behavior is covered when applicable.
+        - [ ] Accessibility is preserved when UI changes.
+        - [ ] Project/schema compatibility is documented when persistence changes.
+        - [ ] Changelog, design, witness, and issue links are updated when behavior changes.
+        - [ ] Local validation commands pass.
+    validations:
+      required: true
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: Validation Commands
+      description: Commands expected before PR. Trim or extend as needed.
+      value: |-
+        ```bash
+        npm run check
+        npm run build
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: witness
+    attributes:
+      label: Witness
+      description: Route, script, command, browser flow, or artifact a reviewer can inspect.
+      placeholder: node docs/method/witness/<cycle>/<script>.mjs
+    validations:
+      required: true
+  - type: textarea
+    id: follow_on_debt
+    attributes:
+      label: Follow-On Debt
+      description: Link issues for deferred work. Write "None" if there is no follow-on debt.
+      placeholder: None
+    validations:
+      required: true
