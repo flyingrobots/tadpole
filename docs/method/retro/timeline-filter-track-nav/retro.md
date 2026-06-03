@@ -14,8 +14,8 @@ Implemented in one cycle with small, contained changes to
 ## Risks / follow-up
 
 - No automated coverage for keyboard behavior.
-- Large track lists with long labels could still feel cramped in very small
-  widths; consider compact row density option in a later cycle.
+- Large track lists with long labels could still feel cramped at narrow
+  viewport widths; consider a compact row density option in a later cycle.
 
 ## Commands / Evidence
 
