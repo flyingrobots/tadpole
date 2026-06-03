@@ -83,7 +83,7 @@ Agent playback:
 
 ## Completion Criteria
 
-- Files from this cycle are committed and pushed on
-  `cycles/UIUX_open-props-stack`.
-- PR includes these files and reflects a coherent METHOD-compliant packet for
-  this cycle.
+- Files from this cycle are present as historical METHOD setup artifacts in the
+  integration PR that carries them.
+- Reviewers can distinguish this Open Props setup packet from follow-up UIUX
+  work in the same PR.
