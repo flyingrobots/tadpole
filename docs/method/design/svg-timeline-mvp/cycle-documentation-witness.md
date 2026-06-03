@@ -89,6 +89,7 @@ This cycle includes:
 - Refresh `BEARING.md` to reflect imported SVG editing, project JSON
   persistence, witnesses, and the remaining export gap.
 - Align cycle-start docs with the repo instruction that PRs are non-draft.
+- Close stale Goal 6 retrospective text now that PR #12 has merged.
 - Mark Goal 7 checklist items complete after docs and validation land.
 - Remove the work-in-progress label from issue #13 when the PR is ready.
 
@@ -183,7 +184,8 @@ checklist-only change would undercut the gate.
 - [x] Slice 2: SVG timeline MVP retrospective notes.
 - [x] Slice 3: BEARING refresh.
 - [x] Slice 4: Process-doc non-draft PR alignment.
-- [x] Slice 5: Checklist closure and validation notes.
+- [x] Slice 5: Stale Goal 6 retrospective closure.
+- [x] Slice 6: Checklist closure and validation notes.
 
 ## Tests To Write First
 
@@ -205,6 +207,7 @@ Runtime checks:
 | BEARING reflects current editor state | Markdown lint and file review |
 | Cycle-start docs require non-draft PRs | Markdown lint and file review |
 | GitHub issue template remains parseable | Ruby YAML parse |
+| Goal 6 retrospective is not stale | Markdown lint and file review |
 | Goal 7 checklist closes only after docs land | Markdown lint and diff review |
 | No runtime changes are included | `git diff --stat` |
 
@@ -215,6 +218,7 @@ The work is done when:
 - [x] SVG timeline MVP retrospective notes are added.
 - [x] `BEARING.md` reflects the imported-SVG editor workflow.
 - [x] Cycle-start docs require non-draft PRs.
+- [x] Goal 6 retrospective no longer carries stale PR review/merge work.
 - [x] Goal 7 checklist items are checked.
 - [x] Changed docs pass Markdown lint.
 - [x] GitHub issue template parses as YAML.
@@ -230,6 +234,7 @@ npx --yes markdownlint-cli2 \
   docs/method/design/TEMPLATE.md \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md \
+  docs/method/design/svg-timeline-mvp/rough-ux-hardening.md \
   docs/method/retro/svg-timeline-mvp/retro.md
 ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
@@ -246,6 +251,7 @@ docs/method/design/TEMPLATE.md
 .github/ISSUE_TEMPLATE/task.yml
 docs/method/design/svg-timeline-mvp/checklist.md
 docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md
+docs/method/design/svg-timeline-mvp/rough-ux-hardening.md
 docs/method/retro/svg-timeline-mvp/retro.md
 ```
 
@@ -263,8 +269,9 @@ docs/method/retro/svg-timeline-mvp/retro.md
 What changed from the design:
 
 - Process docs were also aligned with the repo instruction that cycle PRs are
-  non-draft. No runtime checks were added because implementation stayed
-  documentation-only.
+  non-draft.
+- The stale Goal 6 retrospective was closed after PR #12 merged.
+- No runtime checks were added because implementation stayed documentation-only.
 
 What the tests proved:
 

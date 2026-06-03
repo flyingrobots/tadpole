@@ -77,6 +77,7 @@ npx --yes markdownlint-cli2 \
   docs/method/design/TEMPLATE.md \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/cycle-documentation-witness.md \
+  docs/method/design/svg-timeline-mvp/rough-ux-hardening.md \
   docs/method/retro/svg-timeline-mvp/retro.md
 ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
