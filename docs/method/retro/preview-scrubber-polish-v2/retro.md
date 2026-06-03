@@ -11,8 +11,8 @@ path and is tracked by the SVG timeline MVP checklist and witness evidence.
 
 - Preview and timeline scrubbers now share pointer-to-time behavior through
   helper paths.
-- One-click/one-dblclick actions are now discoverable in the preview controls
-  and toolbar.
+- One-click and double-click actions are now discoverable in the preview
+  controls and toolbar.
 - Preview playhead metadata and labels provide immediate context for where the
   current insertion point sits.
 - New METHOD cycle packet documents scope, playback questions, and manual
