@@ -18,7 +18,7 @@ All notable changes for Tadpole are documented here.
   rediscovery, incompatible-track reconciliation, and reset-to-sample restore.
 - Added Tadpole METHOD design and GitHub task templates with an explicit
   runtime-proof quality bar.
-- Added a cycle-start workflow that syncs the merge target, opens a draft PR
+- Added a cycle-start workflow that syncs the merge target, opens a non-draft PR
   from the initial design/issue scaffold, and tracks in-flight work with a
   `work-in-progress` issue label.
 - Added project-level Tadpole JSON export and restore with SVG source,
@@ -27,6 +27,8 @@ All notable changes for Tadpole are documented here.
 - Added Goal 6 rough UX hardening for explicit empty states, selected-target
   quick track actions, SVG title-based target labels, a preview selected-target
   chip, and clear-tracks recovery.
+- Added runnable animation export as self-contained HTML generated from the
+  current sanitized SVG and active timeline tracks.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

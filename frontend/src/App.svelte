@@ -71,6 +71,22 @@
     };
   };
 
+  type RunnableAnimationPayload = {
+    version: "tadpole-runnable-html-1";
+    svg: {
+      label: string;
+      source: string;
+      targets: AnimationTarget[];
+    };
+    timeline: {
+      duration: number;
+      frameRate: number;
+      isLooping: boolean;
+      selectedTrackId: string;
+      tracks: TimelineTrack[];
+    };
+  };
+
   type PropertyDefinition = {
     id: AnimationProperty;
     label: string;
@@ -105,6 +121,7 @@
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
   const projectExportVersion = "tadpole-project-1";
+  const runnableExportVersion = "tadpole-runnable-html-1";
   const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
 
   // Animation timeline state.
@@ -597,6 +614,7 @@
   let previewSvgHostElement: HTMLDivElement | null = null;
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
+  let runnableExportStatus = "";
   let projectDraftSource = "";
   let projectImportStatus = defaultProjectImportStatus;
   let projectImportError = "";
@@ -704,6 +722,282 @@
 
   const normalizeTracks = (): void => {
     tracks = normalizeTrackList(tracks);
+  };
+
+  const runnableTracksFor = (items: TimelineTrack[], targets: AnimationTarget[], duration: number): TimelineTrack[] => {
+    const targetIds = new Set(targets.map((target) => target.id));
+    return normalizeTrackList(items, duration)
+      .filter((track) => !track.muted && targetIds.has(track.targetId) && track.keyframes.length > 0)
+      .map((track) => ({
+        ...track,
+        keyframes: track.keyframes.flatMap((keyframe) => {
+          const value = normalizeProjectKeyframeValue(track.property, keyframe.value);
+          return value === null ? [] : [{ ...keyframe, value }];
+        }),
+      }))
+      .filter((track) => track.keyframes.length > 0);
+  };
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const safeJsonForHtml = (value: unknown): string =>
+    (JSON.stringify(value) ?? "null")
+      .replace(/&/g, "\\u0026")
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+
+  const runnableExportFilename = (label: string): string => {
+    const slug = label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return `${slug || "tadpole-animation"}.html`;
+  };
+
+  const runnableRuntimeScript = `(() => {
+  const dataNode = document.getElementById("tadpole-animation-data");
+  const stage = document.querySelector("[data-tadpole-stage]");
+  if (!dataNode || !stage) {
+    return;
+  }
+
+  const data = JSON.parse(dataNode.textContent || "{}");
+  const timeline = data.timeline || {};
+  const tracks = Array.isArray(timeline.tracks) ? timeline.tracks : [];
+  const targets = Array.isArray(data.svg && data.svg.targets) ? data.svg.targets : [];
+  const selectedTrackId = typeof timeline.selectedTrackId === "string" ? timeline.selectedTrackId : "";
+  const duration = Math.max(1, Number(timeline.duration) || 1);
+  const isLooping = timeline.isLooping !== false;
+  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth"]);
+  const transformProperties = ["x", "y", "scale", "rotation"];
+  const defaults = {
+    x: "0",
+    y: "0",
+    scale: "1",
+    rotation: "0",
+    opacity: "1",
+    fill: "none",
+    stroke: "none",
+    strokeWidth: "1.2",
+  };
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const sortKeyframes = (track) =>
+    Array.isArray(track.keyframes)
+      ? [...track.keyframes].sort((first, second) => first.time - second.time)
+      : [];
+  const interpolateNumeric = (firstValue, secondValue, ratio) =>
+    firstValue + (secondValue - firstValue) * ratio;
+  const applyEasing = (ratio, easing) => {
+    const t = clamp(ratio, 0, 1);
+    switch (easing) {
+      case "power1.inOut":
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      case "power2.out":
+        return 1 - Math.pow(1 - t, 3);
+      case "power3.inOut":
+        return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+      case "expo.out":
+        return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      case "back.inOut": {
+        const back = 1.70158 * 1.525;
+        return t < 0.5
+          ? (Math.pow(2 * t, 2) * ((back + 1) * 2 * t - back)) / 2
+          : (Math.pow(2 * t - 2, 2) * ((back + 1) * (t * 2 - 2) + back) + 2) / 2;
+      }
+      case "linear":
+      default:
+        return t;
+    }
+  };
+
+  const getCurrentValue = (track, time) => {
+    const sorted = sortKeyframes(track);
+    if (sorted.length === 0) {
+      return defaults[track.property] || "";
+    }
+    if (time <= sorted[0].time) {
+      return sorted[0].value;
+    }
+    if (time >= sorted[sorted.length - 1].time) {
+      return sorted[sorted.length - 1].value;
+    }
+
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+      const left = sorted[i];
+      const right = sorted[i + 1];
+      if (time >= left.time && time <= right.time) {
+        if (!numericProperties.has(track.property)) {
+          const midpoint = left.time + (right.time - left.time) / 2;
+          return time < midpoint ? left.value : right.value;
+        }
+        const leftValue = Number(left.value);
+        const rightValue = Number(right.value);
+        if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue) || right.time === left.time) {
+          return left.value;
+        }
+        const ratio = (time - left.time) / (right.time - left.time);
+        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
+      }
+    }
+
+    return sorted[sorted.length - 1].value;
+  };
+
+  const activeTrackFor = (targetId, property) => {
+    const matching = tracks.filter((track) => track.targetId === targetId && track.property === property);
+    if (matching.length === 0) {
+      return null;
+    }
+    return matching.find((track) => track.id === selectedTrackId) || matching[0];
+  };
+
+  const findTargetElement = (targetId) => {
+    const nodes = stage.querySelectorAll("[id]");
+    for (const node of nodes) {
+      if (node.id === targetId) {
+        return node;
+      }
+    }
+    return null;
+  };
+
+  const numericValue = (targetId, property, fallback, time) => {
+    const track = activeTrackFor(targetId, property);
+    if (!track) {
+      return fallback;
+    }
+    const value = Number(getCurrentValue(track, time));
+    return Number.isFinite(value) ? value : fallback;
+  };
+
+  const trackValue = (targetId, property, fallback, time) => {
+    const track = activeTrackFor(targetId, property);
+    return track ? getCurrentValue(track, time) : fallback;
+  };
+
+  const applyAt = (time) => {
+    targets.forEach((target) => {
+      const element = findTargetElement(target.id);
+      if (!element) {
+        return;
+      }
+      element.setAttribute("data-tadpole-runnable-target", "true");
+
+      if (transformProperties.some((property) => activeTrackFor(target.id, property))) {
+        const x = numericValue(target.id, "x", 0, time);
+        const y = numericValue(target.id, "y", 0, time);
+        const scale = numericValue(target.id, "scale", 1, time);
+        const rotation = numericValue(target.id, "rotation", 0, time);
+        element.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ") rotate(" + rotation + "deg)";
+        element.style.transformOrigin = "center";
+        element.style.transformBox = "fill-box";
+      }
+
+      if (activeTrackFor(target.id, "opacity")) {
+        element.style.opacity = trackValue(target.id, "opacity", defaults.opacity, time);
+      }
+      if (activeTrackFor(target.id, "fill")) {
+        element.style.fill = trackValue(target.id, "fill", defaults.fill, time);
+      }
+      if (activeTrackFor(target.id, "stroke")) {
+        element.style.stroke = trackValue(target.id, "stroke", defaults.stroke, time);
+      }
+      if (activeTrackFor(target.id, "strokeWidth")) {
+        element.style.strokeWidth = trackValue(target.id, "strokeWidth", defaults.strokeWidth, time);
+      }
+    });
+  };
+
+  const startedAt = performance.now();
+  const step = (timestamp) => {
+    const elapsed = timestamp - startedAt;
+    const time = isLooping ? elapsed % duration : Math.min(elapsed, duration);
+    applyAt(time);
+    document.documentElement.dataset.tadpoleRuntimeState = isLooping || time < duration ? "running" : "complete";
+    if (isLooping || time < duration) {
+      window.requestAnimationFrame(step);
+    }
+  };
+
+  applyAt(0);
+  document.documentElement.dataset.tadpoleRuntimeVersion = data.version || "";
+  document.documentElement.dataset.tadpoleRuntimeState = "running";
+  window.requestAnimationFrame(step);
+})();`;
+
+  const createRunnableAnimationHtml = (payload: RunnableAnimationPayload): string => {
+    const title = escapeHtml(`${payload.svg.label || "Tadpole Animation"} Runnable Animation`);
+    const scriptClose = "</" + "script>";
+    const payloadJson = safeJsonForHtml(payload);
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --color-4: #14b8a6;
+      --color-5: #2dd4bf;
+      --color-6: #0f766e;
+      --color-8: #2563eb;
+      --color-9: #1d4ed8;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f8fafc;
+      font-family: var(--font-sans);
+    }
+
+    .tadpole-export-shell {
+      width: min(960px, 92vw);
+      display: grid;
+      gap: 1rem;
+      padding: 2rem;
+    }
+
+    .tadpole-stage {
+      display: grid;
+      place-items: center;
+    }
+
+    .tadpole-stage svg {
+      width: 100%;
+      max-height: 86vh;
+      overflow: visible;
+    }
+  </style>
+</head>
+<body data-tadpole-runnable-export="${payload.version}">
+  <main class="tadpole-export-shell" aria-label="${title}">
+    <div class="tadpole-stage" data-tadpole-stage>
+${payload.svg.source}
+    </div>
+    <noscript>This Tadpole animation requires JavaScript playback.</noscript>
+  </main>
+  <script id="tadpole-animation-data" type="application/json">${payloadJson}${scriptClose}
+  <script>
+${runnableRuntimeScript}
+  ${scriptClose}
+</body>
+</html>`;
   };
 
   const interpolateNumeric = (firstValue: number, secondValue: number, ratio: number): number =>
@@ -920,6 +1214,24 @@
   } as TadpoleProject;
 
   $: exportPayload = JSON.stringify(projectExport, null, 2);
+  $: runnableExportPayload = {
+    version: runnableExportVersion,
+    svg: {
+      label: svgSourceLabel,
+      source: svgMarkup,
+      targets: availableTargets,
+    },
+    timeline: {
+      duration: timelineDurationMs,
+      frameRate,
+      isLooping,
+      selectedTrackId,
+      tracks: runnableTracksFor(tracks, availableTargets, timelineDurationMs),
+    },
+  } as RunnableAnimationPayload;
+  $: runnableExportHtml = createRunnableAnimationHtml(runnableExportPayload);
+  $: runnableExportTrackCount = runnableExportPayload.timeline.tracks.length;
+  $: runnableExportFile = runnableExportFilename(svgSourceLabel);
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -1552,6 +1864,37 @@
         copiedExport = "";
       }, 1200);
     }
+  };
+
+  const setRunnableExportStatus = (status: string): void => {
+    runnableExportStatus = status;
+    window.setTimeout(() => {
+      if (runnableExportStatus === status) {
+        runnableExportStatus = "";
+      }
+    }, 1600);
+  };
+
+  const copyRunnableExport = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(runnableExportHtml);
+      setRunnableExportStatus("Runnable HTML copied");
+    } catch {
+      setRunnableExportStatus("Runnable HTML copy failed");
+    }
+  };
+
+  const downloadRunnableExport = (): void => {
+    const blob = new Blob([runnableExportHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = runnableExportFile;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setRunnableExportStatus(`Downloaded ${runnableExportFile}`);
   };
 
   const jumpByTimelineKey = (event: KeyboardEvent): void => {
@@ -2304,8 +2647,13 @@
   const updateKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     const keyframeTrack = tracks.find((track) => track.id === trackId);
-    const spec = keyframeTrack ? propertySpec(keyframeTrack.property) : null;
-    const nextValue = spec?.kind === "number" ? String(Number(input.value) || 0) : input.value;
+    if (!keyframeTrack) {
+      return;
+    }
+    const nextValue = normalizeProjectKeyframeValue(keyframeTrack.property, input.value);
+    if (nextValue === null) {
+      return;
+    }
     tracks = tracks.map((track) =>
       track.id === trackId
         ? {
@@ -3053,6 +3401,18 @@
             Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
           </p>
           <pre><code>{exportPayload}</code></pre>
+          <h3>Runnable Animation Export</h3>
+          <p class="muted">
+            Export a self-contained HTML artifact with the sanitized SVG and {runnableExportTrackCount} active tracks.
+          </p>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={copyRunnableExport}>Copy Runnable HTML</button>
+            <button type="button" on:click={downloadRunnableExport}>Download Runnable HTML</button>
+          </div>
+          <p class="muted tiny" aria-live="polite">
+            {runnableExportStatus || `${runnableExportVersion} ready as ${runnableExportFile}.`}
+          </p>
+          <pre class="runnable-export-output" data-tadpole-runnable-output>{runnableExportHtml}</pre>
           <h3>Project JSON Import</h3>
           <label class="inline-label compact">
             <span>Upload Project</span>
@@ -3990,6 +4350,10 @@
     overflow: auto;
     max-height: 12rem;
     font-size: 12px;
+  }
+
+  .export-block pre.runnable-export-output {
+    max-height: 16rem;
   }
 
   .preview-shell {
