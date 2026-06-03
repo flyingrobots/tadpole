@@ -1721,8 +1721,7 @@ ${runnableRuntimeScript}
   const dimensionValuesFromTransformValues = (values: string[], dimension: 0 | 1): string[] =>
     values.map((value) => {
       const numbers = numbersFromSmilValue(value);
-      const fallback = dimension === 0 ? 0 : numbers[0] ?? 0;
-      return String(numbers[dimension] ?? fallback);
+      return String(numbers[dimension] ?? 0);
     });
 
   const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);

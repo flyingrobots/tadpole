@@ -275,6 +275,9 @@ Behavior tests required:
 - [x] Browser witness proves unsupported `calcMode` values do not import as
       linear tracks.
 - [x] Browser witness proves failed file imports clear stale animation warnings.
+- [x] Browser witness proves unsafe animation references do not retarget to
+      parent elements.
+- [x] Browser witness proves one-argument `translate` imports as x-only motion.
 
 Documentation/process tests:
 
@@ -292,6 +295,8 @@ The work is done when:
 - [x] Browser witness covers import, edit, scrub, and export.
 - [x] Browser witness covers unitless clock values, unsupported discrete timing,
       and failed-import warning cleanup.
+- [x] Browser witness covers unsafe reference rejection and x-only translate
+      import semantics.
 - [x] Local validation is green.
 
 ## Validation Plan
@@ -362,7 +367,9 @@ What the tests proved:
   not retain animation/style/script nodes, scrubs imported motion, edits an
   imported keyframe, observes the edited value in project JSON, proves unitless
   SMIL clock values import as seconds, rejects unsupported discrete timing as a
-  warning, and clears stale warnings after failed file import.
+  warning, clears stale warnings after failed file import, rejects unsafe
+  animation references without parent retargeting, and imports one-argument
+  `translate` as x-only motion.
 
 What remains open:
 

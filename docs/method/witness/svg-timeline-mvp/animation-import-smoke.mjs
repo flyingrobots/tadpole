@@ -54,6 +54,12 @@ const unsafeHrefSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/sv
   </rect>
 </svg>`;
 
+const oneArgumentTranslateSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="One Argument Translate Fixture">
+  <rect id="slider" data-tadpole-name="Slider" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="translate" values="0;24" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -206,6 +212,21 @@ const runUnsafeHrefWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runOneArgumentTranslateSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, oneArgumentTranslateSvg);
+  await page.waitForSelector(".preview-svg-host #slider");
+
+  const payload = await projectPayload(page);
+  const xTrack = payload.timeline.tracks.find((track) => track.targetId === "slider" && track.property === "x");
+  const yTrack = payload.timeline.tracks.find((track) => track.targetId === "slider" && track.property === "y");
+  assert(xTrack, "one-argument translate x track missing");
+  assert(!yTrack, `one-argument translate created a y track: ${JSON.stringify(yTrack)}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -213,6 +234,7 @@ try {
   await runDiscreteCalcModeWarningSmoke(browser);
   await runFailedFileClearsWarningSmoke(browser);
   await runUnsafeHrefWarningSmoke(browser);
+  await runOneArgumentTranslateSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

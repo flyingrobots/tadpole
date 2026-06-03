@@ -19,6 +19,9 @@ turn the motion into editable timeline tracks.
 - Unitless SVG clock values import as seconds.
 - Unsupported discrete timing is warned and not imported as linear motion.
 - Failed file imports clear stale animation warning UI.
+- Unsafe explicit animation target references are warned and not retargeted to
+  parent elements.
+- One-argument `translate` imports as x-only motion with no synthetic y track.
 
 ## Command
 
