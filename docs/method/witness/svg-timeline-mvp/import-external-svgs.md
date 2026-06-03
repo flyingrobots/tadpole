@@ -22,9 +22,7 @@ npm run dev
 
 # In /tmp/tadpole-playwright:
 npm install playwright@1.60.0
-node --input-type=module <<'NODE'
-// Inline Playwright import-gate smoke script.
-NODE
+node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/import-gate-smoke.mjs
 ```
 
 Observed result:
@@ -51,8 +49,11 @@ Assertions covered:
   no-target state, and disables new-track creation
 - invalid raw SVG paste surfaces an import error without replacing the last
   valid SVG
+- delayed file upload cannot overwrite a newer paste import after its file read
+  resolves
 - reset-to-sample restores the bundled sample SVG, target library, and three
   seeded sample tracks
+- reset-to-sample normalizes restored keyframes to the current timeline duration
 - sample timeline still applies the `#ui` transform after reset
 - browser run completed with no page errors or browser console errors
 
@@ -61,6 +62,14 @@ Assertions covered:
 - `npm run check`
 - `npm run build`
 - `git diff --check`
+- changed-file Markdown lint:
+
+  ```bash
+  npx markdownlint-cli2 \
+    CHANGELOG.md \
+    docs/method/design/svg-timeline-mvp/checklist.md \
+    docs/method/witness/svg-timeline-mvp/import-external-svgs.md
+  ```
 
 ## Acceptance
 

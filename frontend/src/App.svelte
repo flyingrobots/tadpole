@@ -48,6 +48,7 @@
 
   type SvgLoadOptions = {
     label: string;
+    revision?: number;
     restoreSampleTracks?: boolean;
   };
 
@@ -398,6 +399,7 @@
   let svgDraftSource = svgMarkup;
   let svgImportStatus = `${sampleSvgLabel} loaded with ${availableTargets.length} targets.`;
   let svgImportError = "";
+  let svgImportRevision = 0;
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
   const clampMs = (value: number): number => clamp(Math.round(value), 0, timelineDurationMs);
@@ -601,11 +603,14 @@
   const sortKeyframes = (items: Keyframe[]): Keyframe[] =>
     [...items].sort((first, second) => first.time - second.time);
 
-  const normalizeTracks = (): void => {
-    tracks = tracks.map((track) => ({
+  const normalizeTrackList = (items: TimelineTrack[]): TimelineTrack[] =>
+    items.map((track) => ({
       ...track,
       keyframes: sortKeyframes(track.keyframes).map((keyframe) => ({ ...keyframe, time: clampMs(keyframe.time) })),
     }));
+
+  const normalizeTracks = (): void => {
+    tracks = normalizeTrackList(tracks);
   };
 
   const interpolateNumeric = (firstValue: number, secondValue: number, ratio: number): number =>
@@ -929,6 +934,11 @@
     showOnlySelected = !showOnlySelected;
   };
 
+  const beginSvgImport = (): number => {
+    svgImportRevision += 1;
+    return svgImportRevision;
+  };
+
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
     const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
     if (!track) {
@@ -977,6 +987,10 @@
   };
 
   const loadSvgSource = (source: string, options: SvgLoadOptions): boolean => {
+    if (options.revision !== undefined && options.revision !== svgImportRevision) {
+      return false;
+    }
+
     const parsed = parseSvgImport(source);
     if (!parsed) {
       svgImportError = "Import failed: enter valid SVG markup.";
@@ -987,7 +1001,7 @@
 
     const targetIds = new Set(parsed.targets.map((target) => target.id));
     const candidateTracks = options.restoreSampleTracks ? createSampleTracks() : tracks;
-    const reconciledTracks = candidateTracks.filter((track) => targetIds.has(track.targetId));
+    const reconciledTracks = normalizeTrackList(candidateTracks.filter((track) => targetIds.has(track.targetId)));
     const removedTrackCount = candidateTracks.length - reconciledTracks.length;
 
     svgSource = parsed.markup;
@@ -1006,11 +1020,11 @@
   };
 
   const importSvgDraft = (): void => {
-    loadSvgSource(svgDraftSource, { label: "Pasted SVG" });
+    loadSvgSource(svgDraftSource, { label: "Pasted SVG", revision: beginSvgImport() });
   };
 
   const resetToSampleSvg = (): void => {
-    loadSvgSource(defaultSvgSource, { label: sampleSvgLabel, restoreSampleTracks: true });
+    loadSvgSource(defaultSvgSource, { label: sampleSvgLabel, revision: beginSvgImport(), restoreSampleTracks: true });
   };
 
   const importSvgFile = async (event: Event): Promise<void> => {
@@ -1020,6 +1034,7 @@
       return;
     }
 
+    const revision = beginSvgImport();
     const isSvgFile = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
     if (!isSvgFile) {
       svgImportError = "Import failed: choose an SVG file.";
@@ -1029,9 +1044,11 @@
 
     try {
       const text = await file.text();
-      loadSvgSource(text, { label: file.name });
+      loadSvgSource(text, { label: file.name, revision });
     } catch {
-      svgImportError = "Import failed: could not read the SVG file.";
+      if (revision === svgImportRevision) {
+        svgImportError = "Import failed: could not read the SVG file.";
+      }
     } finally {
       input.value = "";
     }
