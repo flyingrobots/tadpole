@@ -8,12 +8,13 @@ the current branch.
 ## Environment
 
 - Branch: `cycles/UIUX_preview-scrubber-polish-v2`
-- Repo: `/Users/james/git/tadpole`
+- Repo: derive with `git rev-parse --show-toplevel`
 
 ## Commands
 
 ```bash
-cd /Users/james/git/tadpole
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
 
 git branch --show-current
 rg -n "preview-controls-row|preview-metadata" frontend/src/App.svelte
