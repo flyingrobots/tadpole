@@ -1672,12 +1672,13 @@ ${runnableRuntimeScript}
   };
 
   const targetIdForAnimationElement = (element: Element): string | null => {
-    const referencedTarget =
-      localTargetIdFromReference(element.getAttribute("href")) ??
-      localTargetIdFromReference(element.getAttribute("xlink:href")) ??
-      localTargetIdFromReference(element.getAttributeNS("http://www.w3.org/1999/xlink", "href"));
-    if (referencedTarget) {
-      return referencedTarget;
+    const referenceValues = [
+      element.getAttribute("href"),
+      element.getAttribute("xlink:href"),
+      element.getAttributeNS("http://www.w3.org/1999/xlink", "href"),
+    ].filter((value): value is string => value !== null);
+    if (referenceValues.length > 0) {
+      return referenceValues.map(localTargetIdFromReference).find((targetId) => targetId !== null) ?? null;
     }
 
     const parentId = element.parentElement?.getAttribute("id")?.trim();
