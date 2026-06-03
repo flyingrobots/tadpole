@@ -62,16 +62,27 @@ when changing SVGs; the repo proves it with focused browser witnesses plus
 
 ## Current Truth
 
-- Goal 5 landed in PR #10 and `origin/main` is at merge commit `48cc594`.
-- The editor imports raw SVG, discovers editable targets, applies timeline
-  tracks to rendered SVG elements, and exports/restores project JSON in
-  `frontend/src/App.svelte`.
-- The SVG MVP roadmap checklist tracks Goal 6 in
-  `docs/method/design/svg-timeline-mvp/checklist.md`.
-- Current browser witnesses live under
-  `docs/method/witness/svg-timeline-mvp/`.
-- Existing project/import witnesses cover import safety and project restore, but
-  they do not prove selected-target shortcuts or empty-state copy.
+- Goal 5 landed in
+  [PR #10](https://github.com/flyingrobots/tadpole/pull/10), and
+  `origin/main` is at merge commit
+  [`48cc5948dd38f9659b190b98f7089f9c0e228fd9`](https://github.com/flyingrobots/tadpole/commit/48cc5948dd38f9659b190b98f7089f9c0e228fd9).
+- The baseline editor imports raw SVG through
+  [frontend/src/App.svelte#1062:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/frontend/src/App.svelte#L1062),
+  sanitizes SVG before rendering through
+  [frontend/src/App.svelte#367:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/frontend/src/App.svelte#L367),
+  discovers editable targets through
+  [frontend/src/App.svelte#340:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/frontend/src/App.svelte#L340),
+  exports project JSON through
+  [frontend/src/App.svelte#866:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/frontend/src/App.svelte#L866),
+  and restores project JSON through
+  [frontend/src/App.svelte#1422:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/frontend/src/App.svelte#L1422).
+- The SVG MVP roadmap checklist tracks Goal 6 as incomplete at
+  [docs/method/design/svg-timeline-mvp/checklist.md#59:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/docs/method/design/svg-timeline-mvp/checklist.md#L59).
+- Existing browser witnesses cover SVG import safety at
+  [docs/method/witness/svg-timeline-mvp/import-gate-smoke.mjs#70:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/docs/method/witness/svg-timeline-mvp/import-gate-smoke.mjs#L70)
+  and project export/restore behavior at
+  [docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs#58:48cc5948dd38f9659b190b98f7089f9c0e228fd9](https://github.com/flyingrobots/tadpole/blob/48cc5948dd38f9659b190b98f7089f9c0e228fd9/docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs#L58),
+  but they do not prove selected-target shortcuts or empty-state copy.
 
 ## Problem
 
@@ -156,6 +167,20 @@ the Svelte editor:
 | Timeline tracks | `tracks` | Reconciled on SVG load; clear action empties it |
 | Export metadata | Reactive project export | Follows parsed targets and tracks |
 
+## Security / Trust Boundary
+
+SVG source remains untrusted input. Goal 6 does not expand the sanitizer
+allowlist or permit new script, URL, style, SMIL animation, or external-resource
+surfaces.
+
+| Boundary | Posture |
+| --- | --- |
+| SVG markup | Sanitized before render; unsafe nodes and refs stay blocked |
+| Target labels | SVG label fields are untrusted strings |
+| Label rendering | Svelte text interpolation, never `{@html}` |
+| Track clearing | Clears in-memory tracks only |
+| Regression proof | Import-gate smoke remains the sanitizer guard |
+
 ## Accessibility Posture
 
 | Surface | Requirement |
@@ -165,10 +190,16 @@ the Svelte editor:
 | Selected-target chip | Mirrors existing selected target state |
 | Clear tracks | Button communicates destructive scope |
 
-## Localization Posture
+## Localization / Directionality Posture
 
-New user-visible strings are English-only inline Svelte strings, matching the
-current app. No i18n catalog exists in this repo yet.
+| String or surface | Requirement |
+| --- | --- |
+| Empty-state copy | English inline strings in `App.svelte` |
+| Quick action buttons | English inline strings name target and property |
+| Selected-target chip | English inline string mirrors target name and ID |
+| Catalog location | No i18n catalog exists yet |
+| Directionality | Existing wrapping controls do not require LTR ordering |
+| Locale updates | Not applicable until catalogs exist |
 
 ## Agent Inspectability
 
@@ -228,6 +259,20 @@ until after runnable export exists.
 - [x] Browser witness proves selected-target chip and clear-tracks action when
       implemented.
 
+## Proof Matrix
+
+All Goal 6 proof rows are in `rough-ux-hardening-smoke.mjs` unless noted.
+
+| Claim | Required proof |
+| --- | --- |
+| No-target SVG explains missing editable targets | `runEmptyStateSmoke` |
+| No-track target offers quick actions | `runSelectedTargetQuickActionSmoke` |
+| Quick actions create target tracks | `runSelectedTargetQuickActionSmoke` |
+| SVG `<title>` improves discovered labels | `runTargetLabelSmoke` |
+| Preview exposes selected-target state | `runSelectedTargetQuickActionSmoke` |
+| Clear Tracks restores empty states | `runSelectedTargetQuickActionSmoke` |
+| SVG import sanitizer remains guarded | `import-gate-smoke.mjs` |
+
 ## Acceptance Criteria
 
 The work is done when:
@@ -269,10 +314,10 @@ Mitigations:
 - Keep copy short and colocated with the affected panel.
 - Reuse the existing track creation path instead of adding a separate model.
 
-## Follow-On Debt
+## Follow-On Issues
 
-- Create a future issue for layer-tree navigation if selected-target shortcuts
-  are not enough for complex SVGs.
+- Layer-tree navigation is deferred. Create a dedicated GitHub issue if
+  selected-target shortcuts are not enough for complex SVGs.
 
 ## Retrospective
 
