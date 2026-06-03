@@ -1,0 +1,45 @@
+# Witness: UIUX_open-props-stack Signpost Setup
+
+## Purpose
+
+Verify METHOD signpost and backlog files were added for cycle traceability.
+
+## Environment
+
+- Cycle identifier: `UIUX_open-props-stack`
+- Active branch: verify with `git branch --show-current`
+- Time: 2026-05-31
+- Repo: `~/git/tadpole`
+
+## Commands
+
+```bash
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Confirm branch
+git branch --show-current
+
+# Confirm files exist and contain expected sections
+ls -1 BEARING.md CHANGELOG.md README.md
+cat BEARING.md
+cat CHANGELOG.md
+cat README.md
+
+# Confirm METHOD backlog scaffold exists
+find docs/method/backlog -maxdepth 2 -type f | sort
+cat docs/method/backlog/inbox/2026-05-31-initialize-method-signposts.md
+```
+
+## Expected observations
+
+- `BEARING.md` and `CHANGELOG.md` exist and include current state, priorities,
+  and unreleased notes.
+- `README.md` includes branch/PR METHOD process note.
+- `docs/method/backlog/inbox/` contains `.gitkeep` and a dated signpost intake
+  note.
+
+## Acceptance
+
+If all checks pass, this cycle's ship-surface deliverable is reproducible from
+repo state.

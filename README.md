@@ -8,7 +8,7 @@ Monorepo for a local SVG timeline animation tool with:
 ## Layout
 
 - `backend/` Node + Express service that exposes font discovery/download APIs.
-- `frontend/` Lit app built with Vite (and `/api` is proxied to backend).
+- `frontend/` Svelte app built with Vite (and `/api` is proxied to backend).
 
 ## Setup
 
@@ -30,13 +30,24 @@ Then open:
 - Frontend: `http://localhost:5173/`
 - Backend health check: `http://localhost:4000/health`
 
-Drop your fonts into `backend/fonts/` (`.woff2`, `.woff`, `.ttf`, `.otf`) and restart backend.
+Drop your fonts into `backend/fonts/` (`.woff2`, `.woff`, `.ttf`, `.otf`) and
+restart backend.
 
 ## Stack note
 
-- Vue is a **UI framework** (like a set of reusable components and state rules)
-- Vite is a **build/dev tool** and dev server that Vue can run on (plus many others)
-- This repo uses **Svelte** with Vite for lightweight reactive UI.
+- Svelte provides the frontend component model and reactive UI runtime.
+- Vite provides the dev server, build pipeline, and local `/api` proxy for the
+  Svelte app.
+
+## Process
+
+This repository follows METHOD for cycle-based engineering:
+
+- Cycle branches use `cycles/<LEGEND>_<slug>`.
+- Ship to `main` via PRs with cycle artifacts (design/witness/retro as
+  available).
+- Source-of-truth ship surfaces: `BEARING.md`, `CHANGELOG.md`, and METHOD
+  backlog under `docs/method/`.
 
 ## GitHub
 
