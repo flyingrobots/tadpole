@@ -14,6 +14,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Users can import SVGs by upload or paste, select discovered SVG targets from
   the preview or target library, create target-bound tracks, and clear tracks
   when changing SVGs.
+- Supported SMIL animation nodes from imported SVGs are converted into editable
+  Tadpole tracks before sanitized SVG markup is rendered.
 - Project JSON export/restore preserves sanitized SVG source, discovered target
   metadata, timeline settings, tracks, and visible missing-target warnings.
 - Runnable animation export emits self-contained HTML with the sanitized SVG,
@@ -23,8 +25,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 ## Priority
 
-1. Import or extract existing SVG animation timelines into editable Tadpole
-   tracks after runnable export lands.
+1. Expand import intelligence after the safe SMIL subset, including static SVG
+   starter timeline suggestions and wider animation-format support.
 2. Improve editing ergonomics for complex SVGs, including target navigation,
    undo/redo, and denser timeline workflows.
 3. Keep import/project persistence contracts covered by browser witnesses as
@@ -41,13 +43,15 @@ deterministic keyframe-based motion for logo/diagram targets.
   import, project JSON export/restore, and rough UX hardening.
 - Completed Goal 8 runnable animation export with a self-contained HTML
   artifact and browser witness.
+- Completed Goal 9 SVG animation timeline import for supported SMIL
+  `<animate>`/`<animateTransform>` input with unsupported-feature warnings.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
 ## Open loops
 
-- Goal 9 remains open: infer editable Tadpole tracks from existing SVG
-  animation data when possible.
+- Static SVG starter timeline suggestions remain deferred after the supported
+  SMIL import subset.
 - A layer tree, undo/redo, and multi-select target editing remain deferred.
 
 ## Risks

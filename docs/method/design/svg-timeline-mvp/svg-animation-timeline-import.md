@@ -250,39 +250,39 @@ contract exist.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add this design packet and link Goal 9 to issue #20.
-- [ ] Slice 2: Extract supported SMIL animation intent before sanitization.
-- [ ] Slice 3: Convert supported intent into normalized Tadpole tracks and import
+- [x] Slice 1: Add this design packet and link Goal 9 to issue #20.
+- [x] Slice 2: Extract supported SMIL animation intent before sanitization.
+- [x] Slice 3: Convert supported intent into normalized Tadpole tracks and import
       warnings.
-- [ ] Slice 4: Wire imported tracks and warnings into the SVG Source panel.
-- [ ] Slice 5: Add a browser witness that imports, edits, scrubs, and exports
+- [x] Slice 4: Wire imported tracks and warnings into the SVG Source panel.
+- [x] Slice 5: Add a browser witness that imports, edits, scrubs, and exports
       converted tracks.
-- [ ] Slice 6: Update checklist, changelog, BEARING, witness docs, issue, and PR.
+- [x] Slice 6: Update checklist, changelog, BEARING, witness docs, issue, and PR.
 
 ## Tests To Write First
 
 Behavior tests required:
 
-- [ ] Browser witness imports SVG SMIL into editable Tadpole tracks.
-- [ ] Browser witness proves sanitized preview contains no SMIL animation nodes.
-- [ ] Browser witness edits an imported keyframe and sees project export update.
-- [ ] Browser witness reports unsupported animation constructs.
+- [x] Browser witness imports SVG SMIL into editable Tadpole tracks.
+- [x] Browser witness proves sanitized preview contains no SMIL animation nodes.
+- [x] Browser witness edits an imported keyframe and sees project export update.
+- [x] Browser witness reports unsupported animation constructs.
 
 Documentation/process tests:
 
-- [ ] Markdown lint passes for changed docs.
-- [ ] `git diff --check` passes.
+- [x] Markdown lint passes for changed docs.
+- [x] `git diff --check` passes.
 
 ## Acceptance Criteria
 
 The work is done when:
 
-- [ ] Supported SMIL import creates editable Tadpole tracks.
-- [ ] Unsupported animation data is visible to the user.
-- [ ] Sanitized preview/export does not retain animation nodes.
-- [ ] Project JSON export preserves converted tracks.
-- [ ] Browser witness covers import, edit, scrub, and export.
-- [ ] CI and local validation are green.
+- [x] Supported SMIL import creates editable Tadpole tracks.
+- [x] Unsupported animation data is visible to the user.
+- [x] Sanitized preview/export does not retain animation nodes.
+- [x] Project JSON export preserves converted tracks.
+- [x] Browser witness covers import, edit, scrub, and export.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -340,16 +340,24 @@ Fill this in after implementation.
 
 What changed from the design:
 
-- TBD
+- The implemented subset supports SMIL `<animate>` for opacity/fill/stroke/
+  stroke-width and `<animateTransform>` for translate/scale/rotate. CSS and Web
+  Animations are warning-only, as planned.
+- The browser witness uses Vite's fallback port when `5173` is already occupied.
 
 What the tests proved:
 
-- TBD
+- `animation-import-smoke.mjs` imports five supported SMIL-derived tracks,
+  reports three unsupported animation notes, proves sanitized preview/export do
+  not retain animation/style/script nodes, scrubs imported motion, edits an
+  imported keyframe, and observes the edited value in project JSON.
 
 What remains open:
 
-- TBD
+- Full SMIL fidelity, CSS animation conversion, Web Animations extraction,
+  static SVG starter timeline suggestions, layer navigation, undo/redo, and
+  multi-select target editing remain follow-on work.
 
 PR:
 
-- https://github.com/flyingrobots/tadpole/pull/26
+- [PR #26](https://github.com/flyingrobots/tadpole/pull/26)

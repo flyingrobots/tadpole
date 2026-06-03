@@ -52,6 +52,26 @@
     restoreSampleTracks?: boolean;
   };
 
+  type ImportedAnimationKeyframe = Omit<Keyframe, "id">;
+
+  type ImportedAnimationTrack = {
+    targetId: string;
+    property: AnimationProperty;
+    keyframes: ImportedAnimationKeyframe[];
+  };
+
+  type SvgAnimationImportResult = {
+    tracks: ImportedAnimationTrack[];
+    warnings: string[];
+    duration: number;
+  };
+
+  type SvgImportResult = {
+    markup: string;
+    targets: AnimationTarget[];
+    animation: SvgAnimationImportResult;
+  };
+
   type TadpoleProject = {
     version: "tadpole-project-1";
     svg: {
@@ -280,6 +300,14 @@
     "stroke",
     "stroke-width",
   ];
+  const supportedSmilAttributeProperties = new Map<string, AnimationProperty>([
+    ["opacity", "opacity"],
+    ["fill", "fill"],
+    ["stroke", "stroke"],
+    ["stroke-width", "strokeWidth"],
+    ["strokewidth", "strokeWidth"],
+  ]);
+  const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
   const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
     const tag = tagName.toLowerCase();
@@ -465,7 +493,7 @@
     return svg?.tagName.toLowerCase() === "svg" ? new XMLSerializer().serializeToString(svg) : "";
   };
 
-  const parseSvgImport = (source: string): { markup: string; targets: AnimationTarget[] } | null => {
+  const parseSvgImport = (source: string): SvgImportResult | null => {
     const sourceText = source.trim();
     if (sourceText === "") {
       return null;
@@ -479,6 +507,7 @@
     return {
       markup,
       targets: discoverSvgTargets(markup),
+      animation: extractSvgAnimationIntent(sourceText),
     };
   };
 
@@ -489,6 +518,7 @@
   let svgDraftSource = svgMarkup;
   let svgImportStatus = `${sampleSvgLabel} loaded with ${availableTargets.length} targets.`;
   let svgImportError = "";
+  let animationImportWarnings: string[] = [];
   let svgImportRevision = 0;
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -1416,29 +1446,57 @@ ${runnableRuntimeScript}
     const parsed = parseSvgImport(source);
     if (!parsed) {
       svgImportError = "Import failed: enter valid SVG markup.";
+      animationImportWarnings = [];
       return false;
     }
 
     pauseTimeline();
 
     const targetIds = new Set(parsed.targets.map((target) => target.id));
-    const candidateTracks = options.restoreSampleTracks ? createSampleTracks() : tracks;
-    const reconciledTracks = normalizeTrackList(candidateTracks.filter((track) => targetIds.has(track.targetId)));
+    const importedTracksForTargets = parsed.animation.tracks.filter((track) => targetIds.has(track.targetId));
+    const missingAnimationTargetIds = Array.from(
+      new Set(parsed.animation.tracks.filter((track) => !targetIds.has(track.targetId)).map((track) => track.targetId)),
+    ).sort();
+    const importWarnings = [
+      ...parsed.animation.warnings,
+      ...missingAnimationTargetIds.map((targetId) => `Skipped animation track for missing target #${targetId}.`),
+    ];
+    const importedTimelineTracks = importedTracksForTargets.map(createTimelineTrackFromImported);
+    const importedTrackCount = importedTimelineTracks.length;
+    const nextDuration =
+      importedTrackCount > 0
+        ? clamp(Math.max(250, parsed.animation.duration), 250, 30000)
+        : timelineDurationMs;
+    const candidateTracks =
+      importedTrackCount > 0 ? importedTimelineTracks : options.restoreSampleTracks ? createSampleTracks() : tracks;
+    const reconciledTracks = normalizeTrackList(candidateTracks.filter((track) => targetIds.has(track.targetId)), nextDuration);
     const removedTrackCount = candidateTracks.length - reconciledTracks.length;
 
     svgSource = parsed.markup;
     svgDraftSource = parsed.markup;
     svgSourceLabel = options.label;
     svgImportError = "";
+    animationImportWarnings = importWarnings;
     clearProjectImportStatus();
+    if (importedTrackCount > 0) {
+      timelineDurationMs = nextDuration;
+      currentTime = 0;
+    }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
 
-    const trackSummary = options.restoreSampleTracks
-      ? `Restored ${reconciledTracks.length} sample tracks.`
-      : `${reconciledTracks.length} tracks kept${removedTrackCount > 0 ? `, ${removedTrackCount} removed` : ""}.`;
-    svgImportStatus = `${options.label} loaded with ${parsed.targets.length} targets. ${trackSummary}`;
+    const trackSummary =
+      importedTrackCount > 0
+        ? `Imported ${reconciledTracks.length} animation tracks.`
+        : options.restoreSampleTracks
+          ? `Restored ${reconciledTracks.length} sample tracks.`
+          : `${reconciledTracks.length} tracks kept${removedTrackCount > 0 ? `, ${removedTrackCount} removed` : ""}.`;
+    const warningSummary =
+      importWarnings.length > 0
+        ? ` ${importWarnings.length} unsupported animation ${importWarnings.length === 1 ? "note" : "notes"} reported.`
+        : "";
+    svgImportStatus = `${options.label} loaded with ${parsed.targets.length} targets. ${trackSummary}${warningSummary}`;
     return true;
   };
 
@@ -1530,6 +1588,324 @@ ${runnableRuntimeScript}
 
     return trimmedValue;
   };
+
+  const parseClockValueMs = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return null;
+    }
+
+    const simpleMatch = /^(-?\d+(?:\.\d+)?)(ms|s|min)?$/i.exec(trimmed);
+    if (simpleMatch) {
+      const amount = Number(simpleMatch[1]);
+      if (!Number.isFinite(amount) || amount < 0) {
+        return null;
+      }
+      const unit = simpleMatch[2]?.toLowerCase() ?? "ms";
+      if (unit === "min") {
+        return amount * 60_000;
+      }
+      if (unit === "s") {
+        return amount * 1000;
+      }
+      return amount;
+    }
+
+    const clockParts = trimmed.split(":").map((part) => Number(part));
+    if (clockParts.length < 2 || clockParts.length > 3 || clockParts.some((part) => !Number.isFinite(part) || part < 0)) {
+      return null;
+    }
+
+    const [hours = 0, minutes = 0, seconds = 0] = clockParts.length === 2 ? [0, clockParts[0], clockParts[1]] : clockParts;
+    return (hours * 3600 + minutes * 60 + seconds) * 1000;
+  };
+
+  const smilList = (value: string | null): string[] =>
+    (value ?? "")
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const resolveSmilValues = (element: Element): string[] => {
+    const values = smilList(element.getAttribute("values"));
+    if (values.length > 0) {
+      return values;
+    }
+
+    const from = element.getAttribute("from")?.trim();
+    const to = element.getAttribute("to")?.trim();
+    return from && to ? [from, to] : [];
+  };
+
+  const resolveSmilKeyTimes = (element: Element, count: number): number[] | null => {
+    if (count < 2) {
+      return null;
+    }
+
+    const explicit = smilList(element.getAttribute("keyTimes"));
+    if (explicit.length > 0) {
+      if (explicit.length !== count) {
+        return null;
+      }
+      const parsed = explicit.map((value) => Number(value));
+      const isValid = parsed.every((value, index) => {
+        const previous = index === 0 ? 0 : parsed[index - 1]!;
+        return Number.isFinite(value) && value >= 0 && value <= 1 && value >= previous;
+      });
+      return isValid ? parsed : null;
+    }
+
+    return Array.from({ length: count }, (_, index) => (count === 1 ? 0 : index / (count - 1)));
+  };
+
+  const localTargetIdFromReference = (value: string | null): string | null => {
+    const trimmed = value?.trim() ?? "";
+    if (!trimmed.startsWith("#") || !isSafeSvgReference(trimmed)) {
+      return null;
+    }
+    return trimmed.slice(1);
+  };
+
+  const targetIdForAnimationElement = (element: Element): string | null => {
+    const referencedTarget =
+      localTargetIdFromReference(element.getAttribute("href")) ??
+      localTargetIdFromReference(element.getAttribute("xlink:href")) ??
+      localTargetIdFromReference(element.getAttributeNS("http://www.w3.org/1999/xlink", "href"));
+    if (referencedTarget) {
+      return referencedTarget;
+    }
+
+    const parentId = element.parentElement?.getAttribute("id")?.trim();
+    return parentId || null;
+  };
+
+  const trackKeyframesFromValues = (
+    property: AnimationProperty,
+    values: string[],
+    keyTimes: number[],
+    duration: number,
+  ): ImportedAnimationKeyframe[] | null => {
+    if (values.length !== keyTimes.length || duration <= 0) {
+      return null;
+    }
+
+    const keyframes = values.map((value, index): ImportedAnimationKeyframe | null => {
+      const normalizedValue = normalizeProjectKeyframeValue(property, value);
+      if (normalizedValue === null) {
+        return null;
+      }
+
+      return {
+        time: Math.round(duration * keyTimes[index]!),
+        value: normalizedValue,
+        easing: "linear",
+      };
+    });
+
+    return keyframes.every((keyframe) => keyframe !== null) ? (keyframes as ImportedAnimationKeyframe[]) : null;
+  };
+
+  const numbersFromSmilValue = (value: string): number[] =>
+    value
+      .trim()
+      .split(/[\s,]+/)
+      .map((part) => Number(part))
+      .filter((part) => Number.isFinite(part));
+
+  const dimensionValuesFromTransformValues = (values: string[], dimension: 0 | 1): string[] =>
+    values.map((value) => {
+      const numbers = numbersFromSmilValue(value);
+      const fallback = dimension === 0 ? 0 : numbers[0] ?? 0;
+      return String(numbers[dimension] ?? fallback);
+    });
+
+  const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);
+
+  const extractAnimateElementTrack = (
+    element: Element,
+    targetId: string,
+    duration: number,
+    warnings: string[],
+  ): ImportedAnimationTrack | null => {
+    const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
+    const property = supportedSmilAttributeProperties.get(attributeName);
+    if (!property) {
+      warnings.push(`Unsupported animate attribute "${attributeName || "unknown"}" on #${targetId}.`);
+      return null;
+    }
+
+    const values = resolveSmilValues(element);
+    const keyTimes = resolveSmilKeyTimes(element, values.length);
+    if (!keyTimes) {
+      warnings.push(`Unsupported keyTimes or value count for ${attributeName} on #${targetId}.`);
+      return null;
+    }
+
+    const keyframes = trackKeyframesFromValues(property, values, keyTimes, duration);
+    if (!keyframes) {
+      warnings.push(`Unsupported ${attributeName} values on #${targetId}.`);
+      return null;
+    }
+
+    return { targetId, property, keyframes };
+  };
+
+  const extractAnimateTransformTracks = (
+    element: Element,
+    targetId: string,
+    duration: number,
+    warnings: string[],
+  ): ImportedAnimationTrack[] => {
+    const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
+    if (attributeName && attributeName !== "transform") {
+      warnings.push(`Unsupported animateTransform attribute "${attributeName}" on #${targetId}.`);
+      return [];
+    }
+
+    const transformType = element.getAttribute("type")?.trim().toLowerCase() ?? "";
+    const values = resolveSmilValues(element);
+    const keyTimes = resolveSmilKeyTimes(element, values.length);
+    if (!keyTimes) {
+      warnings.push(`Unsupported keyTimes or transform value count on #${targetId}.`);
+      return [];
+    }
+
+    if (transformType === "translate") {
+      const xValues = dimensionValuesFromTransformValues(values, 0);
+      const yValues = dimensionValuesFromTransformValues(values, 1);
+      const tracks: ImportedAnimationTrack[] = [];
+      const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration);
+      const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration);
+      if (xKeyframes && valuesChange(xValues)) {
+        tracks.push({ targetId, property: "x", keyframes: xKeyframes });
+      }
+      if (yKeyframes && valuesChange(yValues)) {
+        tracks.push({ targetId, property: "y", keyframes: yKeyframes });
+      }
+      if (tracks.length === 0) {
+        warnings.push(`Unsupported or static translate values on #${targetId}.`);
+      }
+      return tracks;
+    }
+
+    if (transformType === "scale") {
+      const scaleValues = dimensionValuesFromTransformValues(values, 0);
+      const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration);
+      if (!keyframes) {
+        warnings.push(`Unsupported scale values on #${targetId}.`);
+        return [];
+      }
+      return [{ targetId, property: "scale", keyframes }];
+    }
+
+    if (transformType === "rotate") {
+      const rotationValues = dimensionValuesFromTransformValues(values, 0);
+      const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration);
+      if (!keyframes) {
+        warnings.push(`Unsupported rotate values on #${targetId}.`);
+        return [];
+      }
+      return [{ targetId, property: "rotation", keyframes }];
+    }
+
+    warnings.push(`Unsupported animateTransform type "${transformType || "unknown"}" on #${targetId}.`);
+    return [];
+  };
+
+  const extractSvgAnimationIntent = (source: string): SvgAnimationImportResult => {
+    const emptyResult: SvgAnimationImportResult = { tracks: [], warnings: [], duration: 0 };
+    if (typeof DOMParser === "undefined") {
+      return emptyResult;
+    }
+
+    const doc = new DOMParser().parseFromString(source, "image/svg+xml");
+    if (doc.querySelector("parsererror")) {
+      return emptyResult;
+    }
+
+    const warnings: string[] = [];
+    const tracks: ImportedAnimationTrack[] = [];
+    const animationElements = Array.from(doc.querySelectorAll("*")).filter((element) => {
+      const tag = element.tagName.toLowerCase();
+      return tag === "animate" || tag === "animatetransform" || unsupportedAnimationTags.has(tag);
+    });
+
+    doc.querySelectorAll("style").forEach((styleElement) => {
+      const styleText = styleElement.textContent ?? "";
+      if (/@keyframes|animation(?:-name)?\s*:/i.test(styleText)) {
+        warnings.push("CSS animation rules were not imported.");
+      }
+    });
+
+    doc.querySelectorAll("script").forEach((scriptElement) => {
+      const scriptText = scriptElement.textContent ?? "";
+      if (/\banimate\s*\(/i.test(scriptText) || /\.animate\s*\(/i.test(scriptText)) {
+        warnings.push("Web Animations script was not imported.");
+      }
+    });
+
+    animationElements.forEach((element) => {
+      const tag = element.tagName.toLowerCase();
+      const targetId = targetIdForAnimationElement(element);
+      if (!targetId) {
+        warnings.push(`Unsupported ${tag} without a local target ID.`);
+        return;
+      }
+
+      if (unsupportedAnimationTags.has(tag)) {
+        warnings.push(`Unsupported ${tag} animation on #${targetId}.`);
+        return;
+      }
+
+      const begin = element.getAttribute("begin");
+      if (begin && (parseClockValueMs(begin) ?? -1) !== 0) {
+        warnings.push(`Unsupported non-zero begin time on #${targetId}.`);
+        return;
+      }
+
+      const calcMode = element.getAttribute("calcMode")?.trim().toLowerCase();
+      if (calcMode && calcMode !== "linear" && calcMode !== "discrete") {
+        warnings.push(`Unsupported calcMode "${calcMode}" on #${targetId}.`);
+        return;
+      }
+
+      const duration = parseClockValueMs(element.getAttribute("dur") ?? "");
+      if (!duration || duration <= 0) {
+        warnings.push(`Unsupported or missing duration on #${targetId}.`);
+        return;
+      }
+
+      if (tag === "animate") {
+        const track = extractAnimateElementTrack(element, targetId, duration, warnings);
+        if (track) {
+          tracks.push(track);
+        }
+        return;
+      }
+
+      tracks.push(...extractAnimateTransformTracks(element, targetId, duration, warnings));
+    });
+
+    const duration = tracks.reduce((maxDuration, track) => {
+      const trackDuration = track.keyframes.reduce((maxTime, keyframe) => Math.max(maxTime, keyframe.time), 0);
+      return Math.max(maxDuration, trackDuration);
+    }, 0);
+
+    return { tracks, warnings: Array.from(new Set(warnings)), duration };
+  };
+
+  const createTimelineTrackFromImported = (track: ImportedAnimationTrack): TimelineTrack => ({
+    id: makeTrackId(),
+    targetId: track.targetId,
+    property: track.property,
+    muted: false,
+    keyframes: [...track.keyframes].sort((first, second) => first.time - second.time).map((keyframe) => ({
+      id: makeKeyframeId(),
+      time: keyframe.time,
+      value: keyframe.value,
+      easing: keyframe.easing,
+    })),
+  });
 
   const parseProjectTargets = (value: unknown): AnimationTarget[] | null => {
     if (!Array.isArray(value)) {
@@ -1791,6 +2167,7 @@ ${runnableRuntimeScript}
     svgDraftSource = parsed.parsedSvg.markup;
     svgSourceLabel = label;
     svgImportError = "";
+    animationImportWarnings = [];
     timelineDurationMs = nextDuration;
     currentTime = clampMsForDuration(parsed.project.timeline.currentTime, nextDuration);
     frameRate = clamp(parsed.project.timeline.frameRate, 12, 144);
@@ -2787,6 +3164,16 @@ ${runnableRuntimeScript}
             <p class="error tiny" aria-live="assertive">{svgImportError}</p>
           {:else}
             <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+          {/if}
+          {#if animationImportWarnings.length > 0}
+            <div class="warning tiny animation-import-warnings" aria-live="polite" data-tadpole-animation-import-warnings>
+              <strong>Animation import warnings</strong>
+              <ul>
+                {#each animationImportWarnings as warning}
+                  <li>{warning}</li>
+                {/each}
+              </ul>
+            </div>
           {/if}
         </section>
 
@@ -3948,6 +4335,11 @@ ${runnableRuntimeScript}
 
   .source-actions {
     justify-content: flex-start;
+  }
+
+  .animation-import-warnings ul {
+    margin: var(--size-1) 0 0;
+    padding-left: var(--size-4);
   }
 
   .quick-track-actions {

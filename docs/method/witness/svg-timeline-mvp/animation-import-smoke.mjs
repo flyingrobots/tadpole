@@ -1,0 +1,131 @@
+import { createRequire } from "node:module";
+
+const requireFromCwd = createRequire(`${process.cwd()}/`);
+const { chromium } = requireFromCwd("playwright");
+
+const appUrl = process.env.TADPOLE_APP_URL ?? "http://localhost:5173/";
+
+const assert = (condition, message) => {
+  if (!condition) {
+    throw new Error(message);
+  }
+};
+
+const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
+
+const animatedSvg = `<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg" aria-label="Animated Import Fixture">
+  <style>
+    @keyframes pulse { from { opacity: 0.2; } to { opacity: 1; } }
+    #css-only { animation: pulse 900ms linear infinite; }
+  </style>
+  <script>
+    document.querySelector("#box")?.animate([{ opacity: 0 }, { opacity: 1 }], 900);
+  </script>
+  <rect id="box" data-tadpole-name="Animated Box" x="16" y="20" width="48" height="28" fill="#0f766e">
+    <animate attributeName="opacity" values="0;1;0.25" keyTimes="0;0.5;1" dur="900ms" repeatCount="indefinite" />
+    <animate attributeName="fill" values="#0f766e;#2563eb" dur="900ms" />
+    <animateTransform attributeName="transform" type="translate" values="0 0;24 12" dur="900ms" />
+  </rect>
+  <g id="needle" data-tadpole-name="Needle">
+    <line x1="94" y1="58" x2="130" y2="28" stroke="#111827" stroke-width="4" />
+    <animateTransform attributeName="transform" type="rotate" values="0;30" dur="900ms" />
+  </g>
+  <circle id="motion" data-tadpole-name="Motion Dot" cx="130" cy="62" r="7" fill="#f97316">
+    <animateMotion dur="900ms" path="M0 0 L10 10" />
+  </circle>
+  <circle id="css-only" data-tadpole-name="CSS Only" cx="88" cy="22" r="7" fill="#64748b" />
+</svg>`;
+
+const createPage = async (browser) => {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const consoleErrors = [];
+  const pageErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  return { page, consoleErrors, pageErrors };
+};
+
+const assertCleanBrowser = (consoleErrors, pageErrors) => {
+  assert(consoleErrors.length === 0, `browser console errors: ${consoleErrors.join(" | ")}`);
+  assert(pageErrors.length === 0, `browser page errors: ${pageErrors.join(" | ")}`);
+};
+
+const importAnimatedSvg = async (page) => {
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+  await page.locator(".panel-svg-source textarea").fill(animatedSvg);
+  await page.locator(".panel-svg-source button", { hasText: "Import Paste" }).click();
+  await page.waitForSelector(".preview-svg-host #box");
+};
+
+const projectPayload = async (page) => {
+  const payloadText = await page.locator(".export-block pre code").textContent();
+  assert(payloadText, "project export payload missing");
+  return JSON.parse(payloadText);
+};
+
+const runAnimationImportSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importAnimatedSvg(page);
+
+  const sourcePanelText = await textOf(page.locator(".panel-svg-source"));
+  assert(sourcePanelText.includes("Imported 5 animation tracks."), "SMIL tracks were not imported");
+  assert(sourcePanelText.includes("3 unsupported animation notes reported."), "unsupported animation summary missing");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("CSS animation rules were not imported."), "CSS animation warning missing");
+  assert(warningsText.includes("Web Animations script was not imported."), "Web Animations warning missing");
+  assert(warningsText.includes("Unsupported animatemotion animation on #motion."), "animateMotion warning missing");
+
+  const unsafeNodeCount = await page.locator(".preview-svg-host svg").evaluate((svg) =>
+    svg.querySelectorAll("animate, animateTransform, animateMotion, style, script").length,
+  );
+  assert(unsafeNodeCount === 0, "sanitized preview retained executable animation nodes");
+
+  assert((await page.locator(".track-card", { hasText: "Animated Box • opacity" }).count()) === 1, "opacity track missing");
+  assert((await page.locator(".track-card", { hasText: "Animated Box • fill" }).count()) === 1, "fill track missing");
+  assert((await page.locator(".track-card", { hasText: "Animated Box • x" }).count()) === 1, "translate-x track missing");
+  assert((await page.locator(".track-card", { hasText: "Animated Box • y" }).count()) === 1, "translate-y track missing");
+  assert((await page.locator(".track-card", { hasText: "Needle • rotation" }).count()) === 1, "rotation track missing");
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("450");
+  const boxStyle = await page.locator(".preview-svg-host #box").evaluate((element) => ({
+    opacity: Number(element.style.opacity),
+    transform: element.style.transform,
+  }));
+  assert(boxStyle.opacity > 0.9, `imported opacity track did not scrub near the midpoint: ${boxStyle.opacity}`);
+  assert(boxStyle.transform.includes("translate("), `imported translate track did not apply: ${boxStyle.transform}`);
+
+  const opacityTrack = page.locator(".track-card", { hasText: "Animated Box • opacity" }).first();
+  await opacityTrack.locator(".track-keys li").nth(1).locator("input").nth(1).fill("0.4");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.duration === 900, `timeline duration was not imported from SMIL dur: ${payload.timeline.duration}`);
+  assert(!payload.svg.source.includes("<animate"), "project export retained SMIL animate nodes");
+  assert(!payload.svg.source.includes("<style"), "project export retained style node");
+  assert(!payload.svg.source.includes("<script"), "project export retained script node");
+  assert(payload.timeline.tracks.length === 5, `project export track count mismatch: ${payload.timeline.tracks.length}`);
+
+  const exportedOpacityTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "box" && track.property === "opacity",
+  );
+  assert(exportedOpacityTrack, "edited opacity track missing from project export");
+  assert(
+    exportedOpacityTrack.keyframes.some((keyframe) => keyframe.time === 450 && keyframe.value === "0.4"),
+    "edited imported keyframe did not persist to project export",
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const browser = await chromium.launch({ headless: true });
+try {
+  await runAnimationImportSmoke(browser);
+  console.log("animation import browser smoke passed");
+} finally {
+  await browser.close();
+}
