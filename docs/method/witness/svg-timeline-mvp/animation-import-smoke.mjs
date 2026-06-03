@@ -78,6 +78,12 @@ const finiteRepeatSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/
   </rect>
 </svg>`;
 
+const malformedTransformSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Malformed Transform Fixture">
+  <rect id="skewed" data-tadpole-name="Skewed" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="translate" values="0 0;24 nope" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -289,6 +295,20 @@ const runFiniteRepeatWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runMalformedTransformWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, malformedTransformSvg);
+  await page.waitForSelector(".preview-svg-host #skewed");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported malformed transform values on #skewed."), "malformed transform warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `malformed transform imported as motion: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -300,6 +320,7 @@ try {
   await runNonUniformScaleWarningSmoke(browser);
   await runPivotRotateWarningSmoke(browser);
   await runFiniteRepeatWarningSmoke(browser);
+  await runMalformedTransformWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

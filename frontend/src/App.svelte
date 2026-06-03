@@ -1822,12 +1822,16 @@ ${runnableRuntimeScript}
     return keyframes.every((keyframe) => keyframe !== null) ? (keyframes as ImportedAnimationKeyframe[]) : null;
   };
 
-  const numbersFromSmilValue = (value: string): number[] =>
-    value
-      .trim()
-      .split(/[\s,]+/)
-      .map((part) => Number(part))
-      .filter((part) => Number.isFinite(part));
+  const parseSmilNumberList = (value: string): number[] | null => {
+    const parts = value.trim().split(/[\s,]+/).filter(Boolean);
+    if (parts.length === 0) {
+      return null;
+    }
+    const numbers = parts.map((part) => Number(part));
+    return numbers.every((part) => Number.isFinite(part)) ? numbers : null;
+  };
+
+  const numbersFromSmilValue = (value: string): number[] => parseSmilNumberList(value) ?? [];
 
   const dimensionValuesFromTransformValues = (values: string[], dimension: 0 | 1): string[] =>
     values.map((value) => {
@@ -1906,6 +1910,10 @@ ${runnableRuntimeScript}
     const keyTimes = resolveSmilKeyTimes(element, values.length);
     if (!keyTimes) {
       warnings.push(`Unsupported keyTimes or transform value count on #${targetId}.`);
+      return [];
+    }
+    if (values.some((value) => parseSmilNumberList(value) === null)) {
+      warnings.push(`Unsupported malformed transform values on #${targetId}.`);
       return [];
     }
 
