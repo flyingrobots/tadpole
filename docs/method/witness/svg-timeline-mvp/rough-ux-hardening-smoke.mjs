@@ -56,6 +56,14 @@ const runEmptyStateSmoke = async (browser) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
 
+  await page.getByLabel("Raw SVG").fill("");
+  assert(
+    (await textOf(page.locator(".panel-svg-source"))).includes(
+      "Raw SVG is empty. Paste SVG markup or upload an SVG file before importing.",
+    ),
+    "missing-SVG empty state did not explain the next action",
+  );
+
   await importRawSvg(page, noTargetSvg);
   const targetLibraryText = await textOf(page.locator(".panel-target-library"));
   assert(

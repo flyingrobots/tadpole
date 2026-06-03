@@ -27,6 +27,7 @@ rough UX hardening browser smoke passed
 
 The smoke verifies:
 
+- A blank Raw SVG draft shows an explicit missing-SVG empty state.
 - A no-target SVG import shows an explicit target-library empty state.
 - The timeline explains that editable SVG targets are required before track
   creation.

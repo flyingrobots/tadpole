@@ -253,6 +253,8 @@ until after runnable export exists.
 ## Tests To Write First
 
 - [x] Browser witness proves no-target SVG import shows a target empty state.
+- [x] Browser witness proves a blank Raw SVG draft shows a missing-SVG empty
+      state.
 - [x] Browser witness proves selecting a target with no tracks exposes quick
       track actions and creates a bound track.
 - [x] Browser witness proves imported unlabeled targets receive useful labels.
@@ -265,6 +267,7 @@ All Goal 6 proof rows are in `rough-ux-hardening-smoke.mjs` unless noted.
 
 | Claim | Required proof |
 | --- | --- |
+| Blank Raw SVG explains the missing-SVG state | `runEmptyStateSmoke` |
 | No-target SVG explains missing editable targets | `runEmptyStateSmoke` |
 | No-track target offers quick actions | `runSelectedTargetQuickActionSmoke` |
 | Quick actions create target tracks | `runSelectedTargetQuickActionSmoke` |
