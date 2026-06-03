@@ -1,6 +1,6 @@
 # Rough UX Hardening Witness
 
-Verify the Goal 6 half-gate for rough UX hardening.
+Verify Goal 6 rough UX hardening.
 
 ## Browser Smoke
 
@@ -33,9 +33,12 @@ The smoke verifies:
 - A selected SVG target with no tracks exposes selected-target quick actions.
 - The `Create Opacity track for Solo Target` quick action creates a bound track.
 - SVG `<title>` metadata is used for discovered target labels.
+- The live preview shows a selected-target chip near the preview surface.
+- The Clear Tracks recovery action removes timeline tracks and restores the
+  selected-target no-track state.
 
-## Half-Gate Status
+## Goal Status
 
-Goal 6 is halfway complete when the editor proves empty states, selected-target
-quick track creation, and improved discovered target labels. Remaining slices
-are the selected-target preview chip and clear-tracks recovery action.
+Goal 6 is complete when the editor proves empty states, selected-target quick
+track creation, improved discovered target labels, selected-target preview
+state, and clear-tracks recovery.

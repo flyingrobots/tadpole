@@ -216,8 +216,8 @@ until after runnable export exists.
       targets with no tracks.
 - [x] Slice 3: Quick selected-target track creation actions.
 - [x] Slice 4: Better discovered target labels.
-- [ ] Slice 5: Selected-target chip near preview.
-- [ ] Slice 6: Clear-tracks action for SVG changes.
+- [x] Slice 5: Selected-target chip near preview.
+- [x] Slice 6: Clear-tracks action for SVG changes.
 
 ## Tests To Write First
 
@@ -225,7 +225,7 @@ until after runnable export exists.
 - [x] Browser witness proves selecting a target with no tracks exposes quick
       track actions and creates a bound track.
 - [x] Browser witness proves imported unlabeled targets receive useful labels.
-- [ ] Browser witness proves selected-target chip and clear-tracks action when
+- [x] Browser witness proves selected-target chip and clear-tracks action when
       implemented.
 
 ## Acceptance Criteria
@@ -235,10 +235,10 @@ The work is done when:
 - [x] Empty states are visible and covered by browser witness.
 - [x] Quick selected-target track creation is covered by browser witness.
 - [x] Target label improvements are covered by browser witness.
-- [ ] Selected-target chip and clear-tracks action are covered by browser
+- [x] Selected-target chip and clear-tracks action are covered by browser
       witness.
 - [x] `CHANGELOG.md` and roadmap checklist are updated.
-- [ ] `npm run check` and `npm run build` pass.
+- [x] `npm run check` and `npm run build` pass.
 
 ## Validation Plan
 
@@ -276,19 +276,22 @@ Mitigations:
 
 ## Retrospective
 
-Fill this in after implementation.
+Goal 6 implementation is complete. Keep this section open for PR review drift.
 
 What changed from the design:
 
-- ...
+- The clear-tracks action landed in the SVG Source panel so it is colocated
+  with SVG import/reset recovery controls.
 
 What the tests proved:
 
-- ...
+- Browser witness proves empty states, selected-target quick track creation,
+  SVG title-based target labels, the preview selected-target chip, and
+  clear-tracks recovery.
 
 What remains open:
 
-- ...
+- PR review and merge.
 
 PR:
 

@@ -62,8 +62,8 @@
       with no tracks.
 - [x] Add quick track creation actions from the selected target.
 - [x] Improve discovered target labels.
-- [ ] Add a visible selected-target chip near the preview.
-- [ ] Add a clear-tracks action for SVG changes.
+- [x] Add a visible selected-target chip near the preview.
+- [x] Add a clear-tracks action for SVG changes.
 
 ## Goal 7: Cycle Documentation And Witness
 

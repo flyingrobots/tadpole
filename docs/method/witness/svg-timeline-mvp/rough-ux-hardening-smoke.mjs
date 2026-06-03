@@ -80,6 +80,9 @@ const runSelectedTargetQuickActionSmoke = async (browser) => {
   await page.waitForSelector(".preview-svg-host #solo");
   await page.locator(".preview-svg-host #solo").click({ force: true });
 
+  const previewText = await textOf(page.locator(".panel-preview"));
+  assert(previewText.includes("Selected target: Solo Target #solo"), "preview selected-target chip was missing");
+
   const inspectorText = await textOf(page.locator(".inspector-panel"));
   assert(
     inspectorText.includes("Solo Target has no tracks yet. Create a track to animate this selected target."),
@@ -90,6 +93,19 @@ const runSelectedTargetQuickActionSmoke = async (browser) => {
   assert(
     (await page.locator(".track-card", { hasText: "Solo Target" }).locator("text=Opacity").count()) > 0,
     "quick action did not create an opacity track for the selected target",
+  );
+
+  await page.getByRole("button", { name: "Clear Tracks" }).click();
+  assert((await page.locator(".track-card").count()) === 0, "clear tracks did not remove the selected-target track");
+  assert(
+    (await textOf(page.locator(".track-list"))).includes("No timeline tracks yet. Select a target, then create a track to start animating."),
+    "clear tracks did not restore the timeline empty state",
+  );
+  assert(
+    (await textOf(page.locator(".inspector-panel"))).includes(
+      "Solo Target has no tracks yet. Create a track to animate this selected target.",
+    ),
+    "clear tracks did not restore the selected-target no-track state",
   );
 
   assertCleanBrowser(consoleErrors, pageErrors);

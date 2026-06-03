@@ -2079,6 +2079,18 @@
     }
   };
 
+  const clearTracks = (): void => {
+    const clearedTrackCount = tracks.length;
+    if (clearedTrackCount === 0) {
+      return;
+    }
+
+    tracks = [];
+    syncSelectedTrack("");
+    const suffix = clearedTrackCount === 1 ? "track" : "tracks";
+    svgImportStatus = `Cleared ${clearedTrackCount} timeline ${suffix} from ${svgSourceLabel}.`;
+  };
+
   const setTrackTarget = (trackId: string, event: Event): void => {
     const input = event.currentTarget as HTMLSelectElement;
     const targetId = input.value;
@@ -2421,6 +2433,7 @@
           <div class="toolbar source-actions">
             <button type="button" on:click={importSvgDraft}>Import Paste</button>
             <button type="button" on:click={resetToSampleSvg}>Reset Sample</button>
+            <button type="button" on:click={clearTracks} disabled={tracks.length === 0}>Clear Tracks</button>
           </div>
           {#if svgImportError}
             <p class="error tiny" aria-live="assertive">{svgImportError}</p>
@@ -3075,6 +3088,13 @@
                 Targeting <strong>{targetNameById.get(activeTrack.targetId) ?? activeTrack.targetId}</strong>:{activeTrack.property}
               {/if}
             </p>
+            <div class="preview-selected-target-chip" aria-live="polite">
+              {#if selectedTarget}
+                Selected target: {selectedTarget.name} #{selectedTarget.id}
+              {:else}
+                No selected SVG target
+              {/if}
+            </div>
           </div>
           <div class="toolbar">
             <button type="button" on:click={dropKeyframeAtPlayhead} disabled={activeTrack === null}>
@@ -3430,6 +3450,18 @@
     border-radius: var(--radius-2);
     padding: 0.2rem 0.5rem;
     background: color-mix(in oklab, var(--color-13) 72%, transparent);
+  }
+
+  .preview-selected-target-chip {
+    display: inline-flex;
+    margin-top: var(--size-2);
+    border: 1px solid color-mix(in oklab, var(--tadpole-accent) 36%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    padding: 0.25rem 0.55rem;
+    color: var(--tadpole-text);
+    background: color-mix(in oklab, var(--color-8) 14%, transparent);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-5);
   }
 
   .panel-heading {
