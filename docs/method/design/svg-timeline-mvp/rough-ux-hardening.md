@@ -3,7 +3,7 @@ title: "G6-001 - Rough UX Hardening"
 lane: "design"
 goal: "Goal 6"
 issue: "https://github.com/flyingrobots/tadpole/issues/11"
-pr: "TBD"
+pr: "https://github.com/flyingrobots/tadpole/pull/12"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,8 +30,8 @@ updated: "2026-06-03"
 - [x] Cycle branch checked out from the synced merge target.
 - [x] GitHub issue created from the `Tadpole Task` issue form.
 - [x] `work-in-progress` label applied to the GitHub issue.
-- [ ] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and PR opened to the merge target.
+- [x] Design doc, issue link, and initial cycle scaffold staged and committed.
+- [x] Branch pushed and PR opened to the merge target.
 
 ## Decision Summary
 
@@ -292,4 +292,4 @@ What remains open:
 
 PR:
 
-- TBD
+- [#12](https://github.com/flyingrobots/tadpole/pull/12)
