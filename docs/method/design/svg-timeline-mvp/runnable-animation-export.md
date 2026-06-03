@@ -250,15 +250,15 @@ the fewest new assumptions. SVG-only export can be a follow-on issue if needed.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Cycle scaffold with issue, design doc, checklist, and non-draft
+- [x] Slice 1: Cycle scaffold with issue, design doc, checklist, and non-draft
       PR.
-- [ ] Slice 2: Generate `tadpole-runnable-html-1` from sanitized SVG, targets,
+- [x] Slice 2: Generate `tadpole-runnable-html-1` from sanitized SVG, targets,
       duration, loop state, and non-muted tracks.
-- [ ] Slice 3: Add a workbench UI surface for inspecting and copying runnable
+- [x] Slice 3: Add a workbench UI surface for inspecting and copying runnable
       output with accessible status.
-- [ ] Slice 4: Add a browser witness that exports a project, opens the artifact
+- [x] Slice 4: Add a browser witness that exports a project, opens the artifact
       outside Tadpole, and proves SVG target styles change over time.
-- [ ] Slice 5: Update changelog, checklist, BEARING, and witness docs, including
+- [x] Slice 5: Update changelog, checklist, BEARING, and witness docs, including
       animation extraction/import as the next roadmap goal.
 
 Each slice is small enough to review independently and corresponds to one
@@ -268,14 +268,14 @@ runtime proof or documentation witness.
 
 Behavior tests required:
 
-- [ ] Browser witness fails until runnable export exists and can animate outside
+- [x] Browser witness covers runnable export and animation outside
       Tadpole.
-- [ ] Browser witness asserts the exported artifact version and animated target
+- [x] Browser witness asserts the exported artifact version and animated target
       style changes.
 
 Documentation or process tests, only if relevant:
 
-- [ ] Markdown lint changed docs.
+- [x] Markdown lint changed docs.
 
 Rule: documentation tests cannot be the only proof for product or runtime work.
 
@@ -292,12 +292,12 @@ Rule: documentation tests cannot be the only proof for product or runtime work.
 
 The work is done when:
 
-- [ ] Behavior witness proves a runnable artifact animates outside the editor.
-- [ ] Rendered UI exposes runnable export inspection and copy state.
-- [ ] Project JSON compatibility remains unchanged.
-- [ ] Accessibility is preserved for new controls and status copy.
-- [ ] New strings are accounted for in this design.
-- [ ] Docs, changelog, witness, and issue links are updated.
+- [x] Behavior witness proves a runnable artifact animates outside the editor.
+- [x] Rendered UI exposes runnable export inspection and copy state.
+- [x] Project JSON compatibility remains unchanged.
+- [x] Accessibility is preserved for new controls and status copy.
+- [x] New strings are accounted for in this design.
+- [x] Docs, changelog, witness, and issue links are updated.
 - [ ] CI and local validation are green.
 
 ## Validation Plan
@@ -307,13 +307,16 @@ Commands expected before PR:
 ```bash
 npm run check
 npm run build
-node docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs
+(cd /tmp/tadpole-playwright && \
+  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs)
 npx --yes markdownlint-cli2 \
   CHANGELOG.md \
   BEARING.md \
   docs/method/design/svg-timeline-mvp/checklist.md \
   docs/method/design/svg-timeline-mvp/runnable-animation-export.md \
-  docs/method/witness/svg-timeline-mvp/runnable-animation-export.md
+  docs/method/witness/svg-timeline-mvp/runnable-animation-export.md \
+  docs/method/retro/svg-timeline-mvp/retro.md
+ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
 ```
 
@@ -323,7 +326,8 @@ Run:
 
 ```bash
 npm run dev
-node docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs
+(cd /tmp/tadpole-playwright && \
+  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs)
 ```
 
 The witness opens the editor, reads runnable output from the UI, then loads the
@@ -347,11 +351,13 @@ Fill this in after implementation.
 
 What changed from the design:
 
-- ...
+- The implementation followed the HTML artifact option and added a download
+  action in addition to the copy/inspect surface.
 
 What the tests proved:
 
-- ...
+- The browser witness reads runnable output from the editor, loads it in a
+  separate page, and observes animated `#ui` transform and `#q` opacity state.
 
 What remains open:
 

@@ -4,11 +4,11 @@
 
 Closed the first rough SVG timeline editing arc. The editor moved from a fixed
 demo preview into a source-rendered SVG workflow with imported SVGs, discovered
-targets, target-bound tracks, project JSON export/restore, and rough empty-state
-hardening.
+targets, target-bound tracks, project JSON export/restore, rough empty-state
+hardening, and runnable HTML export for use outside Tadpole.
 
-Goal 8 remains the next product gate: export a runnable animation that works
-outside Tadpole.
+Goal 9 is the next product gate: import or extract existing SVG animation data
+into editable Tadpole tracks when it can be done safely.
 
 ## What shipped
 
@@ -22,6 +22,9 @@ outside Tadpole.
 - Rough UX states for blank SVG input, no editable targets, no tracks, selected
   targets with no tracks, preview selected-target context, and clear-tracks
   recovery.
+- Runnable HTML animation export generated from sanitized SVG source and active
+  timeline tracks, with a browser witness that loads the artifact outside the
+  editor.
 - Cycle-start process docs now require non-draft PRs, matching repo
   instructions.
 
@@ -53,6 +56,8 @@ outside Tadpole.
   `docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs`
 - Browser witness:
   `docs/method/witness/svg-timeline-mvp/rough-ux-hardening-smoke.mjs`
+- Browser witness:
+  `docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs`
 - Roadmap checklist:
   `docs/method/design/svg-timeline-mvp/checklist.md`
 
@@ -83,9 +88,27 @@ ruby -e 'require "yaml"; YAML.load_file(".github/ISSUE_TEMPLATE/task.yml")'
 git diff --check
 ```
 
+Goal 8 runnable export closure uses:
+
+```bash
+npm run check
+npm run build
+cd /tmp/tadpole-playwright
+node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs
+npx --yes markdownlint-cli2 \
+  CHANGELOG.md \
+  BEARING.md \
+  docs/method/design/svg-timeline-mvp/checklist.md \
+  docs/method/design/svg-timeline-mvp/runnable-animation-export.md \
+  docs/method/witness/svg-timeline-mvp/runnable-animation-export.md \
+  docs/method/retro/svg-timeline-mvp/retro.md
+git diff --check
+```
+
 ## Follow-Up
 
-- Goal 8: export runnable animation output.
+- Goal 9: import existing SVG animation timelines into editable Tadpole tracks.
+- Consider SVG-only runnable export after HTML artifact behavior is proven.
 - Add layer-tree navigation if target-library chips are not enough for complex
   imported SVGs.
 - Add undo/redo once timeline and import operations become more destructive.

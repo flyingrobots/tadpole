@@ -74,11 +74,11 @@
 
 ## Goal 8: Export Runnable Animation
 
-- [ ] Generate a self-contained runnable animation artifact from the current
+- [x] Generate a self-contained runnable animation artifact from the current
       sanitized SVG and non-muted timeline tracks.
-- [ ] Add an inspectable workbench surface for copying runnable output.
-- [ ] Prove exported output runs outside Tadpole with a browser witness.
-- [ ] Update changelog, witness docs, BEARING, and retro notes.
+- [x] Add an inspectable workbench surface for copying runnable output.
+- [x] Prove exported output runs outside Tadpole with a browser witness.
+- [x] Update changelog, witness docs, BEARING, and retro notes.
 
 ## Goal 9: Import Existing SVG Animation Timelines
 

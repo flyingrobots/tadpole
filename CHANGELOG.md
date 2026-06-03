@@ -27,6 +27,8 @@ All notable changes for Tadpole are documented here.
 - Added Goal 6 rough UX hardening for explicit empty states, selected-target
   quick track actions, SVG title-based target labels, a preview selected-target
   chip, and clear-tracks recovery.
+- Added runnable animation export as self-contained HTML generated from the
+  current sanitized SVG and active timeline tracks.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

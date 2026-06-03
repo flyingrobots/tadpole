@@ -16,17 +16,18 @@ deterministic keyframe-based motion for logo/diagram targets.
   when changing SVGs.
 - Project JSON export/restore preserves sanitized SVG source, discovered target
   metadata, timeline settings, tracks, and visible missing-target warnings.
+- Runnable animation export emits self-contained HTML with the sanitized SVG,
+  non-muted tracks, and a compact playback runtime for downstream use.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 
 ## Priority
 
-1. Add runnable animation export for downstream use outside the editor.
-2. Import or extract existing SVG animation timelines into editable Tadpole
+1. Import or extract existing SVG animation timelines into editable Tadpole
    tracks after runnable export lands.
-3. Improve editing ergonomics for complex SVGs, including target navigation,
+2. Improve editing ergonomics for complex SVGs, including target navigation,
    undo/redo, and denser timeline workflows.
-4. Keep import/project persistence contracts covered by browser witnesses as
+3. Keep import/project persistence contracts covered by browser witnesses as
    the editor grows.
 
 ## Recent ship notes
@@ -38,15 +39,15 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Completed SVG timeline MVP Goals 1-6: source-rendered SVG preview,
   target-bound timeline application, preview target selection, external SVG
   import, project JSON export/restore, and rough UX hardening.
+- Completed Goal 8 runnable animation export with a self-contained HTML
+  artifact and browser witness.
 - Added checked-in browser witnesses for SVG import safety, project restore,
-  and rough UX states.
+  rough UX states, and runnable export playback.
 
 ## Open loops
 
-- Goal 8 remains open: export a runnable animation, not only a Tadpole project
-  JSON payload.
-- Goal 9 is queued after Goal 8: infer editable Tadpole tracks from existing
-  SVG animation data when possible.
+- Goal 9 remains open: infer editable Tadpole tracks from existing SVG
+  animation data when possible.
 - A layer tree, undo/redo, and multi-select target editing remain deferred.
 
 ## Risks
@@ -54,6 +55,6 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Imported SVG and project JSON are untrusted surfaces; sanitizer and validator
   coverage must stay close to any import or export change.
 - The editor is still local-first and in-memory; project JSON is persistence,
-  but runnable output does not exist yet.
+  and runnable HTML export is a generated artifact rather than saved state.
 - Complex SVG navigation may become difficult without a layer tree or hierarchy
   browser.
