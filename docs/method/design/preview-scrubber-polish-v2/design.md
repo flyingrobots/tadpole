@@ -31,6 +31,8 @@ Out of scope:
 - new track/renderer export formats
 - persistence/back-end contract changes
 - multi-track keyframe batch operations
+- rendered SVG target binding; that follow-up is tracked by the SVG timeline MVP
+  checklist
 
 ## Problem framing
 
@@ -68,11 +70,21 @@ Agent playback:
    state
 5. update shortcut panel and keep scope to UI/UX-only files
 
+## Related follow-up
+
+This packet accepts scrubber and keyframe-entry parity. Rendered SVG target
+binding is covered by the SVG timeline MVP checklist and its follow-up witness
+evidence.
+
 ## Acceptance criteria
 
 - scrubber drag in timeline and preview both update `currentTime`
 - double-click/toolbar insertion drops keyframe on selected track
 - neighborhood labels update as playhead moves
 - key shortcut row includes preview-drop interaction note
-- cycle packet is present under
-  `docs/method/{design,witness,retro}/preview-scrubber-polish-v2/`
+- design packet is present under
+  `docs/method/design/preview-scrubber-polish-v2/`
+- witness packet is present under
+  `docs/method/witness/preview-scrubber-polish-v2/`
+- retro packet is present under
+  `docs/method/retro/preview-scrubber-polish-v2/`
