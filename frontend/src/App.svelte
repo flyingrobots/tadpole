@@ -174,7 +174,23 @@
   </g>
 </svg>`;
   const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
-  const blockedSvgElements = new Set(["script", "style", "foreignobject", "iframe", "object", "embed", "link", "meta"]);
+  const blockedSvgElements = new Set([
+    "animate",
+    "animatecolor",
+    "animatemotion",
+    "animatetransform",
+    "discard",
+    "script",
+    "set",
+    "style",
+    "foreignobject",
+    "iframe",
+    "mpath",
+    "object",
+    "embed",
+    "link",
+    "meta",
+  ]);
   const strictReferenceAttributeNames = new Set(["href", "src", "xlink:href"]);
   const urlStyleAttributeNames = new Set([
     "clip-path",

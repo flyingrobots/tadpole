@@ -38,6 +38,17 @@ const fastSvg = `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
   <circle id="fast" data-tadpole-name="Fast Paste" cx="40" cy="40" r="28" />
 </svg>`;
 
+const smilSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+  <a id="link" href="#safe" data-tadpole-name="Link Target">
+    <rect id="safe" data-tadpole-name="Safe Rect" x="12" y="12" width="60" height="40" fill="#0f766e" />
+  </a>
+  <set href="#link" attributeName="href" to="javascript:alert(1)" begin="0s" />
+  <animate href="#safe" attributeName="x" values="12;48;12" dur="1s" repeatCount="indefinite" />
+  <animateTransform href="#safe" attributeName="transform" type="rotate" from="0" to="360" dur="1s" />
+  <animateMotion href="#safe" path="M 0 0 L 10 10" dur="1s" />
+  <mpath href="javascript:alert(2)" />
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -158,6 +169,36 @@ const runAsyncImportRaceSmoke = async (browser) => {
   await page.close();
 };
 
+const runSmilSanitizerSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+  await page.getByLabel("Raw SVG").fill(smilSvg);
+  await page.getByRole("button", { name: "Import Paste" }).click();
+  await page.waitForSelector(".preview-svg-host #safe");
+
+  const smilCount = await page
+    .locator(
+      [
+        ".preview-svg-host set",
+        ".preview-svg-host animate",
+        ".preview-svg-host animateColor",
+        ".preview-svg-host animateMotion",
+        ".preview-svg-host animateTransform",
+        ".preview-svg-host discard",
+        ".preview-svg-host mpath",
+      ].join(", "),
+    )
+    .count();
+  assert(smilCount === 0, `expected SVG animation nodes to be stripped, found ${smilCount}`);
+
+  const linkHref = await page.locator(".preview-svg-host #link").evaluate((element) => element.getAttribute("href"));
+  assert(linkHref === "#safe", `expected local href to remain safe, got ${linkHref}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const runResetNormalizationSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
@@ -181,6 +222,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   await runImportWorkflowSmoke(browser);
   await runAsyncImportRaceSmoke(browser);
+  await runSmilSanitizerSmoke(browser);
   await runResetNormalizationSmoke(browser);
   console.log("import gate browser smoke passed");
 } finally {

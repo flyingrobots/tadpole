@@ -51,6 +51,8 @@ Assertions covered:
   valid SVG
 - delayed file upload cannot overwrite a newer paste import after its file read
   resolves
+- pasted SVGs strip SMIL animation elements before rendering inline while
+  preserving safe local links
 - reset-to-sample restores the bundled sample SVG, target library, and three
   seeded sample tracks
 - reset-to-sample normalizes restored keyframes to the current timeline duration
