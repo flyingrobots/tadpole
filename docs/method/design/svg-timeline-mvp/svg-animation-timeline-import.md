@@ -83,6 +83,8 @@ This cycle includes:
   Tadpole keyframes.
 - Parse SVG clock values with SVG semantics, including unitless timecounts as
   seconds.
+- Interpolate imported fill/stroke color tracks when values are supported CSS
+  hex or RGB colors.
 - Keep sanitized SVG output free of animation nodes.
 - Show imported-track counts and unsupported-animation warnings in the SVG
   Source panel.
@@ -152,6 +154,8 @@ Unsupported input behavior:
 - Unsupported animation attributes are ignored and warned.
 - Non-linear or discrete `calcMode` values are ignored and warned until Tadpole
   has a timeline representation that preserves them faithfully.
+- Non-uniform scale, pivoted rotate, finite repeat, malformed transform values,
+  and non-interpolable color values are ignored and warned.
 - CSS animation and Web Animations script surfaces remain non-executed and are
   warned when detectable.
 - The sanitized SVG source never keeps SMIL animation nodes.
@@ -278,6 +282,11 @@ Behavior tests required:
 - [x] Browser witness proves unsafe animation references do not retarget to
       parent elements.
 - [x] Browser witness proves one-argument `translate` imports as x-only motion.
+- [x] Browser witness proves imported hex colors interpolate at the playhead.
+- [x] Browser witness proves non-uniform scale and pivoted rotate imports warn
+      instead of changing motion.
+- [x] Browser witness proves finite repeat and malformed transform imports warn
+      instead of shortening or inventing motion.
 
 Documentation/process tests:
 
@@ -297,6 +306,8 @@ The work is done when:
       and failed-import warning cleanup.
 - [x] Browser witness covers unsafe reference rejection and x-only translate
       import semantics.
+- [x] Browser witness covers color interpolation and stricter transform/repeat
+      rejection.
 - [x] Local validation is green.
 
 ## Validation Plan
@@ -369,7 +380,9 @@ What the tests proved:
   SMIL clock values import as seconds, rejects unsupported discrete timing as a
   warning, clears stale warnings after failed file import, rejects unsafe
   animation references without parent retargeting, and imports one-argument
-  `translate` as x-only motion.
+  `translate` as x-only motion. Follow-up review hardening added proof for
+  imported color interpolation, non-uniform scale rejection, pivoted rotate
+  rejection, finite repeat rejection, and malformed transform rejection.
 
 What remains open:
 

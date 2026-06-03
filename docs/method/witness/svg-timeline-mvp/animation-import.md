@@ -22,6 +22,12 @@ turn the motion into editable timeline tracks.
 - Unsafe explicit animation target references are warned and not retargeted to
   parent elements.
 - One-argument `translate` imports as x-only motion with no synthetic y track.
+- Imported fill/stroke colors interpolate when source values are supported CSS
+  hex or RGB colors.
+- Non-uniform scale and pivoted rotate imports warn instead of dropping
+  unsupported transform semantics.
+- Finite repeats and malformed transform values warn instead of shortening or
+  inventing motion.
 
 ## Command
 
