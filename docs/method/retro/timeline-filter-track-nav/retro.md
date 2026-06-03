@@ -20,5 +20,7 @@ Implemented in one cycle with small, contained changes to
 ## Commands / Evidence
 
 - Branch: `cycles/UIUX_timeline-controls-polish`
-- Files changed: `frontend/src/App.svelte`,
-  `docs/method/{design,witness,retro}/timeline-filter-track-nav/*`
+- Files changed: `frontend/src/App.svelte`
+- Design packet: `docs/method/design/timeline-filter-track-nav/design.md`
+- Witness packet: `docs/method/witness/timeline-filter-track-nav/witness.md`
+- Retro packet: `docs/method/retro/timeline-filter-track-nav/retro.md`
