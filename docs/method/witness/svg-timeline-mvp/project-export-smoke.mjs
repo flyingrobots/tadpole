@@ -17,6 +17,26 @@ const restoredSvg = `<svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg
   <rect id="box" data-tadpole-name="Restored Box" x="20" y="20" width="40" height="28" fill="#0f766e" />
 </svg>`;
 
+const projectFrom = (overrides = {}) => ({
+  version: "tadpole-project-1",
+  svg: {
+    label: "Validation Fixture",
+    source: restoredSvg,
+    targets: [{ id: "box", name: "Restored Box", kind: "shape" }],
+  },
+  timeline: {
+    duration: 900,
+    currentTime: 0,
+    frameRate: 60,
+    isLooping: false,
+    snapToFrames: true,
+    snapMs: 16,
+    gridDensity: 10,
+    tracks: [],
+  },
+  ...overrides,
+});
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -145,9 +165,41 @@ const runProjectExportSmoke = async (browser) => {
   await page.close();
 };
 
+const runProjectTrustBoundarySmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+
+  const unsafeProject = projectFrom({
+    timeline: {
+      ...projectFrom().timeline,
+      tracks: [
+        {
+          id: "track-box-fill",
+          targetId: "box",
+          property: "fill",
+          muted: false,
+          keyframes: [{ id: "box-fill-1", time: 0, value: "url(https://example.com/paint.svg#p)", easing: "linear" }],
+        },
+      ],
+    },
+  });
+
+  await page.getByLabel("Project JSON").fill(JSON.stringify(unsafeProject, null, 2));
+  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  assert(
+    (await textOf(page.locator(".export-block"))).includes("Project import failed: timeline tracks are invalid."),
+    "unsafe imported project keyframe value was not rejected",
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runProjectExportSmoke(browser);
+  await runProjectTrustBoundarySmoke(browser);
   console.log("project export browser smoke passed");
 } finally {
   await browser.close();

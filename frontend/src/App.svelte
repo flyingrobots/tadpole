@@ -247,6 +247,7 @@
     "visibility",
   ]);
   const unsafeCssValuePattern = /(?:url\s*\(|@import|expression\s*\(|(?:java|vb)script:|data:|https?:|\/\/)/i;
+  const unsafeProjectStyleValuePattern = /[;{}<>]/;
   const externalReferencePattern = /(?:(?:java|vb)script:|data:|https?:|\/\/)/i;
   const cssUrlReferencePattern = /url\s*\(\s*["']?([^"')]+)["']?\s*\)/gi;
   const localReferencePattern = /^(?:#[-\w:.]+|url\(#[-\w:.]+\))$/;
@@ -1131,6 +1132,36 @@
   const isKeyframeEasing = (value: unknown): value is KeyframeEasing =>
     typeof value === "string" && easingModes.includes(value as KeyframeEasing);
 
+  const normalizeProjectKeyframeValue = (property: AnimationProperty, value: string): string | null => {
+    const trimmedValue = value.trim();
+    if (trimmedValue === "") {
+      return null;
+    }
+
+    if (numericProperties.has(property)) {
+      const numericValue = Number(trimmedValue);
+      const definition = propertyById.get(property);
+      if (
+        !Number.isFinite(numericValue) ||
+        (definition?.min !== undefined && numericValue < definition.min) ||
+        (definition?.max !== undefined && numericValue > definition.max)
+      ) {
+        return null;
+      }
+      return String(numericValue);
+    }
+
+    if (
+      unsafeCssValuePattern.test(trimmedValue) ||
+      hasUnsafeSvgReference(trimmedValue) ||
+      unsafeProjectStyleValuePattern.test(trimmedValue)
+    ) {
+      return null;
+    }
+
+    return trimmedValue;
+  };
+
   const parseProjectTargets = (value: unknown): AnimationTarget[] | null => {
     if (!Array.isArray(value)) {
       return null;
@@ -1170,6 +1201,7 @@
         return null;
       }
 
+      const property = candidate.property;
       const keyframes = candidate.keyframes.map((keyframe): Keyframe | null => {
         if (
           !isRecord(keyframe) ||
@@ -1182,10 +1214,15 @@
           return null;
         }
 
+        const value = normalizeProjectKeyframeValue(property, keyframe.value);
+        if (value === null) {
+          return null;
+        }
+
         return {
           id: keyframe.id,
           time: keyframe.time,
-          value: keyframe.value,
+          value,
           easing: keyframe.easing,
         };
       });
@@ -1197,7 +1234,7 @@
       return {
         id: candidate.id,
         targetId: candidate.targetId,
-        property: candidate.property,
+        property,
         muted: candidate.muted,
         keyframes: keyframes as Keyframe[],
       };
