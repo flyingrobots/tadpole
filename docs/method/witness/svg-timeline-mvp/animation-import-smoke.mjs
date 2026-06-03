@@ -131,9 +131,11 @@ const runAnimationImportSmoke = async (browser) => {
   await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("450");
   const boxStyle = await page.locator(".preview-svg-host #box").evaluate((element) => ({
     opacity: Number(element.style.opacity),
+    fill: window.getComputedStyle(element).fill,
     transform: element.style.transform,
   }));
   assert(boxStyle.opacity > 0.9, `imported opacity track did not scrub near the midpoint: ${boxStyle.opacity}`);
+  assert(boxStyle.fill === "rgb(26, 109, 172)", `imported fill track did not interpolate at midpoint: ${boxStyle.fill}`);
   assert(boxStyle.transform.includes("translate("), `imported translate track did not apply: ${boxStyle.transform}`);
 
   const opacityTrack = page.locator(".track-card", { hasText: "Animated Box • opacity" }).first();

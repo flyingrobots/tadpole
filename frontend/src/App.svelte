@@ -32,6 +32,12 @@
     next: Keyframe | null;
   };
 
+  type RgbColor = {
+    r: number;
+    g: number;
+    b: number;
+  };
+
   type DraggingKeyframe = {
     trackId: string;
     keyframeId: string;
@@ -164,6 +170,7 @@
     propertyCatalog.map((property): [AnimationProperty, PropertyDefinition] => [property.id, property]),
   );
   const numericProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "number"));
+  const colorProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "color"));
   type PreviewStyle = {
     transform: string;
     opacity: string;
@@ -824,9 +831,50 @@
     Array.isArray(track.keyframes)
       ? [...track.keyframes].sort((first, second) => first.time - second.time)
       : [];
-  const interpolateNumeric = (firstValue, secondValue, ratio) =>
-    firstValue + (secondValue - firstValue) * ratio;
-  const applyEasing = (ratio, easing) => {
+	  const interpolateNumeric = (firstValue, secondValue, ratio) =>
+	    firstValue + (secondValue - firstValue) * ratio;
+	  const parseCssColor = (value) => {
+	    const trimmed = String(value || "").trim();
+	    const shortHex = /^#([0-9a-f]{3})$/i.exec(trimmed);
+	    if (shortHex) {
+	      const [, hex] = shortHex;
+	      return {
+	        r: parseInt(hex[0] + hex[0], 16),
+	        g: parseInt(hex[1] + hex[1], 16),
+	        b: parseInt(hex[2] + hex[2], 16),
+	      };
+	    }
+	    const longHex = /^#([0-9a-f]{6})$/i.exec(trimmed);
+	    if (longHex) {
+	      const [, hex] = longHex;
+	      return {
+	        r: parseInt(hex.slice(0, 2), 16),
+	        g: parseInt(hex.slice(2, 4), 16),
+	        b: parseInt(hex.slice(4, 6), 16),
+	      };
+	    }
+	    const rgb = /^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.exec(trimmed);
+	    if (!rgb) {
+	      return null;
+	    }
+	    const color = { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+	    return [color.r, color.g, color.b].every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? color : null;
+	  };
+	  const formatCssColor = (color) =>
+	    "rgb(" + Math.round(color.r) + ", " + Math.round(color.g) + ", " + Math.round(color.b) + ")";
+	  const interpolateCssColor = (firstValue, secondValue, ratio) => {
+	    const firstColor = parseCssColor(firstValue);
+	    const secondColor = parseCssColor(secondValue);
+	    if (!firstColor || !secondColor) {
+	      return null;
+	    }
+	    return formatCssColor({
+	      r: interpolateNumeric(firstColor.r, secondColor.r, ratio),
+	      g: interpolateNumeric(firstColor.g, secondColor.g, ratio),
+	      b: interpolateNumeric(firstColor.b, secondColor.b, ratio),
+	    });
+	  };
+	  const applyEasing = (ratio, easing) => {
     const t = clamp(ratio, 0, 1);
     switch (easing) {
       case "power1.inOut":
@@ -861,23 +909,28 @@
       return sorted[sorted.length - 1].value;
     }
 
-    for (let i = 0; i < sorted.length - 1; i += 1) {
-      const left = sorted[i];
-      const right = sorted[i + 1];
-      if (time >= left.time && time <= right.time) {
-        if (!numericProperties.has(track.property)) {
-          const midpoint = left.time + (right.time - left.time) / 2;
-          return time < midpoint ? left.value : right.value;
-        }
-        const leftValue = Number(left.value);
-        const rightValue = Number(right.value);
-        if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue) || right.time === left.time) {
-          return left.value;
-        }
-        const ratio = (time - left.time) / (right.time - left.time);
-        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
-      }
-    }
+	    for (let i = 0; i < sorted.length - 1; i += 1) {
+	      const left = sorted[i];
+	      const right = sorted[i + 1];
+	      if (time >= left.time && time <= right.time) {
+	        const ratio = (time - left.time) / (right.time - left.time);
+	        const easedRatio = applyEasing(ratio, right.easing);
+	        if (!numericProperties.has(track.property)) {
+	          const colorValue = interpolateCssColor(left.value, right.value, easedRatio);
+	          if (colorValue) {
+	            return colorValue;
+	          }
+	          const midpoint = left.time + (right.time - left.time) / 2;
+	          return time < midpoint ? left.value : right.value;
+	        }
+	        const leftValue = Number(left.value);
+	        const rightValue = Number(right.value);
+	        if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue) || right.time === left.time) {
+	          return left.value;
+	        }
+	        return String(interpolateNumeric(leftValue, rightValue, easedRatio));
+	      }
+	    }
 
     return sorted[sorted.length - 1].value;
   };
@@ -1033,6 +1086,56 @@ ${runnableRuntimeScript}
   const interpolateNumeric = (firstValue: number, secondValue: number, ratio: number): number =>
     firstValue + (secondValue - firstValue) * ratio;
 
+  const parseCssColor = (value: string): RgbColor | null => {
+    const trimmed = value.trim();
+    const shortHex = /^#([0-9a-f]{3})$/i.exec(trimmed);
+    if (shortHex) {
+      const [, hex] = shortHex;
+      return {
+        r: parseInt(hex[0]! + hex[0]!, 16),
+        g: parseInt(hex[1]! + hex[1]!, 16),
+        b: parseInt(hex[2]! + hex[2]!, 16),
+      };
+    }
+
+    const longHex = /^#([0-9a-f]{6})$/i.exec(trimmed);
+    if (longHex) {
+      const [, hex] = longHex;
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+      };
+    }
+
+    const rgb = /^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.exec(
+      trimmed,
+    );
+    if (!rgb) {
+      return null;
+    }
+
+    const color = { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+    return Object.values(color).every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? color : null;
+  };
+
+  const formatCssColor = (color: RgbColor): string =>
+    `rgb(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)})`;
+
+  const interpolateCssColor = (firstValue: string, secondValue: string, ratio: number): string | null => {
+    const firstColor = parseCssColor(firstValue);
+    const secondColor = parseCssColor(secondValue);
+    if (!firstColor || !secondColor) {
+      return null;
+    }
+
+    return formatCssColor({
+      r: interpolateNumeric(firstColor.r, secondColor.r, ratio),
+      g: interpolateNumeric(firstColor.g, secondColor.g, ratio),
+      b: interpolateNumeric(firstColor.b, secondColor.b, ratio),
+    });
+  };
+
   const applyEasing = (ratio: number, easing: KeyframeEasing): number => {
     const t = clamp(ratio, 0, 1);
     switch (easing) {
@@ -1072,7 +1175,13 @@ ${runnableRuntimeScript}
       const left = sorted[i];
       const right = sorted[i + 1];
       if (time >= left.time && time <= right.time) {
+        const ratio = (time - left.time) / (right.time - left.time);
+        const easedRatio = applyEasing(ratio, right.easing);
         if (!isNumericProperty(track.property)) {
+          const colorValue = interpolateCssColor(left.value, right.value, easedRatio);
+          if (colorValue) {
+            return colorValue;
+          }
           const midpoint = left.time + (right.time - left.time) / 2;
           return time < midpoint ? left.value : right.value;
         }
@@ -1081,8 +1190,7 @@ ${runnableRuntimeScript}
         if (Number.isNaN(leftValue) || Number.isNaN(rightValue) || right.time === left.time) {
           return left.value;
         }
-        const ratio = (time - left.time) / (right.time - left.time);
-        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
+        return String(interpolateNumeric(leftValue, rightValue, easedRatio));
       }
     }
 
@@ -1698,6 +1806,9 @@ ${runnableRuntimeScript}
     const keyframes = values.map((value, index): ImportedAnimationKeyframe | null => {
       const normalizedValue = normalizeProjectKeyframeValue(property, value);
       if (normalizedValue === null) {
+        return null;
+      }
+      if (colorProperties.has(property) && parseCssColor(normalizedValue) === null) {
         return null;
       }
 
