@@ -1,6 +1,8 @@
 name: Tadpole Task
 description: Track a scoped Tadpole implementation, design, or process task.
 title: "<GOAL>-<ID> - <short title>"
+labels:
+  - work-in-progress
 body:
   - type: dropdown
     id: roadmap_gate
@@ -28,6 +30,27 @@ body:
       placeholder: docs/method/design/<cycle>/design.md
     validations:
       required: true
+  - type: input
+    id: draft_pr
+    attributes:
+      label: Draft PR
+      description: Link the cycle-start draft PR after the branch is pushed.
+      placeholder: https://github.com/flyingrobots/tadpole/pull/<number>
+    validations:
+      required: false
+  - type: checkboxes
+    id: cycle_start
+    attributes:
+      label: Cycle Start Checklist
+      description: Complete this scaffold before implementation begins.
+      options:
+        - label: "`git fetch origin` completed."
+        - label: "Local merge target branch synced to `origin/main` or the named merge target."
+        - label: "Cycle branch checked out from the synced merge target."
+        - label: "Design doc written from `docs/method/design/TEMPLATE.md` and linked above."
+        - label: "Initial cycle scaffold staged, committed, and pushed."
+        - label: "Draft PR opened to the merge target and linked above."
+        - label: "`work-in-progress` label applied while cycle work is in flight."
   - type: textarea
     id: hill
     attributes:

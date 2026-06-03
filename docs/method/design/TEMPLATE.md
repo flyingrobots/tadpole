@@ -3,6 +3,7 @@ title: "{GOAL}-{ID} - {Short Title}"
 lane: "design"
 goal: "Goal {number}"
 issue: "https://github.com/flyingrobots/tadpole/issues/{number}"
+pr: "https://github.com/flyingrobots/tadpole/pull/{number}"
 status: "draft|active|landed|superseded"
 owners:
   - "@flyingrobots"
@@ -24,6 +25,17 @@ Name the roadmap gate this work advances.
 Example:
 
 - Goal 5: Export And Reopen Rough Projects
+
+## Cycle Start
+
+- [ ] `git fetch origin` completed.
+- [ ] Local merge target branch synced to `origin/main` or the named merge
+      target without rebase or force operations.
+- [ ] Cycle branch checked out from the synced merge target.
+- [ ] GitHub issue created from the `Tadpole Task` issue form.
+- [ ] `work-in-progress` label applied to the GitHub issue.
+- [ ] Design doc, issue link, and initial cycle scaffold staged and committed.
+- [ ] Branch pushed and draft PR opened to the merge target.
 
 ## Decision Summary
 
