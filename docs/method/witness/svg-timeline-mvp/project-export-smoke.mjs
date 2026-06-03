@@ -234,11 +234,38 @@ const runProjectTrackIdValidationSmoke = async (browser) => {
   await page.close();
 };
 
+const runProjectTargetMetadataValidationSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+
+  const mismatchedTargetProject = projectFrom({
+    svg: {
+      label: "Mismatched Target Fixture",
+      source: restoredSvg,
+      targets: [{ id: "ghost", name: "Ghost Target", kind: "shape" }],
+    },
+  });
+
+  await page.getByLabel("Project JSON").fill(JSON.stringify(mismatchedTargetProject, null, 2));
+  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  assert(
+    (await textOf(page.locator(".export-block"))).includes(
+      "Project import failed: target metadata does not match SVG source.",
+    ),
+    "mismatched project target metadata was not rejected",
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runProjectExportSmoke(browser);
   await runProjectTrustBoundarySmoke(browser);
   await runProjectTrackIdValidationSmoke(browser);
+  await runProjectTargetMetadataValidationSmoke(browser);
   console.log("project export browser smoke passed");
 } finally {
   await browser.close();

@@ -1193,7 +1193,23 @@
       };
     });
 
-    return targets.every((target) => target !== null) ? (targets as AnimationTarget[]) : null;
+    if (!targets.every((target) => target !== null)) {
+      return null;
+    }
+    const parsedTargets = targets as AnimationTarget[];
+    return hasUniqueNonEmptyIds(parsedTargets, (target) => target.id) ? parsedTargets : null;
+  };
+
+  const projectTargetsMatchParsedSvg = (projectTargets: AnimationTarget[], parsedTargets: AnimationTarget[]): boolean => {
+    if (projectTargets.length !== parsedTargets.length) {
+      return false;
+    }
+
+    const projectTargetsById = new Map(projectTargets.map((target) => [target.id, target]));
+    return parsedTargets.every((parsedTarget) => {
+      const projectTarget = projectTargetsById.get(parsedTarget.id);
+      return projectTarget?.name === parsedTarget.name && projectTarget.kind === parsedTarget.kind;
+    });
   };
 
   const parseProjectTracks = (value: unknown): TimelineTrack[] | null => {
@@ -1295,6 +1311,9 @@
     const targets = parseProjectTargets(svg.targets);
     if (!targets) {
       return { error: "Project import failed: target metadata is invalid." };
+    }
+    if (!projectTargetsMatchParsedSvg(targets, parsedSvg.targets)) {
+      return { error: "Project import failed: target metadata does not match SVG source." };
     }
 
     if (
