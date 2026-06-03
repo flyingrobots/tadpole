@@ -393,13 +393,23 @@
     return pointerTimeFromRect(rect, event);
   };
 
+  let trackCursor = 0;
+  let keyframeCursor = 0;
+
   const makeTrackId = (): string => `track-${(trackCursor += 1)}`;
-  const makeKeyframeId = (): string => `kf-${Math.floor(Math.random() * 100000)}`;
+  const existingKeyframeIds = (): Set<string> => new Set(tracks.flatMap((track) => track.keyframes.map((keyframe) => keyframe.id)));
+  const makeKeyframeId = (): string => {
+    const existing = existingKeyframeIds();
+    let id = "";
+    do {
+      id = `kf-${(keyframeCursor += 1)}`;
+    } while (existing.has(id));
+    return id;
+  };
 
   const formatMs = (value: number): string => `${value}ms`;
   const formatSec = (value: number): string => `${(value / 1000).toFixed(2)}s`;
 
-  let trackCursor = 0;
   let tracks: TimelineTrack[] = [
     {
       id: "track-co-fill",
