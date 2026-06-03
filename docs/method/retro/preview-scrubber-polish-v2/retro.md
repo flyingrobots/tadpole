@@ -4,6 +4,8 @@
 
 Implemented scrubber parity and preview insertion affordances in one pass while
 keeping changes limited to `frontend/src/App.svelte` and cycle-method packets.
+Rendered SVG target binding is follow-up work from the source-rendered preview
+path and is tracked by the SVG timeline MVP checklist and witness evidence.
 
 ## What went well
 
