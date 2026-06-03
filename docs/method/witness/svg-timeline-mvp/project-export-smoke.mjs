@@ -13,6 +13,10 @@ const assert = (condition, message) => {
 
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 
+const restoredSvg = `<svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" aria-label="Restored Project">
+  <rect id="box" data-tadpole-name="Restored Box" x="20" y="20" width="40" height="28" fill="#0f766e" />
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -47,6 +51,7 @@ const runProjectExportSmoke = async (browser) => {
   assert(payload.timeline.duration === 1200, `unexpected timeline duration: ${payload.timeline.duration}`);
   assert(payload.timeline.currentTime === 0, `unexpected current time: ${payload.timeline.currentTime}`);
   assert(payload.timeline.frameRate === 60, `unexpected frame rate: ${payload.timeline.frameRate}`);
+  assert(payload.timeline.snapMs === 16, `unexpected snap step: ${payload.timeline.snapMs}`);
   assert(payload.timeline.tracks.length === 3, `expected sample tracks, got ${payload.timeline.tracks.length}`);
 
   await page.getByLabel("Project JSON").fill("{ nope");
@@ -71,6 +76,70 @@ const runProjectExportSmoke = async (browser) => {
     (await textOf(page.locator(".export-block"))).includes("Project JSON validated: Sample Logo with 6 targets and 3 tracks."),
     "uploaded project JSON did not validate",
   );
+
+  const restoreProject = {
+    version: "tadpole-project-1",
+    svg: {
+      label: "Restored Project",
+      source: restoredSvg,
+      targets: [{ id: "box", name: "Restored Box", kind: "shape" }],
+    },
+    timeline: {
+      duration: 900,
+      currentTime: 400,
+      frameRate: 48,
+      isLooping: false,
+      snapToFrames: true,
+      snapMs: 20,
+      gridDensity: 10,
+      tracks: [
+        {
+          id: "track-box-x",
+          targetId: "box",
+          property: "x",
+          muted: false,
+          keyframes: [
+            { id: "box-x-1", time: 0, value: "0", easing: "linear" },
+            { id: "box-x-2", time: 400, value: "30", easing: "linear" },
+          ],
+        },
+        {
+          id: "track-ghost-opacity",
+          targetId: "ghost",
+          property: "opacity",
+          muted: false,
+          keyframes: [{ id: "ghost-opacity-1", time: 0, value: "1", easing: "linear" }],
+        },
+      ],
+    },
+  };
+
+  await page.getByLabel("Project JSON").fill(JSON.stringify(restoreProject, null, 2));
+  await page.getByRole("button", { name: "Restore Project" }).click();
+  await page.waitForSelector(".preview-svg-host #box");
+
+  const restorePanelText = await textOf(page.locator(".export-block"));
+  assert(
+    restorePanelText.includes("Project restored: Restored Project with 1 targets and 1 tracks."),
+    "project restore status did not report restored tracks",
+  );
+  assert(restorePanelText.includes("Missing target IDs: ghost"), "missing target IDs were not visibly reported");
+  assert((await page.locator(".target-chip", { hasText: "Restored Box" }).count()) === 1, "restored target chip missing");
+  assert((await page.locator(".track-card", { hasText: "Restored Box" }).locator("text=Translate X").count()) > 0, "restored box track missing");
+
+  const boxTransform = await page.locator(".preview-svg-host #box").evaluate((element) => element.style.transform);
+  assert(boxTransform.includes("translate(30px"), `restored track did not apply at restored current time: ${boxTransform}`);
+
+  await page.waitForFunction(() => document.querySelector(".export-block pre code")?.textContent?.includes("Restored Project"));
+  const restoredPayloadText = await page.locator(".export-block pre code").textContent();
+  const restoredPayload = JSON.parse(restoredPayloadText);
+  assert(restoredPayload.svg.label === "Restored Project", `restored export label mismatch: ${restoredPayload.svg.label}`);
+  assert(restoredPayload.timeline.duration === 900, `restored duration mismatch: ${restoredPayload.timeline.duration}`);
+  assert(restoredPayload.timeline.currentTime === 400, `restored current time mismatch: ${restoredPayload.timeline.currentTime}`);
+  assert(restoredPayload.timeline.frameRate === 48, `restored frame rate mismatch: ${restoredPayload.timeline.frameRate}`);
+  assert(restoredPayload.timeline.snapMs === 20, `restored snap step mismatch: ${restoredPayload.timeline.snapMs}`);
+  assert(restoredPayload.timeline.tracks.length === 1, `expected missing-target track to be skipped, got ${restoredPayload.timeline.tracks.length}`);
+  assert(restoredPayload.timeline.tracks[0].targetId === "box", `restored track target mismatch: ${restoredPayload.timeline.tracks[0].targetId}`);
 
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();

@@ -51,11 +51,10 @@
 - [x] Extend export JSON from timeline-only to project-level SVG plus timeline
       data.
 - [x] Include discovered target metadata in export.
-- [x] Add project JSON import. Current slice validates pasted/uploaded project
-      JSON; restoring project state is the next slice.
-- [ ] Restore SVG source, targets, timeline settings, and tracks from imported
+- [x] Add project JSON import with validation for pasted/uploaded project JSON.
+- [x] Restore SVG source, targets, timeline settings, and tracks from imported
       JSON.
-- [ ] Handle missing target IDs visibly after import.
+- [x] Handle missing target IDs visibly after import.
 
 ## Goal 6: Rough UX Hardening
 
