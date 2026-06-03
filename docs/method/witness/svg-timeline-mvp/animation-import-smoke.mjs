@@ -72,6 +72,12 @@ const pivotRotateSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/s
   </rect>
 </svg>`;
 
+const finiteRepeatSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Finite Repeat Fixture">
+  <rect id="repeater" data-tadpole-name="Repeater" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="1s" repeatCount="2" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -269,6 +275,20 @@ const runPivotRotateWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runFiniteRepeatWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, finiteRepeatSvg);
+  await page.waitForSelector(".preview-svg-host #repeater");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported repeatCount on #repeater."), "finite repeatCount warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `finite repeatCount imported as a single cycle: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -279,6 +299,7 @@ try {
   await runOneArgumentTranslateSmoke(browser);
   await runNonUniformScaleWarningSmoke(browser);
   await runPivotRotateWarningSmoke(browser);
+  await runFiniteRepeatWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

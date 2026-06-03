@@ -1846,6 +1846,20 @@ ${runnableRuntimeScript}
 
   const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);
 
+  const unsupportedRepeatAttributeName = (element: Element): string => {
+    const repeatDur = element.getAttribute("repeatDur")?.trim();
+    if (repeatDur) {
+      return "repeatDur";
+    }
+
+    const repeatCount = element.getAttribute("repeatCount")?.trim();
+    if (repeatCount && repeatCount.toLowerCase() !== "indefinite") {
+      return "repeatCount";
+    }
+
+    return "";
+  };
+
   const extractAnimateElementTrack = (
     element: Element,
     targetId: string,
@@ -1999,6 +2013,12 @@ ${runnableRuntimeScript}
       const calcMode = element.getAttribute("calcMode")?.trim().toLowerCase();
       if (calcMode && calcMode !== "linear") {
         warnings.push(`Unsupported calcMode "${calcMode}" on #${targetId}.`);
+        return;
+      }
+
+      const unsupportedRepeat = unsupportedRepeatAttributeName(element);
+      if (unsupportedRepeat) {
+        warnings.push(`Unsupported ${unsupportedRepeat} on #${targetId}.`);
         return;
       }
 
