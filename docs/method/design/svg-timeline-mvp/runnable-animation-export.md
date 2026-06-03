@@ -3,7 +3,7 @@ title: "Goal 8 - Export Runnable Animation Output"
 lane: "design"
 goal: "Goal 8"
 issue: "https://github.com/flyingrobots/tadpole/issues/15"
-pr: "https://github.com/flyingrobots/tadpole/pull/<number>"
+pr: "https://github.com/flyingrobots/tadpole/pull/16"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,8 +30,8 @@ updated: "2026-06-03"
 - [x] Cycle branch checked out from the synced merge target.
 - [x] GitHub issue created from the `Tadpole Task` issue form.
 - [x] `work-in-progress` label applied to the GitHub issue.
-- [ ] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Design doc, issue link, and initial cycle scaffold staged and committed.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -360,4 +360,4 @@ What remains open:
 
 PR:
 
-- [Pull request](https://github.com/flyingrobots/tadpole/pull/<number>)
+- [Pull request #16](https://github.com/flyingrobots/tadpole/pull/16)
