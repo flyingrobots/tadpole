@@ -571,6 +571,29 @@
   const interpolateNumeric = (firstValue: number, secondValue: number, ratio: number): number =>
     firstValue + (secondValue - firstValue) * ratio;
 
+  const applyEasing = (ratio: number, easing: KeyframeEasing): number => {
+    const t = clamp(ratio, 0, 1);
+    switch (easing) {
+      case "power1.inOut":
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      case "power2.out":
+        return 1 - Math.pow(1 - t, 3);
+      case "power3.inOut":
+        return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+      case "expo.out":
+        return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      case "back.inOut": {
+        const back = 1.70158 * 1.525;
+        return t < 0.5
+          ? (Math.pow(2 * t, 2) * ((back + 1) * 2 * t - back)) / 2
+          : (Math.pow(2 * t - 2, 2) * ((back + 1) * (t * 2 - 2) + back) + 2) / 2;
+      }
+      case "linear":
+      default:
+        return t;
+    }
+  };
+
   const getCurrentValue = (track: TimelineTrack, time: number): string => {
     if (track.keyframes.length === 0) {
       return defaultValueFor(track.property);
@@ -597,7 +620,7 @@
           return left.value;
         }
         const ratio = (time - left.time) / (right.time - left.time);
-        return String(interpolateNumeric(leftValue, rightValue, ratio));
+        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
       }
     }
 
