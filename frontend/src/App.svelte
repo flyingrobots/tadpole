@@ -1456,11 +1456,11 @@
       createdId = newFrame.id;
       if (existingIndex >= 0) {
         const next = [...track.keyframes];
-        createdId = next[existingIndex]?.id ?? null;
+        const existingFrame = next[existingIndex]!;
+        createdId = existingFrame.id;
         next[existingIndex] = {
-          ...next[existingIndex],
+          ...existingFrame,
           value: newFrame.value,
-          easing: newFrame.easing,
         };
         return { ...track, keyframes: sortKeyframes(next) };
       }
