@@ -1724,6 +1724,12 @@ ${runnableRuntimeScript}
       return String(numbers[dimension] ?? 0);
     });
 
+  const hasNonUniformScaleValues = (values: string[]): boolean =>
+    values.some((value) => {
+      const numbers = numbersFromSmilValue(value);
+      return numbers.length > 1 && numbers[1] !== numbers[0];
+    });
+
   const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);
 
   const extractAnimateElementTrack = (
@@ -1794,6 +1800,10 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "scale") {
+      if (hasNonUniformScaleValues(values)) {
+        warnings.push(`Unsupported non-uniform scale values on #${targetId}.`);
+        return [];
+      }
       const scaleValues = dimensionValuesFromTransformValues(values, 0);
       const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration);
       if (!keyframes) {

@@ -60,6 +60,12 @@ const oneArgumentTranslateSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.o
   </rect>
 </svg>`;
 
+const nonUniformScaleSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Non Uniform Scale Fixture">
+  <rect id="scaler" data-tadpole-name="Scaler" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="scale" values="1 1;2 3" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -227,6 +233,20 @@ const runOneArgumentTranslateSmoke = async (browser) => {
   await page.close();
 };
 
+const runNonUniformScaleWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, nonUniformScaleSvg);
+  await page.waitForSelector(".preview-svg-host #scaler");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported non-uniform scale values on #scaler."), "non-uniform scale warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `non-uniform scale imported as uniform track: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -235,6 +255,7 @@ try {
   await runFailedFileClearsWarningSmoke(browser);
   await runUnsafeHrefWarningSmoke(browser);
   await runOneArgumentTranslateSmoke(browser);
+  await runNonUniformScaleWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
