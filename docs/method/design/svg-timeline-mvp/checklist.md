@@ -38,11 +38,13 @@
 
 ## Goal 4: Import External SVGs
 
-- [ ] Add a compact SVG file upload control.
-- [ ] Add a paste/import path for raw SVG source.
-- [ ] Re-run target discovery when new SVG source is loaded.
-- [ ] Reset or reconcile timeline tracks when the SVG target set changes.
-- [ ] Add a reset-to-sample SVG action.
+- [x] Add a compact SVG file upload control.
+- [x] Add a paste/import path for raw SVG source.
+- [x] Re-run target discovery when new SVG source is loaded.
+- [x] Reset or reconcile timeline tracks when the SVG target set changes.
+      Incompatible tracks are removed when imported targets no longer exist.
+- [x] Add a reset-to-sample SVG action that restores the bundled SVG and seeded
+      sample tracks.
 
 ## Goal 5: Export And Reopen Rough Projects
 
