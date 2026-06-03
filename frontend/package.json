@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "open-props": "^1.7.17",
-    "svelte": "^4.2.18"
+    "svelte": "^5.56.1"
   },
   "devDependencies": {
     "@types/node": "^22.4.1",
@@ -19,6 +19,6 @@
     "svelte-check": "^4.0.0",
     "svelte-preprocess": "^6.0.3",
     "typescript": "^5.6.2",
-    "vite": "^5.4.5"
+    "vite": "^8.0.16"
   }
 }
