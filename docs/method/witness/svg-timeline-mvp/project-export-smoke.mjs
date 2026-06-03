@@ -161,6 +161,10 @@ const runProjectExportSmoke = async (browser) => {
   assert(restoredPayload.timeline.tracks.length === 1, `expected missing-target track to be skipped, got ${restoredPayload.timeline.tracks.length}`);
   assert(restoredPayload.timeline.tracks[0].targetId === "box", `restored track target mismatch: ${restoredPayload.timeline.tracks[0].targetId}`);
 
+  await page.getByRole("button", { name: "Reset Sample" }).click();
+  const resetPanelText = await textOf(page.locator(".export-block"));
+  assert(!resetPanelText.includes("Missing target IDs: ghost"), "missing-target warning persisted after sample SVG reset");
+
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();
 };

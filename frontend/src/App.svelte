@@ -105,6 +105,7 @@
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
   const projectExportVersion = "tadpole-project-1";
+  const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
 
   // Animation timeline state.
   const easingModes: KeyframeEasing[] = ["linear", "power1.inOut", "power2.out", "power3.inOut", "expo.out", "back.inOut"];
@@ -561,7 +562,7 @@
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let projectDraftSource = "";
-  let projectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
+  let projectImportStatus = defaultProjectImportStatus;
   let projectImportError = "";
   let projectMissingTargetIds: string[] = [];
   let showOnlySelected = false;
@@ -1005,6 +1006,12 @@
     return svgImportRevision;
   };
 
+  const clearProjectImportStatus = (): void => {
+    projectImportStatus = defaultProjectImportStatus;
+    projectImportError = "";
+    projectMissingTargetIds = [];
+  };
+
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
     const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
     if (!track) {
@@ -1074,6 +1081,7 @@
     svgDraftSource = parsed.markup;
     svgSourceLabel = options.label;
     svgImportError = "";
+    clearProjectImportStatus();
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
