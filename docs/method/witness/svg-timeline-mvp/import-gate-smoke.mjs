@@ -91,7 +91,7 @@ const runImportWorkflowSmoke = async (browser) => {
   await page.getByRole("button", { name: "Create Track" }).click();
   assert((await page.locator(".track-card", { hasText: "Flame" }).locator("text=fill").count()) > 0, "new track was not created for imported Flame target");
 
-  await page.getByLabel("Upload").setInputFiles({
+  await page.getByLabel("Upload", { exact: true }).setInputFiles({
     name: "badge.svg",
     mimeType: "image/svg+xml",
     buffer: Buffer.from(badgeSvg),
@@ -149,7 +149,7 @@ const runAsyncImportRaceSmoke = async (browser) => {
 
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
-  await page.getByLabel("Upload").setInputFiles({
+  await page.getByLabel("Upload", { exact: true }).setInputFiles({
     name: "slow.svg",
     mimeType: "image/svg+xml",
     buffer: Buffer.from(slowSvg),
@@ -207,9 +207,9 @@ const runResetNormalizationSmoke = async (browser) => {
   await page.getByRole("button", { name: "Reset Sample" }).click();
   const payloadText = await page.locator(".export-block pre code").textContent();
   const payload = JSON.parse(payloadText);
-  const invalid = payload.tracks.flatMap((track) =>
+  const invalid = payload.timeline.tracks.flatMap((track) =>
     track.keyframes
-      .filter((keyframe) => keyframe.time > payload.duration)
+      .filter((keyframe) => keyframe.time > payload.timeline.duration)
       .map((keyframe) => `${track.id}:${keyframe.id}:${keyframe.time}`),
   );
   assert(invalid.length === 0, `found out-of-range keyframes after reset: ${invalid.join(", ")}`);

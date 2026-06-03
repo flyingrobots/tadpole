@@ -52,6 +52,24 @@
     restoreSampleTracks?: boolean;
   };
 
+  type TadpoleProject = {
+    version: "tadpole-project-1";
+    svg: {
+      label: string;
+      source: string;
+      targets: AnimationTarget[];
+    };
+    timeline: {
+      duration: number;
+      currentTime: number;
+      frameRate: number;
+      isLooping: boolean;
+      snapToFrames: boolean;
+      gridDensity: number;
+      tracks: TimelineTrack[];
+    };
+  };
+
   type PropertyDefinition = {
     id: AnimationProperty;
     label: string;
@@ -85,6 +103,7 @@
   const minGridDivisions = 5;
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
+  const projectExportVersion = "tadpole-project-1";
 
   // Animation timeline state.
   const easingModes: KeyframeEasing[] = ["linear", "power1.inOut", "power2.out", "power3.inOut", "expo.out", "back.inOut"];
@@ -524,6 +543,9 @@
   let previewSvgHostElement: HTMLDivElement | null = null;
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
+  let projectDraftSource = "";
+  let projectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
+  let projectImportError = "";
   let showOnlySelected = false;
   let trackFilterTerm = "";
   let trackSortMode: TrackSortMode = "manual";
@@ -822,16 +844,25 @@
     activeTrack === null
       ? "No track selected"
       : `${targetNameById.get(activeTrack.targetId) ?? activeTrack.targetId} • ${activeTrack.property}`;
-  $: exportPayload = JSON.stringify(
-    {
-      version: "tadpole-timeline-1",
+  const createProjectExport = (): TadpoleProject => ({
+    version: projectExportVersion,
+    svg: {
+      label: svgSourceLabel,
+      source: svgMarkup,
+      targets: availableTargets,
+    },
+    timeline: {
       duration: timelineDurationMs,
+      currentTime,
       frameRate,
+      isLooping,
+      snapToFrames,
+      gridDensity: timelineGridDensity,
       tracks,
     },
-    null,
-    2,
-  );
+  });
+
+  $: exportPayload = JSON.stringify(createProjectExport(), null, 2);
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -1065,6 +1096,206 @@
       if (revision === svgImportRevision) {
         svgImportError = "Import failed: could not read the SVG file.";
       }
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+  const isAnimationTargetKind = (value: unknown): value is AnimationTarget["kind"] =>
+    value === "group" || value === "path" || value === "text" || value === "shape";
+
+  const isAnimationProperty = (value: unknown): value is AnimationProperty =>
+    typeof value === "string" && properties.includes(value as AnimationProperty);
+
+  const isKeyframeEasing = (value: unknown): value is KeyframeEasing =>
+    typeof value === "string" && easingModes.includes(value as KeyframeEasing);
+
+  const parseProjectTargets = (value: unknown): AnimationTarget[] | null => {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const targets = value.map((candidate): AnimationTarget | null => {
+      if (!isRecord(candidate) || typeof candidate.id !== "string" || typeof candidate.name !== "string") {
+        return null;
+      }
+      if (!isAnimationTargetKind(candidate.kind)) {
+        return null;
+      }
+      return {
+        id: candidate.id,
+        name: candidate.name,
+        kind: candidate.kind,
+      };
+    });
+
+    return targets.every((target) => target !== null) ? (targets as AnimationTarget[]) : null;
+  };
+
+  const parseProjectTracks = (value: unknown): TimelineTrack[] | null => {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const tracksFromProject = value.map((candidate): TimelineTrack | null => {
+      if (
+        !isRecord(candidate) ||
+        typeof candidate.id !== "string" ||
+        typeof candidate.targetId !== "string" ||
+        !isAnimationProperty(candidate.property) ||
+        typeof candidate.muted !== "boolean" ||
+        !Array.isArray(candidate.keyframes)
+      ) {
+        return null;
+      }
+
+      const keyframes = candidate.keyframes.map((keyframe): Keyframe | null => {
+        if (
+          !isRecord(keyframe) ||
+          typeof keyframe.id !== "string" ||
+          typeof keyframe.time !== "number" ||
+          !Number.isFinite(keyframe.time) ||
+          typeof keyframe.value !== "string" ||
+          !isKeyframeEasing(keyframe.easing)
+        ) {
+          return null;
+        }
+
+        return {
+          id: keyframe.id,
+          time: keyframe.time,
+          value: keyframe.value,
+          easing: keyframe.easing,
+        };
+      });
+
+      if (!keyframes.every((keyframe) => keyframe !== null)) {
+        return null;
+      }
+
+      return {
+        id: candidate.id,
+        targetId: candidate.targetId,
+        property: candidate.property,
+        muted: candidate.muted,
+        keyframes: keyframes as Keyframe[],
+      };
+    });
+
+    return tracksFromProject.every((track) => track !== null) ? (tracksFromProject as TimelineTrack[]) : null;
+  };
+
+  const parseProjectImport = (source: string): { project: TadpoleProject } | { error: string } => {
+    const sourceText = source.trim();
+    if (sourceText === "") {
+      return { error: "Project import failed: paste project JSON." };
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(sourceText);
+    } catch {
+      return { error: "Project import failed: enter valid JSON." };
+    }
+
+    if (!isRecord(payload) || payload.version !== projectExportVersion) {
+      return { error: `Project import failed: expected ${projectExportVersion}.` };
+    }
+
+    const svg = payload.svg;
+    const timeline = payload.timeline;
+    if (!isRecord(svg) || typeof svg.label !== "string" || typeof svg.source !== "string") {
+      return { error: "Project import failed: SVG source metadata is missing." };
+    }
+    if (!parseSvgImport(svg.source)) {
+      return { error: "Project import failed: SVG source is not valid importable SVG." };
+    }
+
+    const targets = parseProjectTargets(svg.targets);
+    if (!targets) {
+      return { error: "Project import failed: target metadata is invalid." };
+    }
+
+    if (
+      !isRecord(timeline) ||
+      typeof timeline.duration !== "number" ||
+      !Number.isFinite(timeline.duration) ||
+      typeof timeline.currentTime !== "number" ||
+      !Number.isFinite(timeline.currentTime) ||
+      typeof timeline.frameRate !== "number" ||
+      !Number.isFinite(timeline.frameRate) ||
+      typeof timeline.isLooping !== "boolean" ||
+      typeof timeline.snapToFrames !== "boolean" ||
+      typeof timeline.gridDensity !== "number" ||
+      !Number.isFinite(timeline.gridDensity)
+    ) {
+      return { error: "Project import failed: timeline settings are invalid." };
+    }
+
+    const projectTracks = parseProjectTracks(timeline.tracks);
+    if (!projectTracks) {
+      return { error: "Project import failed: timeline tracks are invalid." };
+    }
+
+    return {
+      project: {
+        version: projectExportVersion,
+        svg: {
+          label: svg.label,
+          source: svg.source,
+          targets,
+        },
+        timeline: {
+          duration: timeline.duration,
+          currentTime: timeline.currentTime,
+          frameRate: timeline.frameRate,
+          isLooping: timeline.isLooping,
+          snapToFrames: timeline.snapToFrames,
+          gridDensity: timeline.gridDensity,
+          tracks: projectTracks,
+        },
+      },
+    };
+  };
+
+  const validateProjectDraft = (): void => {
+    const parsed = parseProjectImport(projectDraftSource);
+    if ("error" in parsed) {
+      projectImportError = parsed.error;
+      return;
+    }
+
+    projectImportError = "";
+    projectImportStatus = `Project JSON validated: ${parsed.project.svg.label} with ${parsed.project.svg.targets.length} targets and ${parsed.project.timeline.tracks.length} tracks.`;
+  };
+
+  const useCurrentProjectExport = (): void => {
+    projectDraftSource = exportPayload;
+    validateProjectDraft();
+  };
+
+  const importProjectFile = async (event: Event): Promise<void> => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const isJsonFile = file.type === "application/json" || file.name.toLowerCase().endsWith(".json");
+    if (!isJsonFile) {
+      projectImportError = "Project import failed: choose a JSON file.";
+      input.value = "";
+      return;
+    }
+
+    try {
+      projectDraftSource = await file.text();
+      validateProjectDraft();
+    } catch {
+      projectImportError = "Project import failed: could not read the JSON file.";
     } finally {
       input.value = "";
     }
@@ -2141,7 +2372,7 @@
           <button type="button" on:click={duplicateSelectedKeyframe} disabled={selectedTrackId === "" || selectedKeyframeId === ""}>
             Duplicate selected keyframe
           </button>
-          <button type="button" on:click={copyExport}>Export JSON {copiedExport ? `• ${copiedExport}` : ""}</button>
+          <button type="button" on:click={copyExport}>Copy Project JSON {copiedExport ? `• ${copiedExport}` : ""}</button>
           <button type="button" on:click={() => (showKeyboardShortcuts = !showKeyboardShortcuts)}>
             {showKeyboardShortcuts ? "Hide shortcuts" : "Show shortcuts"}
           </button>
@@ -2573,11 +2804,29 @@
         </div>
 
         <div class="export-block">
-          <h3>Timeline Export</h3>
+          <h3>Project Export</h3>
           <p class="muted">
-            Use this JSON payload in a future player / render step.
+            Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
           </p>
           <pre><code>{exportPayload}</code></pre>
+          <h3>Project JSON Import</h3>
+          <label class="inline-label compact">
+            <span>Upload Project</span>
+            <input type="file" accept=".json,application/json" on:change={importProjectFile} />
+          </label>
+          <label class="inline-label compact">
+            <span>Project JSON</span>
+            <textarea rows="6" spellcheck="false" bind:value={projectDraftSource}></textarea>
+          </label>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={validateProjectDraft}>Validate Project JSON</button>
+            <button type="button" on:click={useCurrentProjectExport}>Use Current Export</button>
+          </div>
+          {#if projectImportError}
+            <p class="error tiny" aria-live="assertive">{projectImportError}</p>
+          {:else}
+            <p class="muted tiny" aria-live="polite">{projectImportStatus}</p>
+          {/if}
         </div>
       </section>
 

@@ -48,10 +48,11 @@
 
 ## Goal 5: Export And Reopen Rough Projects
 
-- [ ] Extend export JSON from timeline-only to project-level SVG plus timeline
+- [x] Extend export JSON from timeline-only to project-level SVG plus timeline
       data.
-- [ ] Include discovered target metadata in export.
-- [ ] Add project JSON import.
+- [x] Include discovered target metadata in export.
+- [x] Add project JSON import. Current slice validates pasted/uploaded project
+      JSON; restoring project state is the next slice.
 - [ ] Restore SVG source, targets, timeline settings, and tracks from imported
       JSON.
 - [ ] Handle missing target IDs visibly after import.

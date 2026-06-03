@@ -18,6 +18,8 @@ All notable changes for Tadpole are documented here.
   rediscovery, incompatible-track reconciliation, and reset-to-sample restore.
 - Added Tadpole METHOD design and GitHub task templates with an explicit
   runtime-proof quality bar.
+- Added project-level Tadpole JSON export with SVG source, discovered target
+  metadata, timeline settings, tracks, and project import validation.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
