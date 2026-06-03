@@ -6,7 +6,8 @@ Verify METHOD signpost and backlog files were added for cycle traceability.
 
 ## Environment
 
-- Branch: `cycles/UIUX_open-props-stack`
+- Cycle identifier: `UIUX_open-props-stack`
+- Active branch: verify with `git branch --show-current`
 - Time: 2026-05-31
 - Repo: `~/git/tadpole`
 
