@@ -81,7 +81,10 @@ const runImportWorkflowSmoke = async (browser) => {
   assert((await page.locator(".target-chip", { hasText: "Flame" }).count()) === 1, "pasted SVG target Flame is missing");
   assert((await page.locator(".target-chip", { hasText: "Window" }).count()) === 1, "pasted SVG target Window is missing");
   assert((await textOf(page.locator(".panel-svg-source"))).includes("0 tracks kept, 3 removed"), "paste import did not reconcile sample tracks");
-  assert((await page.getByText("No timeline tracks match the current SVG target set.").count()) === 1, "empty track state missing after incompatible SVG import");
+  assert(
+    (await page.getByText("No timeline tracks yet. Select a target, then create a track to start animating.").count()) === 1,
+    "empty track state missing after incompatible SVG import",
+  );
 
   await page.locator(".preview-svg-host #flame").click({ force: true });
   const flameIsSelected = await page.locator(".preview-svg-host #flame").evaluate((element) => element.classList.contains("tadpole-selected-target"));
@@ -104,13 +107,19 @@ const runImportWorkflowSmoke = async (browser) => {
   await page.getByLabel("Raw SVG").fill(emptyTargetSvg);
   await page.getByRole("button", { name: "Import Paste" }).click();
   await page.waitForSelector(".preview-svg-host svg");
-  assert((await page.getByText("No ID-bearing SVG targets detected.").count()) === 1, "zero-target SVG did not show target empty state");
+  assert(
+    (await page.getByText("No editable SVG targets found. Add id attributes to SVG elements before animating them.").count()) === 1,
+    "zero-target SVG did not show target empty state",
+  );
   assert(await page.getByRole("button", { name: "Create Track" }).isDisabled(), "create track should be disabled with zero targets");
 
   await page.getByLabel("Raw SVG").fill("<svg><g></svg>");
   await page.getByRole("button", { name: "Import Paste" }).click();
   assert((await page.getByText("Import failed: enter valid SVG markup.").count()) === 1, "invalid SVG paste did not surface an import error");
-  assert((await page.getByText("No ID-bearing SVG targets detected.").count()) === 1, "invalid paste should not replace the last valid SVG");
+  assert(
+    (await page.getByText("No editable SVG targets found. Add id attributes to SVG elements before animating them.").count()) === 1,
+    "invalid paste should not replace the last valid SVG",
+  );
 
   await page.getByRole("button", { name: "Reset Sample" }).click();
   await page.waitForSelector(".preview-svg-host #ui");

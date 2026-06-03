@@ -211,20 +211,20 @@ until after runnable export exists.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Cycle scaffold and witness plan.
-- [ ] Slice 2: Empty states for missing SVG, missing targets, and selected
+- [x] Slice 1: Cycle scaffold and witness plan.
+- [x] Slice 2: Empty states for missing SVG, missing targets, and selected
       targets with no tracks.
-- [ ] Slice 3: Quick selected-target track creation actions.
-- [ ] Slice 4: Better discovered target labels.
+- [x] Slice 3: Quick selected-target track creation actions.
+- [x] Slice 4: Better discovered target labels.
 - [ ] Slice 5: Selected-target chip near preview.
 - [ ] Slice 6: Clear-tracks action for SVG changes.
 
 ## Tests To Write First
 
-- [ ] Browser witness proves no-target SVG import shows a target empty state.
-- [ ] Browser witness proves selecting a target with no tracks exposes quick
+- [x] Browser witness proves no-target SVG import shows a target empty state.
+- [x] Browser witness proves selecting a target with no tracks exposes quick
       track actions and creates a bound track.
-- [ ] Browser witness proves imported unlabeled targets receive useful labels.
+- [x] Browser witness proves imported unlabeled targets receive useful labels.
 - [ ] Browser witness proves selected-target chip and clear-tracks action when
       implemented.
 
@@ -232,12 +232,12 @@ until after runnable export exists.
 
 The work is done when:
 
-- [ ] Empty states are visible and covered by browser witness.
-- [ ] Quick selected-target track creation is covered by browser witness.
-- [ ] Target label improvements are covered by browser witness.
+- [x] Empty states are visible and covered by browser witness.
+- [x] Quick selected-target track creation is covered by browser witness.
+- [x] Target label improvements are covered by browser witness.
 - [ ] Selected-target chip and clear-tracks action are covered by browser
       witness.
-- [ ] `CHANGELOG.md` and roadmap checklist are updated.
+- [x] `CHANGELOG.md` and roadmap checklist are updated.
 - [ ] `npm run check` and `npm run build` pass.
 
 ## Validation Plan

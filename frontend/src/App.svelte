@@ -119,6 +119,8 @@
     { id: "stroke", label: "Stroke", kind: "color", defaultValue: "var(--color-4)" },
     { id: "strokeWidth", label: "Stroke Width", kind: "number", defaultValue: "1", min: 0.5, max: 8, step: 0.25, unit: "px", snap: 0.25 },
   ];
+  const quickTrackPropertyIds = new Set<AnimationProperty>(["x", "y", "opacity", "fill"]);
+  const quickTrackProperties = propertyCatalog.filter((property) => quickTrackPropertyIds.has(property.id));
   const properties: AnimationProperty[] = propertyCatalog.map((property) => property.id);
   const transformProperties: AnimationProperty[] = ["x", "y", "scale", "rotation"];
   const propertyById = new Map<AnimationProperty, PropertyDefinition>(
@@ -283,10 +285,43 @@
       .trim()
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+  const directChildText = (element: Element, tagName: string): string => {
+    const child = Array.from(element.children).find((candidate) => candidate.tagName.toLowerCase() === tagName);
+    return child?.textContent?.trim() ?? "";
+  };
+
+  const referencedLabelText = (element: Element): string => {
+    const labelIds = element.getAttribute("aria-labelledby")?.trim();
+    if (!labelIds) {
+      return "";
+    }
+
+    return labelIds
+      .split(/\s+/)
+      .map((id) => element.ownerDocument.getElementById(id)?.textContent?.trim() ?? "")
+      .filter(Boolean)
+      .join(" ");
+  };
+
   const nameFromSvgElement = (element: Element, id: string): string => {
     const explicitName = element.getAttribute("data-tadpole-name") ?? element.getAttribute("aria-label");
     if (explicitName?.trim()) {
       return explicitName.trim();
+    }
+
+    const referencedLabel = referencedLabelText(element);
+    if (referencedLabel) {
+      return referencedLabel;
+    }
+
+    const titleLabel = directChildText(element, "title");
+    if (titleLabel) {
+      return titleLabel;
+    }
+
+    const descriptionLabel = directChildText(element, "desc");
+    if (descriptionLabel) {
+      return descriptionLabel;
     }
 
     if (element.tagName.toLowerCase() === "text") {
@@ -538,6 +573,7 @@
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
+  let selectedTargetTracks: TimelineTrack[] = [];
   let timelineDurationMs = 1200;
   let currentTime = 0;
   let isPlaying = false;
@@ -796,6 +832,7 @@
     }
   }
   $: selectedTarget = availableTargets.find((target) => target.id === selectedTargetId) ?? null;
+  $: selectedTargetTracks = selectedTarget ? tracks.filter((track) => track.targetId === selectedTarget.id) : [];
   $: {
     if (previewSvgHostElement) {
       currentTime;
@@ -1943,20 +1980,33 @@
     selectTarget(targetId, { syncTrack: true });
   };
 
-  const addTrack = (): void => {
-    if (!availableTargets.some((target) => target.id === newTrackTargetId)) {
-      return;
+  const createTrack = (targetId: string, property: AnimationProperty): TimelineTrack | null => {
+    if (!availableTargets.some((target) => target.id === targetId)) {
+      return null;
     }
-
     const newTrack: TimelineTrack = {
       id: makeTrackId(),
-      targetId: newTrackTargetId,
-      property: newTrackProperty,
+      targetId,
+      property,
       muted: false,
-      keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(newTrackProperty), easing: "linear" }],
+      keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(property), easing: "linear" }],
     };
     tracks = [...tracks, newTrack];
     syncSelectedTrack(newTrack.id);
+    return newTrack;
+  };
+
+  const addTrack = (): void => {
+    createTrack(newTrackTargetId, newTrackProperty);
+  };
+
+  const addTrackForSelectedTarget = (property: AnimationProperty): void => {
+    if (!selectedTarget) {
+      return;
+    }
+    newTrackTargetId = selectedTarget.id;
+    newTrackProperty = property;
+    createTrack(selectedTarget.id, property);
   };
 
   const moveTrackOrder = (trackId: string, direction: -1 | 1): void => {
@@ -2365,6 +2415,9 @@
             <span>Raw SVG</span>
             <textarea rows="6" spellcheck="false" bind:value={svgDraftSource}></textarea>
           </label>
+          {#if svgDraftSource.trim() === ""}
+            <p class="empty-state tiny">Raw SVG is empty. Paste SVG markup or upload an SVG file before importing.</p>
+          {/if}
           <div class="toolbar source-actions">
             <button type="button" on:click={importSvgDraft}>Import Paste</button>
             <button type="button" on:click={resetToSampleSvg}>Reset Sample</button>
@@ -2430,11 +2483,11 @@
         </div>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-target-library">
         <h2>SVG Target Library</h2>
         <p class="muted">Pick a group/element target, then add its properties as tracks.</p>
         {#if availableTargets.length === 0}
-          <p class="muted tiny">No ID-bearing SVG targets detected.</p>
+          <p class="empty-state tiny">No editable SVG targets found. Add id attributes to SVG elements before animating them.</p>
         {:else}
           <div class="target-grid">
             {#each availableTargets as target}
@@ -2645,7 +2698,13 @@
         <div class="track-scroll">
           <div class="track-list">
             {#if visibleTracks.length === 0}
-              <p class="muted tiny">No timeline tracks match the current SVG target set.</p>
+              {#if availableTargets.length === 0}
+                <p class="empty-state tiny">Import an SVG with editable targets before creating timeline tracks.</p>
+              {:else if tracks.length === 0}
+                <p class="empty-state tiny">No timeline tracks yet. Select a target, then create a track to start animating.</p>
+              {:else}
+                <p class="muted tiny">No timeline tracks match the current filter or selected-track view.</p>
+              {/if}
             {/if}
             {#each visibleTracks as track (track.id)}
               <div
@@ -2835,6 +2894,18 @@
                   <span>Kind</span>
                   <input value={selectedTarget.kind} readonly />
                 </label>
+              </div>
+              {#if selectedTargetTracks.length === 0}
+                <p class="empty-state tiny">
+                  {selectedTarget.name} has no tracks yet. Create a track to animate this selected target.
+                </p>
+              {/if}
+              <div class="toolbar quick-track-actions" aria-label={`Quick track actions for ${selectedTarget.name}`}>
+                {#each quickTrackProperties as property}
+                  <button type="button" on:click={() => addTrackForSelectedTarget(property.id)}>
+                    Create {property.label} track for {selectedTarget.name}
+                  </button>
+                {/each}
               </div>
             </div>
           {/if}
@@ -3327,6 +3398,15 @@
     font-size: var(--font-size-0);
   }
 
+  .empty-state {
+    margin: 0;
+    border: 1px dashed color-mix(in oklab, var(--tadpole-border), var(--color-10));
+    border-radius: var(--radius-2);
+    padding: var(--size-2);
+    color: var(--tadpole-text-muted);
+    background: color-mix(in oklab, var(--color-13) 72%, transparent);
+  }
+
   .preview-controls {
     margin: var(--size-3) 0;
   }
@@ -3475,6 +3555,10 @@
   }
 
   .source-actions {
+    justify-content: flex-start;
+  }
+
+  .quick-track-actions {
     justify-content: flex-start;
   }
 
