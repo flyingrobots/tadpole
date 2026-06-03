@@ -35,10 +35,9 @@ restart backend.
 
 ## Stack note
 
-- Vue is a **UI framework** (like a set of reusable components and state rules)
-- Vite is a **build/dev tool** and dev server that Vue can run on (plus many
-  others)
-- This repo uses **Svelte** with Vite for lightweight reactive UI.
+- Svelte provides the frontend component model and reactive UI runtime.
+- Vite provides the dev server, build pipeline, and local `/api` proxy for the
+  Svelte app.
 
 ## Process
 
