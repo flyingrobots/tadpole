@@ -196,10 +196,49 @@ const runProjectTrustBoundarySmoke = async (browser) => {
   await page.close();
 };
 
+const runProjectTrackIdValidationSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".preview-svg-host svg");
+
+  const duplicateTrackProject = projectFrom({
+    timeline: {
+      ...projectFrom().timeline,
+      tracks: [
+        {
+          id: "track-box-motion",
+          targetId: "box",
+          property: "x",
+          muted: false,
+          keyframes: [{ id: "box-x-1", time: 0, value: "0", easing: "linear" }],
+        },
+        {
+          id: "track-box-motion",
+          targetId: "box",
+          property: "y",
+          muted: false,
+          keyframes: [{ id: "box-y-1", time: 0, value: "0", easing: "linear" }],
+        },
+      ],
+    },
+  });
+
+  await page.getByLabel("Project JSON").fill(JSON.stringify(duplicateTrackProject, null, 2));
+  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  assert(
+    (await textOf(page.locator(".export-block"))).includes("Project import failed: timeline tracks are invalid."),
+    "duplicate imported project track IDs were not rejected",
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runProjectExportSmoke(browser);
   await runProjectTrustBoundarySmoke(browser);
+  await runProjectTrackIdValidationSmoke(browser);
   console.log("project export browser smoke passed");
 } finally {
   await browser.close();

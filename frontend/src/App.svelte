@@ -1123,6 +1123,18 @@
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 
+  const hasUniqueNonEmptyIds = <T,>(items: T[], getId: (item: T) => string): boolean => {
+    const ids = new Set<string>();
+    return items.every((item) => {
+      const id = getId(item).trim();
+      if (id === "" || ids.has(id)) {
+        return false;
+      }
+      ids.add(id);
+      return true;
+    });
+  };
+
   const isAnimationTargetKind = (value: unknown): value is AnimationTarget["kind"] =>
     value === "group" || value === "path" || value === "text" || value === "shape";
 
@@ -1230,17 +1242,25 @@
       if (!keyframes.every((keyframe) => keyframe !== null)) {
         return null;
       }
+      const parsedKeyframes = keyframes as Keyframe[];
+      if (!hasUniqueNonEmptyIds(parsedKeyframes, (keyframe) => keyframe.id)) {
+        return null;
+      }
 
       return {
         id: candidate.id,
         targetId: candidate.targetId,
         property,
         muted: candidate.muted,
-        keyframes: keyframes as Keyframe[],
+        keyframes: parsedKeyframes,
       };
     });
 
-    return tracksFromProject.every((track) => track !== null) ? (tracksFromProject as TimelineTrack[]) : null;
+    if (!tracksFromProject.every((track) => track !== null)) {
+      return null;
+    }
+    const tracks = tracksFromProject as TimelineTrack[];
+    return hasUniqueNonEmptyIds(tracks, (track) => track.id) ? tracks : null;
   };
 
   const parseProjectImport = (
