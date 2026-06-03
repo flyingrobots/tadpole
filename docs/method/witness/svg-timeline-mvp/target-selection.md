@@ -28,7 +28,7 @@ npx playwright test target-selection.spec.js --browser=chromium --reporter=line
 Observed result:
 
 ```text
-1 passed (3.7s)
+Browser smoke passed
 ```
 
 Assertions covered:
@@ -38,15 +38,22 @@ Assertions covered:
   `Tadpole Q`
 - preview scrubber at `520ms` applies timeline values to the rendered `#ui`
   SVG element
+- playback advances timeline time and updates the rendered `#ui` SVG element
 - clicking rendered `#ui` selects that target
 - selected target highlight class appears on `#ui`
 - target library active chip, inspector fields, and new-track target all sync
   to `ui`
+- clicking rendered `#accent` selects that target, updates the new-track target,
+  and clears active track inspector state because no seeded track targets
+  `accent`
+- selecting a keyframe in the `Tadpole Q` opacity track resynchronizes the
+  active target chip, selected target summary, and preview highlight to `q`
 
 ## Local Checks
 
 - `npm run check`
 - `npm run build`
+- `npm audit --audit-level=moderate`
 
 ## Acceptance
 

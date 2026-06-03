@@ -25,8 +25,8 @@
 - [x] Combine transform tracks per target for translate, scale, and rotation.
 - [x] Apply visual tracks for opacity, fill, stroke, and stroke width.
 - [x] Verify scrub and playback update the rendered SVG in browser. Browser
-      smoke confirms the preview scrubber moves `#ui` through the rendered SVG
-      DOM.
+      smoke confirms playback advances time and the preview scrubber moves `#ui`
+      through the rendered SVG DOM.
 
 ## Goal 3: Select SVG Elements
 
@@ -66,6 +66,6 @@
 ## Goal 7: Cycle Documentation And Witness
 
 - [x] Update `CHANGELOG.md` with the SVG timeline MVP slice.
-- [x] Add witness notes after build and manual verification.
+- [x] Add witness notes after build and browser verification.
 - [ ] Add retro notes when the cycle closes.
 - [ ] Update `BEARING.md` if the current-state summary changes materially.

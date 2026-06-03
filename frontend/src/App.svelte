@@ -899,6 +899,24 @@
   const toggleShowOnlySelected = (): void => {
     showOnlySelected = !showOnlySelected;
   };
+
+  const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
+    const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
+    if (!track) {
+      selectedTrackId = "";
+      selectedKeyframeId = "";
+      return null;
+    }
+
+    selectedTrackId = track.id;
+    selectedKeyframeId = keyframeId;
+    if (availableTargets.some((target) => target.id === track.targetId)) {
+      selectedTargetId = track.targetId;
+      newTrackTargetId = track.targetId;
+    }
+    return track;
+  };
+
   const addKeyframeAtCurrentForSelected = (): void => {
     const created = addKeyframeAtTimeForSelected(currentTime);
     selectedKeyframeId = created ?? "";
@@ -914,7 +932,7 @@
     }
     const snapped = applySnap(clampMs(time));
     const created = addKeyframe(selectedTrackId, snapped, keyframeValueAtTime(track, snapped));
-    selectedKeyframeId = created ?? "";
+    syncSelectedTrack(track.id, created ?? "");
     currentTime = snapped;
     return created;
   };
@@ -927,8 +945,7 @@
     const snapped = applySnap(clampMs(time));
     const created = addKeyframe(trackId, snapped, keyframeValueAtTime(track, snapped));
     if (created) {
-      selectedTrackId = trackId;
-      selectedKeyframeId = created;
+      syncSelectedTrack(trackId, created);
       currentTime = snapped;
     }
     return created;
@@ -1064,8 +1081,7 @@
       if (nextIndex < 0 || nextIndex >= tracks.length) {
         return;
       }
-      selectedTrackId = tracks[nextIndex]!.id;
-      selectedKeyframeId = "";
+      syncSelectedTrack(tracks[nextIndex]!.id);
       return;
     }
 
@@ -1365,8 +1381,7 @@
 
     const matchingTrack = tracks.find((track) => track.targetId === targetId);
     if (matchingTrack) {
-      selectedTrackId = matchingTrack.id;
-      selectedKeyframeId = "";
+      syncSelectedTrack(matchingTrack.id);
       return;
     }
 
@@ -1393,9 +1408,7 @@
       keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(newTrackProperty), easing: "linear" }],
     };
     tracks = [...tracks, newTrack];
-    selectedTrackId = newTrack.id;
-    selectedTargetId = newTrack.targetId;
-    selectedKeyframeId = "";
+    syncSelectedTrack(newTrack.id);
   };
 
   const moveTrackOrder = (trackId: string, direction: -1 | 1): void => {
@@ -1458,15 +1471,13 @@
       })),
     };
     tracks = [...tracks, copy];
-    selectedTrackId = copy.id;
-    selectedKeyframeId = "";
+    syncSelectedTrack(copy.id);
   };
 
   const removeTrack = (trackId: string): void => {
     tracks = tracks.filter((track) => track.id !== trackId);
-    if (tracks.length > 0 && selectedTrackId === trackId) {
-      selectedTrackId = tracks[0]?.id ?? "";
-      selectedKeyframeId = "";
+    if (selectedTrackId === trackId) {
+      syncSelectedTrack(tracks[0]?.id ?? "");
     }
   };
 
@@ -1548,8 +1559,7 @@
     const rect = clicked.getBoundingClientRect();
     const local = pointerTimeFromRect(rect, event);
     const created = addKeyframeAtTimeForTrack(trackId, local);
-    selectedTrackId = trackId;
-    selectedKeyframeId = created ?? "";
+    syncSelectedTrack(trackId, created ?? "");
     movePlayheadToTrack(local);
   };
 
@@ -1603,25 +1613,18 @@
     const duplicatedTime = applySnap(clampMs(source.time + (snapToFrames ? snapMs || 16 : 16)));
     const created = addKeyframe(selectedTrackId, duplicatedTime, source.value);
     if (created) {
-      selectedKeyframeId = created;
-      selectedTrackId = track.id;
+      syncSelectedTrack(track.id, created);
       movePlayheadToTrack(duplicatedTime);
     }
     return created;
   };
 
   const selectTrack = (trackId: string): void => {
-    selectedTrackId = trackId;
-    selectedKeyframeId = "";
-    const track = tracks.find((candidate) => candidate.id === trackId);
-    if (track) {
-      selectTarget(track.targetId);
-    }
+    syncSelectedTrack(trackId);
   };
 
   const selectKeyframe = (trackId: string, keyframeId: string, time: number): void => {
-    selectedTrackId = trackId;
-    selectedKeyframeId = keyframeId;
+    syncSelectedTrack(trackId, keyframeId);
     currentTime = applySnap(clampMs(time));
   };
 
@@ -1660,8 +1663,7 @@
     event.preventDefault();
     event.stopPropagation();
     draggingKeyframe = { trackId, keyframeId, lane };
-    selectedTrackId = trackId;
-    selectedKeyframeId = keyframeId;
+    syncSelectedTrack(trackId, keyframeId);
     pauseTimeline();
     window.addEventListener("mousemove", onKeyframeDragMove);
     window.addEventListener("mouseup", stopKeyframeDrag);
@@ -3348,11 +3350,6 @@
     background: transparent;
     color: inherit;
     cursor: crosshair;
-  }
-
-  .preview-svg-host:focus-visible {
-    outline: 2px solid var(--tadpole-accent);
-    outline-offset: 4px;
   }
 
   .preview-svg,
