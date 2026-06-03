@@ -21,13 +21,13 @@ git branch --show-current
 
 # Confirm files exist and contain expected sections
 ls -1 BEARING.md CHANGELOG.md README.md
-sed -n '1,220p' BEARING.md
-sed -n '1,220p' CHANGELOG.md
-sed -n '1,220p' README.md
+cat BEARING.md
+cat CHANGELOG.md
+cat README.md
 
 # Confirm METHOD backlog scaffold exists
 find docs/method/backlog -maxdepth 2 -type f | sort
-sed -n '1,220p' docs/method/backlog/inbox/2026-05-31-initialize-method-signposts.md
+cat docs/method/backlog/inbox/2026-05-31-initialize-method-signposts.md
 ```
 
 ## Expected observations
