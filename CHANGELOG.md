@@ -14,6 +14,8 @@ All notable changes for Tadpole are documented here.
   the timeline editor.
 - Added source-rendered SVG target selection from the live preview, including
   target library, inspector, and new-track synchronization.
+- Added rough external SVG import with file upload, raw paste import, target
+  rediscovery, incompatible-track reconciliation, and reset-to-sample restore.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

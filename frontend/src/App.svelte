@@ -46,6 +46,11 @@
     muted: boolean;
   };
 
+  type SvgLoadOptions = {
+    label: string;
+    restoreSampleTracks?: boolean;
+  };
+
   type PropertyDefinition = {
     id: AnimationProperty;
     label: string;
@@ -118,6 +123,7 @@
     priority: string;
   };
 
+  const sampleSvgLabel = "Sample Logo";
   const defaultSvgSource = `<svg class="preview-svg" viewBox="0 0 420 180" aria-label="Logo Animation Preview" xmlns="http://www.w3.org/2000/svg">
   <g id="logo" data-tadpole-name="Logo Group">
     <g id="q" data-tadpole-name="Tadpole Q" fill="var(--color-6)" stroke="var(--color-9)" stroke-width="1.2">
@@ -368,9 +374,30 @@
     return svg?.tagName.toLowerCase() === "svg" ? new XMLSerializer().serializeToString(svg) : "";
   };
 
+  const parseSvgImport = (source: string): { markup: string; targets: AnimationTarget[] } | null => {
+    const sourceText = source.trim();
+    if (sourceText === "") {
+      return null;
+    }
+
+    const markup = sanitizeSvgSource(sourceText);
+    if (markup === "") {
+      return null;
+    }
+
+    return {
+      markup,
+      targets: discoverSvgTargets(markup),
+    };
+  };
+
   let svgSource = defaultSvgSource;
   let svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   let availableTargets: AnimationTarget[] = discoverSvgTargets(svgMarkup);
+  let svgSourceLabel = sampleSvgLabel;
+  let svgDraftSource = svgMarkup;
+  let svgImportStatus = `${sampleSvgLabel} loaded with ${availableTargets.length} targets.`;
+  let svgImportError = "";
 
   const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
   const clampMs = (value: number): number => clamp(Math.round(value), 0, timelineDurationMs);
@@ -410,7 +437,7 @@
   const formatMs = (value: number): string => `${value}ms`;
   const formatSec = (value: number): string => `${(value / 1000).toFixed(2)}s`;
 
-  let tracks: TimelineTrack[] = [
+  const createSampleTracks = (): TimelineTrack[] => [
     {
       id: "track-co-fill",
       targetId: "co",
@@ -443,6 +470,8 @@
       ],
     },
   ];
+
+  let tracks: TimelineTrack[] = createSampleTracks();
   let targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
 
   let selectedTrackId = tracks[0]?.id ?? "";
@@ -915,6 +944,97 @@
       newTrackTargetId = track.targetId;
     }
     return track;
+  };
+
+  const settleSelectionForTargets = (targets: AnimationTarget[]): void => {
+    const targetIds = new Set(targets.map((target) => target.id));
+    const selectedTrackStillExists = tracks.find((track) => track.id === selectedTrackId && targetIds.has(track.targetId));
+    if (selectedTrackStillExists) {
+      selectedTrackId = selectedTrackStillExists.id;
+      selectedKeyframeId = selectedTrackStillExists.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)
+        ? selectedKeyframeId
+        : "";
+      selectedTargetId = selectedTrackStillExists.targetId;
+      newTrackTargetId = selectedTrackStillExists.targetId;
+      return;
+    }
+
+    const fallbackTrack = tracks.find((track) => targetIds.has(track.targetId));
+    if (fallbackTrack) {
+      selectedTrackId = fallbackTrack.id;
+      selectedKeyframeId = "";
+      selectedTargetId = fallbackTrack.targetId;
+      newTrackTargetId = fallbackTrack.targetId;
+      return;
+    }
+
+    selectedTrackId = "";
+    selectedKeyframeId = "";
+    const selectedTargetStillExists = targets.some((target) => target.id === selectedTargetId);
+    const fallbackTargetId = selectedTargetStillExists ? selectedTargetId : targets[0]?.id ?? "";
+    selectedTargetId = fallbackTargetId;
+    newTrackTargetId = fallbackTargetId;
+  };
+
+  const loadSvgSource = (source: string, options: SvgLoadOptions): boolean => {
+    const parsed = parseSvgImport(source);
+    if (!parsed) {
+      svgImportError = "Import failed: enter valid SVG markup.";
+      return false;
+    }
+
+    pauseTimeline();
+
+    const targetIds = new Set(parsed.targets.map((target) => target.id));
+    const candidateTracks = options.restoreSampleTracks ? createSampleTracks() : tracks;
+    const reconciledTracks = candidateTracks.filter((track) => targetIds.has(track.targetId));
+    const removedTrackCount = candidateTracks.length - reconciledTracks.length;
+
+    svgSource = parsed.markup;
+    svgDraftSource = parsed.markup;
+    svgSourceLabel = options.label;
+    svgImportError = "";
+    tracks = reconciledTracks;
+    originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
+    settleSelectionForTargets(parsed.targets);
+
+    const trackSummary = options.restoreSampleTracks
+      ? `Restored ${reconciledTracks.length} sample tracks.`
+      : `${reconciledTracks.length} tracks kept${removedTrackCount > 0 ? `, ${removedTrackCount} removed` : ""}.`;
+    svgImportStatus = `${options.label} loaded with ${parsed.targets.length} targets. ${trackSummary}`;
+    return true;
+  };
+
+  const importSvgDraft = (): void => {
+    loadSvgSource(svgDraftSource, { label: "Pasted SVG" });
+  };
+
+  const resetToSampleSvg = (): void => {
+    loadSvgSource(defaultSvgSource, { label: sampleSvgLabel, restoreSampleTracks: true });
+  };
+
+  const importSvgFile = async (event: Event): Promise<void> => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const isSvgFile = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+    if (!isSvgFile) {
+      svgImportError = "Import failed: choose an SVG file.";
+      input.value = "";
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      loadSvgSource(text, { label: file.name });
+    } catch {
+      svgImportError = "Import failed: could not read the SVG file.";
+    } finally {
+      input.value = "";
+    }
   };
 
   const addKeyframeAtCurrentForSelected = (): void => {
@@ -1400,6 +1520,10 @@
   };
 
   const addTrack = (): void => {
+    if (!availableTargets.some((target) => target.id === newTrackTargetId)) {
+      return;
+    }
+
     const newTrack: TimelineTrack = {
       id: makeTrackId(),
       targetId: newTrackTargetId,
@@ -1801,6 +1925,33 @@
             </button>
           </div>
         </section>
+
+        <section class="panel panel-svg-source">
+          <h2>SVG Source</h2>
+          <div class="svg-source-summary">
+            <span class="status-chip">{svgSourceLabel}</span>
+            <span class="status-chip">{availableTargets.length} targets</span>
+            <span class="status-chip">{tracks.length} tracks</span>
+          </div>
+          <label class="inline-label compact">
+            <span>Upload</span>
+            <input type="file" accept=".svg,image/svg+xml" on:change={importSvgFile} />
+          </label>
+          <label class="inline-label compact">
+            <span>Raw SVG</span>
+            <textarea rows="6" spellcheck="false" bind:value={svgDraftSource}></textarea>
+          </label>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={importSvgDraft}>Import Paste</button>
+            <button type="button" on:click={resetToSampleSvg}>Reset Sample</button>
+          </div>
+          {#if svgImportError}
+            <p class="error tiny" aria-live="assertive">{svgImportError}</p>
+          {:else}
+            <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+          {/if}
+        </section>
+
         <section class="panel">
         <h2>Dynamic Palette (Open Props)</h2>
         <p class="muted">Tune hue/chroma/rotation and remix the full 16-color Open Props palette in place.</p>
@@ -1858,20 +2009,24 @@
         <section class="panel">
         <h2>SVG Target Library</h2>
         <p class="muted">Pick a group/element target, then add its properties as tracks.</p>
-        <div class="target-grid">
-          {#each availableTargets as target}
-            <button
-              type="button"
-              class="target-chip"
-              class:is-active={target.id === selectedTargetId}
-              aria-pressed={target.id === selectedTargetId}
-              on:click={() => selectTarget(target.id, { syncTrack: true })}
-            >
-              <span class="target-name">{target.name}</span>
-              <span class="target-kind">{target.kind}</span>
-            </button>
-          {/each}
-        </div>
+        {#if availableTargets.length === 0}
+          <p class="muted tiny">No ID-bearing SVG targets detected.</p>
+        {:else}
+          <div class="target-grid">
+            {#each availableTargets as target}
+              <button
+                type="button"
+                class="target-chip"
+                class:is-active={target.id === selectedTargetId}
+                aria-pressed={target.id === selectedTargetId}
+                on:click={() => selectTarget(target.id, { syncTrack: true })}
+              >
+                <span class="target-name">{target.name}</span>
+                <span class="target-kind">{target.kind}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
         </section>
 
         <section class="panel">
@@ -1928,6 +2083,7 @@
             <span class="status-chip">Tracks: {tracks.length}</span>
             <span class="status-chip">Visible: {visibleTracks.length}</span>
             <span class="status-chip">Keys: {totalTrackKeyframes}</span>
+            <span class="status-chip">SVG: {svgSourceLabel}</span>
             <span class="status-chip">Target: {selectedTrackName}</span>
             <span class="status-chip">Grid: {clampedGridCount}</span>
             <span class="status-chip">Snap: {snapToFrames ? "on" : "off"}</span>
@@ -2064,11 +2220,14 @@
 
         <div class="track-scroll">
           <div class="track-list">
+            {#if visibleTracks.length === 0}
+              <p class="muted tiny">No timeline tracks match the current SVG target set.</p>
+            {/if}
             {#each visibleTracks as track (track.id)}
               <div
                 class="track-card"
                 class:track-selected={track.id === selectedTrackId}
-                aria-label={`Track for ${targetNameById.get(track.targetId)} ${track.property}`}
+                aria-label={`Track for ${targetNameById.get(track.targetId) ?? track.targetId} ${track.property}`}
               >
                 <div class="track-heading">
                   <label class="inline-label">
@@ -2359,7 +2518,7 @@
           <div class="toolbar">
             <label class="inline-label">
               <span>Target</span>
-              <select bind:value={newTrackTargetId}>
+              <select bind:value={newTrackTargetId} disabled={availableTargets.length === 0}>
                 {#each availableTargets as target}
                   <option value={target.id}>{target.name}</option>
                 {/each}
@@ -2373,7 +2532,7 @@
                 {/each}
               </select>
             </label>
-            <button type="button" on:click={addTrack}>Create Track</button>
+            <button type="button" on:click={addTrack} disabled={availableTargets.length === 0}>Create Track</button>
           </div>
           <p class="muted tiny">
             Tip: click a timeline lane or use + Drop keyframe at playhead on any selected track.
@@ -2791,7 +2950,9 @@
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
   }
 
-  .toolbar button:disabled {
+  .toolbar button:disabled,
+  .track-meta button:disabled,
+  .inline-label select:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
@@ -2807,12 +2968,21 @@
   }
 
   .inline-label input,
-  .inline-label select {
+  .inline-label select,
+  .inline-label textarea {
     border: 1px solid var(--tadpole-border);
     background: var(--color-13);
     border-radius: var(--radius-2);
     padding: 0.35rem 0.5rem;
     color: var(--tadpole-text);
+  }
+
+  .inline-label textarea {
+    width: 100%;
+    min-height: 8rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
   }
 
   .inline-label input[type="range"] {
@@ -2845,6 +3015,21 @@
 
   .panel-workspace-controls {
     background: color-mix(in oklab, var(--color-12) 86%, transparent);
+  }
+
+  .panel-svg-source {
+    display: grid;
+    gap: var(--size-3);
+  }
+
+  .svg-source-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .source-actions {
+    justify-content: flex-start;
   }
 
   .palette-swatch {
