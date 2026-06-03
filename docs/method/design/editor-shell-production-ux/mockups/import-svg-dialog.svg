@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="620" viewBox="0 0 1040 620" role="img" aria-labelledby="title desc">
+  <title id="title">Open SVG dialog with animation import preview</title>
+  <desc id="desc">A modal dialog previews SVG targets, detected animation tracks, warnings, and save contract before loading the SVG into the editor.</desc>
+  <defs>
+    <style>
+      .overlay { fill: #0b0d12; }
+      .dialog { fill: #252a33; stroke: #64748b; stroke-width: 1; }
+      .panel { fill: #1c2028; stroke: #3d4654; }
+      .text { fill: #eef2f7; font: 15px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .muted { fill: #aab4c0; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #aab4c0; font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .button { fill: #303846; stroke: #4b5563; }
+      .primary { fill: #0f766e; }
+      .warning { fill: #f59e0b; }
+      .ok { fill: #2dd4bf; }
+      .stage { fill: #f8fafc; stroke: #d5dbe5; }
+    </style>
+  </defs>
+  <rect class="overlay" width="1040" height="620"/>
+  <rect class="dialog" x="80" y="58" width="880" height="504" rx="8"/>
+  <text class="text" x="112" y="96">Open SVG</text>
+  <text class="muted" x="112" y="120">Load SVG source, scan animation nodes, then save back to SVG.</text>
+
+  <rect class="panel" x="112" y="148" width="390" height="286" rx="6"/>
+  <text class="text" x="134" y="178">Preview</text>
+  <rect class="stage" x="158" y="202" width="298" height="170" rx="4"/>
+  <text fill="#0f172a" font-size="28" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-weight="700" x="214" y="286">SVG</text>
+  <path d="M270 300 C320 250 382 250 430 300" stroke="#2563eb" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <text class="tiny" x="134" y="408">4 targets, 5 supported animation tracks</text>
+
+  <rect class="panel" x="526" y="148" width="390" height="286" rx="6"/>
+  <text class="text" x="548" y="178">Import report</text>
+  <circle class="ok" cx="556" cy="212" r="6"/>
+  <text class="muted" x="572" y="216">5 SMIL tracks will become editable tracks</text>
+  <circle class="warning" cx="556" cy="246" r="6"/>
+  <text class="muted" x="572" y="250">CSS animations are warning-only</text>
+  <circle class="warning" cx="556" cy="280" r="6"/>
+  <text class="muted" x="572" y="284">Web Animations script will not execute</text>
+  <text class="tiny" x="548" y="332">Save contract</text>
+  <text class="muted" x="548" y="356">Tadpole stores edits in SVG animation nodes.</text>
+  <text class="muted" x="548" y="380">No project sidecar will be created.</text>
+
+  <rect class="button" x="112" y="462" width="132" height="34" rx="4"/>
+  <text class="text" x="136" y="485">Choose File</text>
+  <rect class="button" x="258" y="462" width="132" height="34" rx="4"/>
+  <text class="text" x="286" y="485">Paste SVG</text>
+  <rect class="button" x="664" y="500" width="104" height="34" rx="4"/>
+  <text class="text" x="694" y="523">Cancel</text>
+  <rect class="primary" x="782" y="500" width="134" height="34" rx="4"/>
+  <text class="text" x="812" y="523">Open SVG</text>
+</svg>

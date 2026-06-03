@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">Collapsed and expanded timeline track stacks</title>
+  <desc id="desc">Timeline rows show SVG target IDs, property tracks, keyframes, animation spans, and collapsed target summaries.</desc>
+  <defs>
+    <style>
+      .bg { fill: #1b1e25; }
+      .row { fill: #262b34; stroke: #3d4654; }
+      .sub { fill: #20252d; stroke: #374150; }
+      .text { fill: #eef2f7; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #aab4c0; font: 11px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .grid { stroke: #4b5563; stroke-width: 1; }
+      .playhead { stroke: #f59e0b; stroke-width: 2; }
+      .spanA { stroke: #2dd4bf; stroke-width: 4; fill: none; stroke-linecap: round; }
+      .spanB { stroke: #60a5fa; stroke-width: 4; fill: none; stroke-linecap: round; }
+      .keyA { fill: #2dd4bf; stroke: #0f766e; stroke-width: 2; }
+      .keyB { fill: #60a5fa; stroke: #1d4ed8; stroke-width: 2; }
+      .badge { fill: #303846; stroke: #4b5563; }
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="420"/>
+  <text class="text" x="22" y="32">Timeline track stack</text>
+  <text class="tiny" x="300" y="32">0s</text>
+  <text class="tiny" x="470" y="32">1s</text>
+  <text class="tiny" x="640" y="32">2s</text>
+  <text class="tiny" x="810" y="32">3s</text>
+  <text class="tiny" x="980" y="32">4s</text>
+  <text class="tiny" x="1150" y="32">5s</text>
+  <line class="playhead" x1="810" y1="44" x2="810" y2="392"/>
+  <g>
+    <line class="grid" x1="300" y1="44" x2="300" y2="392"/>
+    <line class="grid" x1="470" y1="44" x2="470" y2="392"/>
+    <line class="grid" x1="640" y1="44" x2="640" y2="392"/>
+    <line class="grid" x1="810" y1="44" x2="810" y2="392"/>
+    <line class="grid" x1="980" y1="44" x2="980" y2="392"/>
+    <line class="grid" x1="1150" y1="44" x2="1150" y2="392"/>
+  </g>
+
+  <rect class="row" x="0" y="54" width="1280" height="46"/>
+  <text class="text" x="22" y="83">v #ui</text>
+  <text class="tiny" x="82" y="83">UI Text</text>
+  <rect class="badge" x="166" y="64" width="84" height="24" rx="4"/>
+  <text class="tiny" x="180" y="81">2 tracks</text>
+
+  <rect class="sub" x="0" y="100" width="1280" height="46"/>
+  <text class="tiny" x="44" y="128">transform.x</text>
+  <line class="spanA" x1="300" y1="123" x2="810" y2="123"/>
+  <circle class="keyA" cx="300" cy="123" r="8"/>
+  <circle class="keyA" cx="810" cy="123" r="8"/>
+  <text class="tiny" x="830" y="128">active key at cursor</text>
+
+  <rect class="sub" x="0" y="146" width="1280" height="46"/>
+  <text class="tiny" x="44" y="174">fill</text>
+  <line class="spanB" x1="470" y1="169" x2="980" y2="169"/>
+  <circle class="keyB" cx="470" cy="169" r="8"/>
+  <circle class="keyB" cx="980" cy="169" r="8"/>
+
+  <rect class="row" x="0" y="204" width="1280" height="46"/>
+  <text class="text" x="22" y="233">&gt; #q</text>
+  <text class="tiny" x="82" y="233">Tadpole Q</text>
+  <rect class="badge" x="166" y="214" width="130" height="24" rx="4"/>
+  <text class="tiny" x="180" y="231">collapsed: 1 track</text>
+  <circle class="keyA" cx="640" cy="227" r="6"/>
+  <circle class="keyA" cx="980" cy="227" r="6"/>
+
+  <rect class="row" x="0" y="262" width="1280" height="46"/>
+  <text class="text" x="22" y="291">v #needle</text>
+  <text class="tiny" x="112" y="291">Needle Group</text>
+  <rect class="badge" x="220" y="272" width="84" height="24" rx="4"/>
+  <text class="tiny" x="234" y="289">1 track</text>
+
+  <rect class="sub" x="0" y="308" width="1280" height="46"/>
+  <text class="tiny" x="44" y="336">rotation</text>
+  <line class="spanB" x1="300" y1="331" x2="1150" y2="331"/>
+  <circle class="keyB" cx="300" cy="331" r="8"/>
+  <circle class="keyB" cx="1150" cy="331" r="8"/>
+
+  <rect class="badge" x="22" y="372" width="172" height="26" rx="4"/>
+  <text class="tiny" x="38" y="390">Hide track stack</text>
+  <rect class="badge" x="210" y="372" width="172" height="26" rx="4"/>
+  <text class="tiny" x="226" y="390">Show selected only</text>
+</svg>

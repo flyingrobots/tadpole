@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="920" viewBox="0 0 1440 920" role="img" aria-labelledby="title desc">
+  <title id="title">Tadpole production editor shell wide layout</title>
+  <desc id="desc">A Photoshop-like SVG animation editor with a top menubar, centered SVG canvas, contextual side panels, and a full-width pinned timeline.</desc>
+  <defs>
+    <style>
+      .bg { fill: #181a1f; }
+      .bar { fill: #24272f; }
+      .panel { fill: #20232a; stroke: #3a3f4b; stroke-width: 1; }
+      .canvas { fill: #111318; stroke: #424a57; stroke-width: 1; }
+      .stage { fill: #f8fafc; stroke: #d5dbe5; stroke-width: 1; }
+      .timeline { fill: #1d2027; stroke: #3a3f4b; stroke-width: 1; }
+      .track { fill: #272b34; stroke: #3b4250; stroke-width: 1; }
+      .trackAlt { fill: #222630; stroke: #3b4250; stroke-width: 1; }
+      .text { fill: #eef2f7; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .muted { fill: #aab4c0; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #aab4c0; font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .accent { fill: #2dd4bf; }
+      .blue { fill: #60a5fa; }
+      .warning { fill: #f59e0b; }
+      .strokeAccent { stroke: #2dd4bf; stroke-width: 3; fill: none; }
+      .strokeBlue { stroke: #60a5fa; stroke-width: 3; fill: none; }
+      .tick { stroke: #5b6472; stroke-width: 1; }
+      .playhead { stroke: #f59e0b; stroke-width: 2; }
+      .button { fill: #303644; stroke: #485160; stroke-width: 1; }
+      .selected { fill: none; stroke: #f59e0b; stroke-width: 2; stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1440" height="920"/>
+
+  <rect class="bar" x="0" y="0" width="1440" height="42"/>
+  <text class="text" x="18" y="27">Tadpole</text>
+  <text class="muted" x="102" y="27">File</text>
+  <text class="muted" x="150" y="27">Edit</text>
+  <text class="muted" x="196" y="27">View</text>
+  <text class="muted" x="248" y="27">Timeline</text>
+  <text class="muted" x="334" y="27">Export</text>
+  <text class="muted" x="405" y="27">Help</text>
+  <rect class="button" x="1160" y="8" width="88" height="26" rx="4"/>
+  <text class="tiny" x="1176" y="25">Warnings 3</text>
+  <rect class="button" x="1260" y="8" width="72" height="26" rx="4"/>
+  <text class="tiny" x="1278" y="25">100%</text>
+  <rect class="button" x="1342" y="8" width="76" height="26" rx="4"/>
+  <text class="tiny" x="1358" y="25">Preview</text>
+
+  <rect class="panel" x="0" y="42" width="268" height="578"/>
+  <text class="text" x="18" y="74">Layers</text>
+  <text class="tiny" x="18" y="96">Imported SVG hierarchy and target tracks</text>
+  <rect class="track" x="14" y="114" width="240" height="42" rx="4"/>
+  <text class="text" x="28" y="140">v #logo</text>
+  <text class="tiny" x="184" y="140">4 tracks</text>
+  <rect class="trackAlt" x="28" y="162" width="226" height="38" rx="4"/>
+  <text class="muted" x="44" y="186">#ui  UI Text</text>
+  <circle class="accent" cx="232" cy="181" r="5"/>
+  <rect class="trackAlt" x="28" y="206" width="226" height="38" rx="4"/>
+  <text class="muted" x="44" y="230">#q  Tadpole Q</text>
+  <circle class="blue" cx="232" cy="225" r="5"/>
+  <rect class="trackAlt" x="28" y="250" width="226" height="38" rx="4"/>
+  <text class="muted" x="44" y="274">#accent  Arrow</text>
+  <circle class="warning" cx="232" cy="269" r="5"/>
+
+  <rect class="panel" x="1172" y="42" width="268" height="578"/>
+  <text class="text" x="1190" y="74">Inspector</text>
+  <text class="tiny" x="1190" y="96">Selected target and selected keyframe</text>
+  <text class="muted" x="1190" y="136">Target</text>
+  <rect class="button" x="1190" y="148" width="220" height="30" rx="4"/>
+  <text class="tiny" x="1204" y="168">#ui  UI Text</text>
+  <text class="muted" x="1190" y="210">Track</text>
+  <rect class="button" x="1190" y="222" width="220" height="30" rx="4"/>
+  <text class="tiny" x="1204" y="242">transform.x</text>
+  <text class="muted" x="1190" y="284">Keyframe</text>
+  <rect class="button" x="1190" y="296" width="102" height="30" rx="4"/>
+  <text class="tiny" x="1204" y="316">time 3000ms</text>
+  <rect class="button" x="1300" y="296" width="110" height="30" rx="4"/>
+  <text class="tiny" x="1314" y="316">value 48px</text>
+  <text class="muted" x="1190" y="366">Save target</text>
+  <text class="tiny" x="1190" y="386">SVG is the document. Edits write to SMIL.</text>
+
+  <rect class="canvas" x="268" y="42" width="904" height="578"/>
+  <rect class="stage" x="448" y="118" width="544" height="356" rx="6"/>
+  <text fill="#0f172a" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="48" font-weight="700" x="576" y="260">Tadpole SVG</text>
+  <path d="M566 292 C640 228 800 228 874 292" stroke="#2563eb" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M870 286 L912 252 L912 320 Z" fill="#0f766e"/>
+  <rect class="selected" x="558" y="210" width="340" height="112" rx="8"/>
+  <text class="tiny" x="448" y="504">Canvas tools: Select, Pan, Zoom, Add Track From Selection</text>
+  <text class="tiny" x="876" y="504">Stage is primary. Panels are optional.</text>
+
+  <rect class="timeline" x="0" y="620" width="1440" height="300"/>
+  <rect class="bar" x="0" y="620" width="1440" height="44"/>
+  <text class="text" x="18" y="648">Timeline</text>
+  <rect class="button" x="112" y="629" width="36" height="24" rx="4"/>
+  <text class="tiny" x="124" y="646">|&lt;</text>
+  <rect class="button" x="154" y="629" width="36" height="24" rx="4"/>
+  <text class="tiny" x="168" y="646">Play</text>
+  <rect class="button" x="196" y="629" width="42" height="24" rx="4"/>
+  <text class="tiny" x="210" y="646">Loop</text>
+  <rect class="button" x="252" y="629" width="88" height="24" rx="4"/>
+  <text class="tiny" x="268" y="646">Tracks: open</text>
+  <rect class="button" x="354" y="629" width="78" height="24" rx="4"/>
+  <text class="tiny" x="370" y="646">Snap 16ms</text>
+  <text class="tiny" x="1240" y="646">Cursor 3.00s / 6.00s</text>
+
+  <g transform="translate(0 664)">
+    <text class="tiny" x="350" y="18">0s</text>
+    <text class="tiny" x="540" y="18">1s</text>
+    <text class="tiny" x="730" y="18">2s</text>
+    <text class="tiny" x="920" y="18">3s</text>
+    <text class="tiny" x="1110" y="18">4s</text>
+    <text class="tiny" x="1300" y="18">5s</text>
+    <line class="playhead" x1="920" y1="0" x2="920" y2="246"/>
+    <rect class="track" x="0" y="28" width="1440" height="48"/>
+    <text class="text" x="18" y="58">v #ui UI Text</text>
+    <text class="tiny" x="188" y="58">2 tracks</text>
+    <line class="tick" x1="350" y1="28" x2="350" y2="246"/>
+    <line class="tick" x1="540" y1="28" x2="540" y2="246"/>
+    <line class="tick" x1="730" y1="28" x2="730" y2="246"/>
+    <line class="tick" x1="920" y1="28" x2="920" y2="246"/>
+    <line class="tick" x1="1110" y1="28" x2="1110" y2="246"/>
+    <line class="tick" x1="1300" y1="28" x2="1300" y2="246"/>
+
+    <rect class="trackAlt" x="0" y="76" width="1440" height="48"/>
+    <text class="muted" x="42" y="106">x</text>
+    <line class="strokeAccent" x1="350" y1="100" x2="920" y2="100"/>
+    <circle class="accent" cx="350" cy="100" r="7"/>
+    <circle class="accent" cx="920" cy="100" r="7"/>
+
+    <rect class="trackAlt" x="0" y="124" width="1440" height="48"/>
+    <text class="muted" x="42" y="154">fill</text>
+    <line class="strokeBlue" x1="540" y1="148" x2="1110" y2="148"/>
+    <circle class="blue" cx="540" cy="148" r="7"/>
+    <circle class="blue" cx="1110" cy="148" r="7"/>
+
+    <rect class="track" x="0" y="172" width="1440" height="48"/>
+    <text class="text" x="18" y="202">&gt; #q Tadpole Q</text>
+    <text class="tiny" x="188" y="202">collapsed, 1 track, 2 keys</text>
+    <circle class="warning" cx="730" cy="196" r="5"/>
+    <circle class="warning" cx="1110" cy="196" r="5"/>
+  </g>
+</svg>

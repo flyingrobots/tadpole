@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="520" viewBox="0 0 980 520" role="img" aria-labelledby="title desc">
+  <title id="title">Tadpole File menu open</title>
+  <desc id="desc">The File menu exposes SVG-native document actions: open SVG, save SVG, revert, import animation, and export runnable preview.</desc>
+  <defs>
+    <style>
+      .bg { fill: #181a1f; }
+      .bar { fill: #24272f; }
+      .menu { fill: #2a303a; stroke: #596273; }
+      .item { fill: #323946; }
+      .text { fill: #eef2f7; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .muted { fill: #aab4c0; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .key { fill: #7dd3fc; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .divider { stroke: #566174; stroke-width: 1; }
+      .canvas { fill: #111318; stroke: #424a57; }
+    </style>
+  </defs>
+  <rect class="bg" width="980" height="520"/>
+  <rect class="bar" width="980" height="42"/>
+  <text class="text" x="18" y="27">Tadpole</text>
+  <rect class="item" x="88" y="6" width="52" height="30" rx="4"/>
+  <text class="text" x="104" y="27">File</text>
+  <text class="muted" x="154" y="27">Edit</text>
+  <text class="muted" x="204" y="27">View</text>
+  <text class="muted" x="258" y="27">Timeline</text>
+  <text class="muted" x="346" y="27">Export</text>
+
+  <rect class="menu" x="88" y="42" width="308" height="342" rx="6"/>
+  <text class="text" x="110" y="76">Open SVG...</text>
+  <text class="key" x="316" y="76">Cmd+O</text>
+  <text class="text" x="110" y="112">Paste SVG...</text>
+  <text class="key" x="316" y="112">Cmd+V</text>
+  <text class="text" x="110" y="148">Save SVG</text>
+  <text class="key" x="316" y="148">Cmd+S</text>
+  <text class="text" x="110" y="184">Save SVG As...</text>
+  <text class="key" x="316" y="184">Shift+Cmd+S</text>
+  <line class="divider" x1="104" y1="206" x2="380" y2="206"/>
+  <text class="text" x="110" y="238">Revert To Last Opened SVG</text>
+  <text class="text" x="110" y="274">Import Existing Animation</text>
+  <text class="muted" x="132" y="294">Re-scan SVG animation nodes into tracks</text>
+  <line class="divider" x1="104" y1="314" x2="380" y2="314"/>
+  <text class="text" x="110" y="348">Document Settings...</text>
+
+  <rect class="canvas" x="430" y="82" width="486" height="322" rx="8"/>
+  <text class="muted" x="480" y="146">Menu commands never create sidecar files.</text>
+  <text class="muted" x="480" y="180">Save writes animation truth into the SVG.</text>
+  <text class="muted" x="480" y="214">Export runnable HTML is an artifact only.</text>
+  <text class="muted" x="480" y="248">Project JSON is removed from default UX.</text>
+</svg>
