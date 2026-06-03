@@ -46,6 +46,9 @@ This repository follows METHOD for cycle-based engineering:
 - Cycle branches use `cycles/<LEGEND>_<slug>`.
 - Ship to `main` via PRs with cycle artifacts (design/witness/retro as
   available).
+- New cycle designs start from `docs/method/design/TEMPLATE.md`.
+- GitHub tasks use the `Tadpole Task` issue form and must name executable proof
+  for runtime or product changes.
 - Source-of-truth ship surfaces: `BEARING.md`, `CHANGELOG.md`, and METHOD
   backlog under `docs/method/`.
 
