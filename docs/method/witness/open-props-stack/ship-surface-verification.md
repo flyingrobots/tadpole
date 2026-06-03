@@ -13,7 +13,8 @@ Verify METHOD signpost and backlog files were added for cycle traceability.
 ## Commands
 
 ```bash
-cd /Users/james/git/tadpole
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
 
 # Confirm branch
 git branch --show-current
