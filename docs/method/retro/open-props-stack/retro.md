@@ -21,8 +21,9 @@ without functional product changes.
 
 - Cycle PR currently includes earlier setup commit (`6f198d6`) plus this
   signpost commit.
-- Open issues remain around open vulnerabilities reported by GitHub advisories
-  (informational, not in-scope).
+- Dependency-security remediation is outside this docs-only cycle and should be
+  tracked separately with concrete package and advisory IDs if reports are
+  opened.
 
 ## Drift check
 
