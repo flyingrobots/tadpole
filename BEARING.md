@@ -37,7 +37,7 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 ## Risks
 
-- Frontend/backed coupling is intentionally local-first and in-memory;
+- Frontend/backend coupling is intentionally local-first and in-memory;
   persistence/export contracts are evolving with the UI.
 - Some accessibility labels and keyboard interactions still need parity checks
   after visual refinement.
