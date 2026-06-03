@@ -29,10 +29,12 @@ cat frontend/src/App.svelte
    when dragging.
 2. Drag preview scrubber; verify the label and metadata update as playhead
    changes.
-3. Double-click in preview bar to insert a keyframe on the selected track and
+3. Scrub the timeline and confirm the rendered SVG preview changes visually:
+   `UI Text` shifts, `Tadpole Q` opacity changes, and `CO Text` fill updates.
+4. Double-click in preview bar to insert a keyframe on the selected track and
    confirm it appears in track keyframe list.
-4. Use toolbar `Drop keyframe` action and verify same result with snapped time.
-5. Confirm shortcut panel includes preview double-click hint and keyframe-step
+5. Use toolbar `Drop keyframe` action and verify same result with snapped time.
+6. Confirm shortcut panel includes preview double-click hint and keyframe-step
    guidance.
 
 ## Expected observations
