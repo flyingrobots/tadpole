@@ -339,7 +339,8 @@ What the tests proved:
 
 What remains open:
 
-- PR review and merge.
+- None for Goal 6. Goal 8 runnable animation export remains the next product
+  gap.
 
 PR:
 
