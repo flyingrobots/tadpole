@@ -81,6 +81,10 @@ This cycle includes:
   parent element ID.
 - Convert `values` or `from`/`to` pairs plus `dur` and optional `keyTimes` into
   Tadpole keyframes.
+- Parse SVG clock values with SVG semantics, including unitless timecounts as
+  seconds.
+- Interpolate imported fill/stroke color tracks when values are supported CSS
+  hex or RGB colors.
 - Keep sanitized SVG output free of animation nodes.
 - Show imported-track counts and unsupported-animation warnings in the SVG
   Source panel.
@@ -148,6 +152,17 @@ Unsupported input behavior:
 
 - Unsafe or external target references are ignored and warned.
 - Unsupported animation attributes are ignored and warned.
+- Non-linear or discrete `calcMode` values are ignored and warned until Tadpole
+  has a timeline representation that preserves them faithfully.
+- Non-uniform scale, pivoted rotate, finite repeat, malformed or overlong
+  transform values, additive/accumulated composition, and non-interpolable color
+  values are ignored and warned.
+- Repeated `keyTimes` and duplicate target/property animations are ignored and
+  warned instead of importing ambiguous runtime state.
+- Imported loop state comes from SVG repeat intent: `repeatCount="indefinite"`
+  loops, while one-shot animation imports do not.
+- Reset Sample restores the sample timeline duration after imported SVG duration
+  changes.
 - CSS animation and Web Animations script surfaces remain non-executed and are
   warned when detectable.
 - The sanitized SVG source never keeps SMIL animation nodes.
@@ -267,6 +282,25 @@ Behavior tests required:
 - [x] Browser witness proves sanitized preview contains no SMIL animation nodes.
 - [x] Browser witness edits an imported keyframe and sees project export update.
 - [x] Browser witness reports unsupported animation constructs.
+- [x] Browser witness proves unitless SMIL clock values import as seconds.
+- [x] Browser witness proves unsupported `calcMode` values do not import as
+      linear tracks.
+- [x] Browser witness proves failed file imports clear stale animation warnings.
+- [x] Browser witness proves unsafe animation references do not retarget to
+      parent elements.
+- [x] Browser witness proves one-argument `translate` imports as x-only motion.
+- [x] Browser witness proves imported hex colors interpolate at the playhead.
+- [x] Browser witness proves non-uniform scale and pivoted rotate imports warn
+      instead of changing motion.
+- [x] Browser witness proves finite repeat and malformed transform imports warn
+      instead of shortening or inventing motion.
+- [x] Browser witness proves RGBA color values, overlong transform arity, and
+      composed SMIL animations warn instead of importing lossy motion.
+- [x] Browser witness proves one-shot animation imports clear looping while
+      indefinite imports preserve looping.
+- [x] Browser witness proves Reset Sample restores sample timeline duration.
+- [x] Browser witness proves repeated `keyTimes` and duplicate target/property
+      animations warn instead of importing ambiguous tracks.
 
 Documentation/process tests:
 
@@ -282,6 +316,16 @@ The work is done when:
 - [x] Sanitized preview/export does not retain animation nodes.
 - [x] Project JSON export preserves converted tracks.
 - [x] Browser witness covers import, edit, scrub, and export.
+- [x] Browser witness covers unitless clock values, unsupported discrete timing,
+      and failed-import warning cleanup.
+- [x] Browser witness covers unsafe reference rejection and x-only translate
+      import semantics.
+- [x] Browser witness covers color interpolation and stricter transform/repeat
+      rejection.
+- [x] Browser witness covers RGBA rejection, transform arity rejection,
+      composition rejection, and imported loop intent.
+- [x] Browser witness covers xlink reference rejection, reset duration, repeated
+      `keyTimes`, and duplicate imported track rejection.
 - [x] Local validation is green.
 
 ## Validation Plan
@@ -306,8 +350,8 @@ Run the browser witness against a local dev server:
 
 ```bash
 npm run dev
-(cd /tmp/tadpole-playwright && \
-  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs)
+TADPOLE_APP_URL="${TADPOLE_APP_URL:-http://localhost:5173/}" \
+  node docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
 ```
 
 ## Risks
@@ -350,7 +394,16 @@ What the tests proved:
 - `animation-import-smoke.mjs` imports five supported SMIL-derived tracks,
   reports three unsupported animation notes, proves sanitized preview/export do
   not retain animation/style/script nodes, scrubs imported motion, edits an
-  imported keyframe, and observes the edited value in project JSON.
+  imported keyframe, observes the edited value in project JSON, proves unitless
+  SMIL clock values import as seconds, rejects unsupported discrete timing as a
+  warning, clears stale warnings after failed file import, rejects unsafe
+  animation references without parent retargeting, and imports one-argument
+  `translate` as x-only motion. Follow-up review hardening added proof for
+  imported color interpolation, non-uniform scale rejection, pivoted rotate
+  rejection, finite repeat rejection, malformed transform rejection, RGBA
+  rejection, overlong transform arity rejection, composition rejection, imported
+  loop intent, xlink reference rejection, reset duration restoration, repeated
+  `keyTimes` rejection, and duplicate imported track rejection.
 
 What remains open:
 

@@ -32,6 +32,12 @@
     next: Keyframe | null;
   };
 
+  type RgbColor = {
+    r: number;
+    g: number;
+    b: number;
+  };
+
   type DraggingKeyframe = {
     trackId: string;
     keyframeId: string;
@@ -64,6 +70,7 @@
     tracks: ImportedAnimationTrack[];
     warnings: string[];
     duration: number;
+    hasIndefiniteRepeat: boolean;
   };
 
   type SvgImportResult = {
@@ -137,6 +144,7 @@
   ];
   const drawerWidthPresets = [228, 300, 380, 460, 560, 660];
   const timelineDurationPresets = [500, 800, 1200, 1600, 2200, 3000];
+  const sampleTimelineDurationMs = 1200;
   const minGridDivisions = 5;
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
@@ -164,6 +172,7 @@
     propertyCatalog.map((property): [AnimationProperty, PropertyDefinition] => [property.id, property]),
   );
   const numericProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "number"));
+  const colorProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "color"));
   type PreviewStyle = {
     transform: string;
     opacity: string;
@@ -621,7 +630,7 @@
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let selectedTargetTracks: TimelineTrack[] = [];
-  let timelineDurationMs = 1200;
+  let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
   let isPlaying = false;
   let isLooping = true;
@@ -824,9 +833,50 @@
     Array.isArray(track.keyframes)
       ? [...track.keyframes].sort((first, second) => first.time - second.time)
       : [];
-  const interpolateNumeric = (firstValue, secondValue, ratio) =>
-    firstValue + (secondValue - firstValue) * ratio;
-  const applyEasing = (ratio, easing) => {
+	  const interpolateNumeric = (firstValue, secondValue, ratio) =>
+	    firstValue + (secondValue - firstValue) * ratio;
+	  const parseCssColor = (value) => {
+	    const trimmed = String(value || "").trim();
+	    const shortHex = /^#([0-9a-f]{3})$/i.exec(trimmed);
+	    if (shortHex) {
+	      const [, hex] = shortHex;
+	      return {
+	        r: parseInt(hex[0] + hex[0], 16),
+	        g: parseInt(hex[1] + hex[1], 16),
+	        b: parseInt(hex[2] + hex[2], 16),
+	      };
+	    }
+	    const longHex = /^#([0-9a-f]{6})$/i.exec(trimmed);
+	    if (longHex) {
+	      const [, hex] = longHex;
+	      return {
+	        r: parseInt(hex.slice(0, 2), 16),
+	        g: parseInt(hex.slice(2, 4), 16),
+	        b: parseInt(hex.slice(4, 6), 16),
+	      };
+	    }
+	    const rgb = /^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$/i.exec(trimmed);
+	    if (!rgb) {
+	      return null;
+	    }
+	    const color = { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+	    return [color.r, color.g, color.b].every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? color : null;
+	  };
+	  const formatCssColor = (color) =>
+	    "rgb(" + Math.round(color.r) + ", " + Math.round(color.g) + ", " + Math.round(color.b) + ")";
+	  const interpolateCssColor = (firstValue, secondValue, ratio) => {
+	    const firstColor = parseCssColor(firstValue);
+	    const secondColor = parseCssColor(secondValue);
+	    if (!firstColor || !secondColor) {
+	      return null;
+	    }
+	    return formatCssColor({
+	      r: interpolateNumeric(firstColor.r, secondColor.r, ratio),
+	      g: interpolateNumeric(firstColor.g, secondColor.g, ratio),
+	      b: interpolateNumeric(firstColor.b, secondColor.b, ratio),
+	    });
+	  };
+	  const applyEasing = (ratio, easing) => {
     const t = clamp(ratio, 0, 1);
     switch (easing) {
       case "power1.inOut":
@@ -861,23 +911,28 @@
       return sorted[sorted.length - 1].value;
     }
 
-    for (let i = 0; i < sorted.length - 1; i += 1) {
-      const left = sorted[i];
-      const right = sorted[i + 1];
-      if (time >= left.time && time <= right.time) {
-        if (!numericProperties.has(track.property)) {
-          const midpoint = left.time + (right.time - left.time) / 2;
-          return time < midpoint ? left.value : right.value;
-        }
-        const leftValue = Number(left.value);
-        const rightValue = Number(right.value);
-        if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue) || right.time === left.time) {
-          return left.value;
-        }
-        const ratio = (time - left.time) / (right.time - left.time);
-        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
-      }
-    }
+	    for (let i = 0; i < sorted.length - 1; i += 1) {
+	      const left = sorted[i];
+	      const right = sorted[i + 1];
+	      if (time >= left.time && time <= right.time) {
+	        const ratio = (time - left.time) / (right.time - left.time);
+	        const easedRatio = applyEasing(ratio, right.easing);
+	        if (!numericProperties.has(track.property)) {
+	          const colorValue = interpolateCssColor(left.value, right.value, easedRatio);
+	          if (colorValue) {
+	            return colorValue;
+	          }
+	          const midpoint = left.time + (right.time - left.time) / 2;
+	          return time < midpoint ? left.value : right.value;
+	        }
+	        const leftValue = Number(left.value);
+	        const rightValue = Number(right.value);
+	        if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue) || right.time === left.time) {
+	          return left.value;
+	        }
+	        return String(interpolateNumeric(leftValue, rightValue, easedRatio));
+	      }
+	    }
 
     return sorted[sorted.length - 1].value;
   };
@@ -1033,6 +1088,54 @@ ${runnableRuntimeScript}
   const interpolateNumeric = (firstValue: number, secondValue: number, ratio: number): number =>
     firstValue + (secondValue - firstValue) * ratio;
 
+  const parseCssColor = (value: string): RgbColor | null => {
+    const trimmed = value.trim();
+    const shortHex = /^#([0-9a-f]{3})$/i.exec(trimmed);
+    if (shortHex) {
+      const [, hex] = shortHex;
+      return {
+        r: parseInt(hex[0]! + hex[0]!, 16),
+        g: parseInt(hex[1]! + hex[1]!, 16),
+        b: parseInt(hex[2]! + hex[2]!, 16),
+      };
+    }
+
+    const longHex = /^#([0-9a-f]{6})$/i.exec(trimmed);
+    if (longHex) {
+      const [, hex] = longHex;
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+      };
+    }
+
+    const rgb = /^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$/i.exec(trimmed);
+    if (!rgb) {
+      return null;
+    }
+
+    const color = { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+    return Object.values(color).every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? color : null;
+  };
+
+  const formatCssColor = (color: RgbColor): string =>
+    `rgb(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)})`;
+
+  const interpolateCssColor = (firstValue: string, secondValue: string, ratio: number): string | null => {
+    const firstColor = parseCssColor(firstValue);
+    const secondColor = parseCssColor(secondValue);
+    if (!firstColor || !secondColor) {
+      return null;
+    }
+
+    return formatCssColor({
+      r: interpolateNumeric(firstColor.r, secondColor.r, ratio),
+      g: interpolateNumeric(firstColor.g, secondColor.g, ratio),
+      b: interpolateNumeric(firstColor.b, secondColor.b, ratio),
+    });
+  };
+
   const applyEasing = (ratio: number, easing: KeyframeEasing): number => {
     const t = clamp(ratio, 0, 1);
     switch (easing) {
@@ -1072,7 +1175,13 @@ ${runnableRuntimeScript}
       const left = sorted[i];
       const right = sorted[i + 1];
       if (time >= left.time && time <= right.time) {
+        const ratio = (time - left.time) / (right.time - left.time);
+        const easedRatio = applyEasing(ratio, right.easing);
         if (!isNumericProperty(track.property)) {
+          const colorValue = interpolateCssColor(left.value, right.value, easedRatio);
+          if (colorValue) {
+            return colorValue;
+          }
           const midpoint = left.time + (right.time - left.time) / 2;
           return time < midpoint ? left.value : right.value;
         }
@@ -1081,8 +1190,7 @@ ${runnableRuntimeScript}
         if (Number.isNaN(leftValue) || Number.isNaN(rightValue) || right.time === left.time) {
           return left.value;
         }
-        const ratio = (time - left.time) / (right.time - left.time);
-        return String(interpolateNumeric(leftValue, rightValue, applyEasing(ratio, right.easing)));
+        return String(interpolateNumeric(leftValue, rightValue, easedRatio));
       }
     }
 
@@ -1463,12 +1571,15 @@ ${runnableRuntimeScript}
     ];
     const importedTimelineTracks = importedTracksForTargets.map(createTimelineTrackFromImported);
     const importedTrackCount = importedTimelineTracks.length;
+    const restoredSampleTracks = options.restoreSampleTracks && importedTrackCount === 0 ? createSampleTracks() : null;
     const nextDuration =
       importedTrackCount > 0
         ? clamp(Math.max(250, parsed.animation.duration), 250, 30000)
+        : restoredSampleTracks
+          ? sampleTimelineDurationMs
         : timelineDurationMs;
     const candidateTracks =
-      importedTrackCount > 0 ? importedTimelineTracks : options.restoreSampleTracks ? createSampleTracks() : tracks;
+      importedTrackCount > 0 ? importedTimelineTracks : restoredSampleTracks ? restoredSampleTracks : tracks;
     const reconciledTracks = normalizeTrackList(candidateTracks.filter((track) => targetIds.has(track.targetId)), nextDuration);
     const removedTrackCount = candidateTracks.length - reconciledTracks.length;
 
@@ -1478,9 +1589,10 @@ ${runnableRuntimeScript}
     svgImportError = "";
     animationImportWarnings = importWarnings;
     clearProjectImportStatus();
-    if (importedTrackCount > 0) {
+    if (importedTrackCount > 0 || restoredSampleTracks) {
       timelineDurationMs = nextDuration;
       currentTime = 0;
+      isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : true;
     }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
@@ -1519,6 +1631,7 @@ ${runnableRuntimeScript}
     const isSvgFile = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
     if (!isSvgFile) {
       svgImportError = "Import failed: choose an SVG file.";
+      animationImportWarnings = [];
       input.value = "";
       return;
     }
@@ -1529,6 +1642,7 @@ ${runnableRuntimeScript}
     } catch {
       if (revision === svgImportRevision) {
         svgImportError = "Import failed: could not read the SVG file.";
+        animationImportWarnings = [];
       }
     } finally {
       input.value = "";
@@ -1595,20 +1709,23 @@ ${runnableRuntimeScript}
       return null;
     }
 
-    const simpleMatch = /^(-?\d+(?:\.\d+)?)(ms|s|min)?$/i.exec(trimmed);
+    const simpleMatch = /^(-?\d+(?:\.\d+)?)(ms|s|min|h)?$/i.exec(trimmed);
     if (simpleMatch) {
       const amount = Number(simpleMatch[1]);
       if (!Number.isFinite(amount) || amount < 0) {
         return null;
       }
-      const unit = simpleMatch[2]?.toLowerCase() ?? "ms";
+      const unit = simpleMatch[2]?.toLowerCase();
+      if (unit === "ms") {
+        return amount;
+      }
       if (unit === "min") {
         return amount * 60_000;
       }
-      if (unit === "s") {
-        return amount * 1000;
+      if (unit === "h") {
+        return amount * 3_600_000;
       }
-      return amount;
+      return amount * 1000;
     }
 
     const clockParts = trimmed.split(":").map((part) => Number(part));
@@ -1650,9 +1767,9 @@ ${runnableRuntimeScript}
       const parsed = explicit.map((value) => Number(value));
       const isValid = parsed.every((value, index) => {
         const previous = index === 0 ? 0 : parsed[index - 1]!;
-        return Number.isFinite(value) && value >= 0 && value <= 1 && value >= previous;
+        return Number.isFinite(value) && value >= 0 && value <= 1 && (index === 0 ? value === 0 : value > previous);
       });
-      return isValid ? parsed : null;
+      return isValid && parsed[parsed.length - 1] === 1 ? parsed : null;
     }
 
     return Array.from({ length: count }, (_, index) => (count === 1 ? 0 : index / (count - 1)));
@@ -1667,12 +1784,13 @@ ${runnableRuntimeScript}
   };
 
   const targetIdForAnimationElement = (element: Element): string | null => {
-    const referencedTarget =
-      localTargetIdFromReference(element.getAttribute("href")) ??
-      localTargetIdFromReference(element.getAttribute("xlink:href")) ??
-      localTargetIdFromReference(element.getAttributeNS("http://www.w3.org/1999/xlink", "href"));
-    if (referencedTarget) {
-      return referencedTarget;
+    const referenceValues = [
+      element.getAttribute("href"),
+      element.getAttribute("xlink:href"),
+      element.getAttributeNS("http://www.w3.org/1999/xlink", "href"),
+    ].filter((value): value is string => value !== null);
+    if (referenceValues.length > 0) {
+      return referenceValues.map(localTargetIdFromReference).find((targetId) => targetId !== null) ?? null;
     }
 
     const parentId = element.parentElement?.getAttribute("id")?.trim();
@@ -1694,6 +1812,9 @@ ${runnableRuntimeScript}
       if (normalizedValue === null) {
         return null;
       }
+      if (colorProperties.has(property) && parseCssColor(normalizedValue) === null) {
+        return null;
+      }
 
       return {
         time: Math.round(duration * keyTimes[index]!),
@@ -1705,21 +1826,70 @@ ${runnableRuntimeScript}
     return keyframes.every((keyframe) => keyframe !== null) ? (keyframes as ImportedAnimationKeyframe[]) : null;
   };
 
-  const numbersFromSmilValue = (value: string): number[] =>
-    value
-      .trim()
-      .split(/[\s,]+/)
-      .map((part) => Number(part))
-      .filter((part) => Number.isFinite(part));
+  const parseSmilNumberList = (value: string): number[] | null => {
+    const parts = value.trim().split(/[\s,]+/).filter(Boolean);
+    if (parts.length === 0) {
+      return null;
+    }
+    const numbers = parts.map((part) => Number(part));
+    return numbers.every((part) => Number.isFinite(part)) ? numbers : null;
+  };
+
+  const numbersFromSmilValue = (value: string): number[] => parseSmilNumberList(value) ?? [];
 
   const dimensionValuesFromTransformValues = (values: string[], dimension: 0 | 1): string[] =>
     values.map((value) => {
       const numbers = numbersFromSmilValue(value);
-      const fallback = dimension === 0 ? 0 : numbers[0] ?? 0;
-      return String(numbers[dimension] ?? fallback);
+      return String(numbers[dimension] ?? 0);
     });
 
+  const hasNonUniformScaleValues = (values: string[]): boolean =>
+    values.some((value) => {
+      const numbers = numbersFromSmilValue(value);
+      return numbers.length > 1 && numbers[1] !== numbers[0];
+    });
+
+  const hasUnsupportedTransformValueArity = (values: string[], min: number, max: number): boolean =>
+    values.some((value) => {
+      const count = numbersFromSmilValue(value).length;
+      return count < min || count > max;
+    });
+
+  const hasExplicitRotatePivotValues = (values: string[]): boolean =>
+    values.some((value) => numbersFromSmilValue(value).length > 1);
+
   const valuesChange = (values: string[]): boolean => values.some((value) => value !== values[0]);
+
+  const unsupportedRepeatAttributeName = (element: Element): string => {
+    const repeatDur = element.getAttribute("repeatDur")?.trim();
+    if (repeatDur) {
+      return "repeatDur";
+    }
+
+    const repeatCount = element.getAttribute("repeatCount")?.trim();
+    if (repeatCount && repeatCount.toLowerCase() !== "indefinite") {
+      return "repeatCount";
+    }
+
+    return "";
+  };
+
+  const hasIndefiniteRepeat = (element: Element): boolean =>
+    element.getAttribute("repeatCount")?.trim().toLowerCase() === "indefinite";
+
+  const unsupportedCompositionAttribute = (element: Element): string => {
+    const additive = element.getAttribute("additive")?.trim().toLowerCase();
+    if (additive && additive !== "replace") {
+      return `additive "${additive}"`;
+    }
+
+    const accumulate = element.getAttribute("accumulate")?.trim().toLowerCase();
+    if (accumulate && accumulate !== "none") {
+      return `accumulate "${accumulate}"`;
+    }
+
+    return "";
+  };
 
   const extractAnimateElementTrack = (
     element: Element,
@@ -1769,8 +1939,16 @@ ${runnableRuntimeScript}
       warnings.push(`Unsupported keyTimes or transform value count on #${targetId}.`);
       return [];
     }
+    if (values.some((value) => parseSmilNumberList(value) === null)) {
+      warnings.push(`Unsupported malformed transform values on #${targetId}.`);
+      return [];
+    }
 
     if (transformType === "translate") {
+      if (hasUnsupportedTransformValueArity(values, 1, 2)) {
+        warnings.push(`Unsupported translate value arity on #${targetId}.`);
+        return [];
+      }
       const xValues = dimensionValuesFromTransformValues(values, 0);
       const yValues = dimensionValuesFromTransformValues(values, 1);
       const tracks: ImportedAnimationTrack[] = [];
@@ -1789,6 +1967,14 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "scale") {
+      if (hasUnsupportedTransformValueArity(values, 1, 2)) {
+        warnings.push(`Unsupported scale value arity on #${targetId}.`);
+        return [];
+      }
+      if (hasNonUniformScaleValues(values)) {
+        warnings.push(`Unsupported non-uniform scale values on #${targetId}.`);
+        return [];
+      }
       const scaleValues = dimensionValuesFromTransformValues(values, 0);
       const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration);
       if (!keyframes) {
@@ -1799,6 +1985,10 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "rotate") {
+      if (hasExplicitRotatePivotValues(values)) {
+        warnings.push(`Unsupported pivoted rotate values on #${targetId}.`);
+        return [];
+      }
       const rotationValues = dimensionValuesFromTransformValues(values, 0);
       const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration);
       if (!keyframes) {
@@ -1813,7 +2003,7 @@ ${runnableRuntimeScript}
   };
 
   const extractSvgAnimationIntent = (source: string): SvgAnimationImportResult => {
-    const emptyResult: SvgAnimationImportResult = { tracks: [], warnings: [], duration: 0 };
+    const emptyResult: SvgAnimationImportResult = { tracks: [], warnings: [], duration: 0, hasIndefiniteRepeat: false };
     if (typeof DOMParser === "undefined") {
       return emptyResult;
     }
@@ -1825,6 +2015,19 @@ ${runnableRuntimeScript}
 
     const warnings: string[] = [];
     const tracks: ImportedAnimationTrack[] = [];
+    const importedTrackKeys = new Set<string>();
+    let importedIndefiniteRepeat = false;
+    const appendImportedTrack = (track: ImportedAnimationTrack): boolean => {
+      const key = `${track.targetId}:${track.property}`;
+      if (importedTrackKeys.has(key)) {
+        warnings.push(`Skipped duplicate ${track.property} animation on #${track.targetId}.`);
+        return false;
+      }
+
+      importedTrackKeys.add(key);
+      tracks.push(track);
+      return true;
+    };
     const animationElements = Array.from(doc.querySelectorAll("*")).filter((element) => {
       const tag = element.tagName.toLowerCase();
       return tag === "animate" || tag === "animatetransform" || unsupportedAnimationTags.has(tag);
@@ -1864,8 +2067,20 @@ ${runnableRuntimeScript}
       }
 
       const calcMode = element.getAttribute("calcMode")?.trim().toLowerCase();
-      if (calcMode && calcMode !== "linear" && calcMode !== "discrete") {
+      if (calcMode && calcMode !== "linear") {
         warnings.push(`Unsupported calcMode "${calcMode}" on #${targetId}.`);
+        return;
+      }
+
+      const unsupportedRepeat = unsupportedRepeatAttributeName(element);
+      if (unsupportedRepeat) {
+        warnings.push(`Unsupported ${unsupportedRepeat} on #${targetId}.`);
+        return;
+      }
+
+      const unsupportedComposition = unsupportedCompositionAttribute(element);
+      if (unsupportedComposition) {
+        warnings.push(`Unsupported ${unsupportedComposition} on #${targetId}.`);
         return;
       }
 
@@ -1877,13 +2092,24 @@ ${runnableRuntimeScript}
 
       if (tag === "animate") {
         const track = extractAnimateElementTrack(element, targetId, duration, warnings);
-        if (track) {
-          tracks.push(track);
+        if (track && appendImportedTrack(track)) {
+          if (hasIndefiniteRepeat(element)) {
+            importedIndefiniteRepeat = true;
+          }
         }
         return;
       }
 
-      tracks.push(...extractAnimateTransformTracks(element, targetId, duration, warnings));
+      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, warnings);
+      let appendedTransformTrack = false;
+      transformTracks.forEach((track) => {
+        if (appendImportedTrack(track)) {
+          appendedTransformTrack = true;
+        }
+      });
+      if (appendedTransformTrack && hasIndefiniteRepeat(element)) {
+        importedIndefiniteRepeat = true;
+      }
     });
 
     const duration = tracks.reduce((maxDuration, track) => {
@@ -1891,7 +2117,7 @@ ${runnableRuntimeScript}
       return Math.max(maxDuration, trackDuration);
     }, 0);
 
-    return { tracks, warnings: Array.from(new Set(warnings)), duration };
+    return { tracks, warnings: Array.from(new Set(warnings)), duration, hasIndefiniteRepeat: importedIndefiniteRepeat };
   };
 
   const createTimelineTrackFromImported = (track: ImportedAnimationTrack): TimelineTrack => ({
@@ -3165,7 +3391,7 @@ ${runnableRuntimeScript}
           {:else}
             <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
           {/if}
-          {#if animationImportWarnings.length > 0}
+          {#if !svgImportError && animationImportWarnings.length > 0}
             <div class="warning tiny animation-import-warnings" aria-live="polite" data-tadpole-animation-import-warnings>
               <strong>Animation import warnings</strong>
               <ul>

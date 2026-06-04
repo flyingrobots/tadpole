@@ -16,15 +16,35 @@ turn the motion into editable timeline tracks.
 - The rendered preview and project export keep sanitized SVG without animation,
   style, or script nodes.
 - Editing an imported keyframe updates project JSON export.
+- Unitless SVG clock values import as seconds.
+- Repeated `keyTimes` warn instead of importing zero-length segments.
+- Reset Sample restores the sample timeline duration after a longer SVG import.
+- Unsupported discrete timing is warned and not imported as linear motion.
+- Failed file imports clear stale animation warning UI.
+- Unsafe explicit `href` and `xlink:href` animation target references are warned
+  and not retargeted to parent elements.
+- One-argument `translate` imports as x-only motion with no synthetic y track.
+- Imported fill/stroke colors interpolate when source values are supported CSS
+  hex or RGB colors.
+- Non-uniform scale and pivoted rotate imports warn instead of dropping
+  unsupported transform semantics.
+- Finite repeats and malformed transform values warn instead of shortening or
+  inventing motion.
+- RGBA color values warn instead of importing without alpha interpolation.
+- Overlong transform value arity warns instead of dropping extra components.
+- Additive and accumulated SMIL animations warn instead of importing as absolute
+  motion.
+- Duplicate target/property animation tracks warn and keep the first imported
+  track.
+- One-shot SVG imports clear looping, while indefinite imports preserve looping.
 
 ## Command
 
-Run the app, then execute:
+After `npm install`, run the app, then execute from the repository root:
 
 ```bash
-cd /tmp/tadpole-playwright
 TADPOLE_APP_URL=http://localhost:5174/ \
-  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
+  node docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
 ```
 
 The URL may be `http://localhost:5173/` when Vite does not need to choose a
