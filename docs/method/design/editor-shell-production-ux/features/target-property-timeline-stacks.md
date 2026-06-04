@@ -3,7 +3,7 @@ title: "G13-001 - Target Property Timeline Stacks"
 lane: "design"
 goal: "Goal 13"
 issue: "https://github.com/flyingrobots/tadpole/issues/35"
-pr: "TBD"
+pr: "https://github.com/flyingrobots/tadpole/pull/45"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -252,3 +252,7 @@ What remains open:
 
 - Curves mode, dense summary-dot sampling, multi-select keyframe editing, and
   SVG-native save serialization remain follow-on work.
+
+PR:
+
+- [Goal 13 PR](https://github.com/flyingrobots/tadpole/pull/45)
