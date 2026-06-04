@@ -3,7 +3,7 @@ title: "G14-001 - Playback Work Area Controls"
 lane: "design"
 goal: "Goal 14"
 issue: "https://github.com/flyingrobots/tadpole/issues/36"
-pr: "TBD"
+pr: "https://github.com/flyingrobots/tadpole/pull/46"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -250,3 +250,7 @@ What the tests proved:
 What remains open:
 
 - Persisting work-area metadata to SVG remains deferred to Goal 15 or later.
+
+PR:
+
+- <https://github.com/flyingrobots/tadpole/pull/46>
