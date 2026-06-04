@@ -3,12 +3,12 @@ title: "G11-001 - Menu Commands And Document Dialogs"
 lane: "design"
 goal: "Goal 11"
 issue: "https://github.com/flyingrobots/tadpole/issues/33"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "https://github.com/flyingrobots/tadpole/pull/43"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -28,9 +28,9 @@ updated: "2026-06-03"
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -115,7 +115,10 @@ Initial command IDs:
 - `file.revertSvg`
 - `view.showSource`
 - `view.showWarnings`
+- `view.showLayers`
+- `view.showInspector`
 - `view.showExport`
+- `view.showDebug`
 - `timeline.playPause`
 - `export.runnableHtml`
 
@@ -188,17 +191,17 @@ state refactors land later.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add menubar and command-id menu items.
-- [ ] Slice 2: Move open/paste flows into File menu dialogs.
-- [ ] Slice 3: Move runnable export into Export dialog.
-- [ ] Slice 4: Add View menu panel toggles.
-- [ ] Slice 5: Add keyboard/pointer browser witness.
+- [x] Slice 1: Add menubar and command-id menu items.
+- [x] Slice 2: Move open/paste flows into File menu dialogs.
+- [x] Slice 3: Move runnable export into Export dialog.
+- [x] Slice 4: Add View menu panel toggles.
+- [x] Slice 5: Add keyboard/pointer browser witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: File > Open SVG opens a dialog.
-- [ ] Browser witness: View > Source toggles Source panel.
-- [ ] Browser witness: Export > Runnable HTML opens export dialog.
+- [x] Browser witness: File > Open SVG opens a dialog.
+- [x] Browser witness: View > Source toggles Source panel.
+- [x] Browser witness: Export > Runnable HTML opens export dialog.
 
 ## Proof Matrix
 
@@ -210,11 +213,11 @@ state refactors land later.
 
 ## Acceptance Criteria
 
-- [ ] Menus expose the command IDs in this doc.
-- [ ] Dialogs preserve current import/export behavior.
-- [ ] Dialog focus behavior is deterministic.
-- [ ] Secondary panels are command-accessible.
-- [ ] Local validation is green.
+- [x] Menus expose the command IDs in this doc.
+- [x] Dialogs preserve current import/export behavior.
+- [x] Dialog focus behavior is deterministic.
+- [x] Secondary panels are command-accessible.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -242,12 +245,26 @@ Run the app and execute `menu-dialogs-smoke.mjs`.
 
 What changed from the design:
 
-- TBD
+- The File, Edit, View, Timeline, Export, and Help menus were implemented as a
+  direct command shell over the existing Svelte handlers.
+- Save SVG opens a dialog shell with the native SVG download action disabled
+  until Goal 15 lands; it offers project JSON copy as the temporary route.
+- View commands now expose source, warnings, layers, inspector, export, debug,
+  target, palette, workspace, and font surfaces through the panel host.
 
 What the tests proved:
 
-- TBD
+- `menu-dialogs-smoke.mjs` proves command IDs, File keyboard activation,
+  Open/Paste SVG dialogs, View command panel state, and Export Runnable dialog
+  output.
+- Existing editor-shell, import-gate, project-export, runnable-export,
+  rough-UX, and animation-import witnesses still pass through the new menu
+  command paths.
 
 What remains open:
 
-- TBD
+- Goal 12 should replace the lightweight panel shells with richer contextual
+  panel behavior.
+- Goal 15 should enable true SVG-native save serialization.
+- Goal 16 should move the command shell behind a runtime-backed command/history
+  model.

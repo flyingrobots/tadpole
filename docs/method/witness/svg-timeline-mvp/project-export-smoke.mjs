@@ -55,18 +55,20 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join("\n")}`);
 };
 
-const openPanel = async (page, buttonName, selector) => {
+const openPanel = async (page, menu, command, selector) => {
   const panel = page.locator(selector);
   if (await panel.isVisible()) {
     return;
   }
-  await page.getByRole("button", { name: buttonName }).click();
+  await page.locator(`[data-tadpole-menu-button="${menu}"]`).click();
+  await page.locator(`[data-tadpole-menu="${menu}"]`).waitFor({ state: "visible" });
+  await page.locator(`[data-tadpole-command="${command}"]`).click();
   await panel.waitFor({ state: "visible" });
 };
 
-const openSourcePanel = async (page) => openPanel(page, "Open SVG source panel", ".panel-svg-source");
-const openTargetsPanel = async (page) => openPanel(page, "Open targets panel", ".panel-target-library");
-const openExportPanel = async (page) => openPanel(page, "Open export panel", ".export-block");
+const openSourcePanel = async (page) => openPanel(page, "view", "view.showSource", ".panel-svg-source");
+const openTargetsPanel = async (page) => openPanel(page, "view", "view.showTargets", ".panel-target-library");
+const openExportPanel = async (page) => openPanel(page, "view", "view.showExport", ".export-block");
 const projectImportSource = (page) => page.locator(".export-block textarea").last();
 const projectImportFile = (page) => page.locator(".export-block input[type=file]");
 const projectImportButton = (page, name) => page.locator(".export-block button", { hasText: name });

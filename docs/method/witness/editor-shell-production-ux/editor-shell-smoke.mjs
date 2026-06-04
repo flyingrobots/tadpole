@@ -48,6 +48,12 @@ const boundingBoxFor = async (page, selector) => {
   return box;
 };
 
+const runCommand = async (page, menu, command) => {
+  await page.locator(`[data-tadpole-menu-button="${menu}"]`).click();
+  await page.locator(`[data-tadpole-menu="${menu}"]`).waitFor({ state: "visible" });
+  await page.locator(`[data-tadpole-command="${command}"]`).click();
+};
+
 const assertPlaybackControlsReachable = async (page, label) => {
   const visibleControlCount = await page.locator("[data-tadpole-playback-controls]").evaluateAll((nodes) =>
     nodes.filter((node) => {
@@ -119,7 +125,7 @@ const assertWorkflowReachable = async (browser) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-tadpole-canvas-stage] svg");
 
-  await page.getByRole("button", { name: "Open SVG source panel" }).click();
+  await runCommand(page, "view", "view.showSource");
   await page.getByLabel("Raw SVG").fill(fixtureSvg);
   await page.getByRole("button", { name: "Import Paste" }).click();
   await page.waitForSelector("[data-tadpole-canvas-stage] #badge");
@@ -134,10 +140,10 @@ const assertWorkflowReachable = async (browser) => {
     "imported SVG edit workflow did not create a target-bound track",
   );
 
-  await page.getByRole("button", { name: "Open export panel" }).click();
+  await runCommand(page, "view", "view.showExport");
   assert((await page.locator("[data-tadpole-panel-host] .export-block pre").first().isVisible()) === true, "export panel did not open");
 
-  await page.getByRole("button", { name: "Open SVG source panel" }).click();
+  await runCommand(page, "view", "view.showSource");
   await page.getByLabel("Raw SVG").fill(warningSvg);
   await page.getByRole("button", { name: "Import Paste" }).click();
   await page.waitForSelector("[data-tadpole-canvas-stage] #warning-badge");

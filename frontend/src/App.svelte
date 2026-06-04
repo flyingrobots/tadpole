@@ -16,7 +16,20 @@
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
   type TrackSortMode = "manual" | "target" | "property";
-  type EditorPanel = "none" | "workspace" | "source" | "palette" | "targets" | "fonts" | "export";
+  type EditorPanel =
+    | "none"
+    | "workspace"
+    | "source"
+    | "palette"
+    | "targets"
+    | "fonts"
+    | "export"
+    | "warnings"
+    | "layers"
+    | "inspector"
+    | "debug";
+  type EditorMenu = "file" | "edit" | "view" | "timeline" | "export" | "help";
+  type EditorDialog = "open-svg" | "paste-svg" | "save-svg" | "export-runnable";
 
   type KeyframeEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 
@@ -650,6 +663,9 @@
   let scrubberSource: "timeline" | "preview" | null = null;
   let drawerOpen = false;
   let activePanel: EditorPanel = "none";
+  let openMenu: EditorMenu | null = null;
+  let activeDialog: EditorDialog | null = null;
+  let dialogReturnMenu: EditorMenu | null = null;
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
@@ -704,6 +720,147 @@
     }
     activePanel = panel;
     drawerOpen = true;
+  };
+  const menuOrder: EditorMenu[] = ["file", "edit", "view", "timeline", "export", "help"];
+  const closeMenus = (): void => {
+    openMenu = null;
+  };
+  const focusMenuButton = (menu: EditorMenu): void => {
+    const button = document.querySelector(`[data-tadpole-menu-button="${menu}"]`);
+    if (button instanceof HTMLElement) {
+      button.focus();
+    }
+  };
+  const focusFirstMenuItem = (menu: EditorMenu): void => {
+    void nextDomUpdate().then(() => {
+      const menuElement = document.querySelector(`[data-tadpole-menu="${menu}"]`);
+      const item = menuElement?.querySelector("button:not(:disabled)");
+      if (item instanceof HTMLElement) {
+        item.focus();
+      }
+    });
+  };
+  const toggleMenu = (menu: EditorMenu): void => {
+    openMenu = openMenu === menu ? null : menu;
+  };
+  const openMenuWithFocus = (menu: EditorMenu): void => {
+    openMenu = menu;
+    focusFirstMenuItem(menu);
+  };
+  const openEditorDialog = (dialog: EditorDialog, returnMenu: EditorMenu): void => {
+    activeDialog = dialog;
+    dialogReturnMenu = returnMenu;
+    closeMenus();
+    void nextDomUpdate().then(() => {
+      const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
+      const focusTarget = dialogElement?.querySelector("input, textarea, button");
+      if (focusTarget instanceof HTMLElement) {
+        focusTarget.focus();
+      }
+    });
+  };
+  const closeEditorDialog = (): void => {
+    const returnMenu = dialogReturnMenu;
+    activeDialog = null;
+    dialogReturnMenu = null;
+    if (returnMenu) {
+      void nextDomUpdate().then(() => focusMenuButton(returnMenu));
+    }
+  };
+  const togglePanelCommand = (panel: EditorPanel): void => {
+    openPanel(panel);
+    closeMenus();
+  };
+  const runViewCommand = (panel: EditorPanel): void => {
+    togglePanelCommand(panel);
+  };
+  const runFileRevertCommand = (): void => {
+    resetToSampleSvg();
+    closeMenus();
+  };
+  const runHelpShortcutsCommand = (): void => {
+    showKeyboardShortcuts = !showKeyboardShortcuts;
+    closeMenus();
+  };
+  const handleMenuButtonKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMenuWithFocus(menu);
+      return;
+    }
+    const index = menuOrder.indexOf(menu);
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusMenuButton(menuOrder[(index + 1) % menuOrder.length]);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusMenuButton(menuOrder[(index + menuOrder.length - 1) % menuOrder.length]);
+      return;
+    }
+    if (event.key === "Escape") {
+      closeMenus();
+    }
+  };
+  const handleMenuItemKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenus();
+      focusMenuButton(menu);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    event.preventDefault();
+    const menuElement = document.querySelector(`[data-tadpole-menu="${menu}"]`);
+    const itemList = menuElement ? Array.from(menuElement.querySelectorAll("button:not(:disabled)")) : [];
+    const items = itemList.filter((item): item is HTMLButtonElement => item instanceof HTMLButtonElement);
+    if (items.length === 0) {
+      return;
+    }
+    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    const fallbackIndex = event.key === "ArrowDown" ? 0 : items.length - 1;
+    const nextIndex =
+      activeIndex === -1
+        ? fallbackIndex
+        : event.key === "ArrowDown"
+          ? (activeIndex + 1) % items.length
+          : (activeIndex + items.length - 1) % items.length;
+    items[nextIndex]?.focus();
+  };
+  const handleDialogKeydown = (event: KeyboardEvent): void => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeEditorDialog();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+    const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
+    const focusableList = dialogElement
+      ? Array.from(dialogElement.querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)"))
+      : [];
+    const focusable = focusableList.filter((item): item is HTMLElement => item instanceof HTMLElement);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   };
   const resizeDrawerByKeyboard = (event: KeyboardEvent): void => {
     if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
@@ -1654,19 +1811,25 @@ ${runnableRuntimeScript}
     return true;
   };
 
-  const importSvgDraft = (): void => {
-    loadSvgSource(svgDraftSource, { label: "Pasted SVG", revision: beginSvgImport() });
+  const importSvgDraft = (): boolean => {
+    return loadSvgSource(svgDraftSource, { label: "Pasted SVG", revision: beginSvgImport() });
+  };
+
+  const importSvgDraftAndClose = (): void => {
+    if (importSvgDraft()) {
+      closeEditorDialog();
+    }
   };
 
   const resetToSampleSvg = (): void => {
     loadSvgSource(defaultSvgSource, { label: sampleSvgLabel, revision: beginSvgImport(), restoreSampleTracks: true });
   };
 
-  const importSvgFile = async (event: Event): Promise<void> => {
+  const importSvgFile = async (event: Event): Promise<boolean> => {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) {
-      return;
+      return false;
     }
 
     const revision = beginSvgImport();
@@ -1675,19 +1838,26 @@ ${runnableRuntimeScript}
       svgImportError = "Import failed: choose an SVG file.";
       animationImportWarnings = [];
       input.value = "";
-      return;
+      return false;
     }
 
     try {
       const text = await file.text();
-      loadSvgSource(text, { label: file.name, revision });
+      return loadSvgSource(text, { label: file.name, revision });
     } catch {
       if (revision === svgImportRevision) {
         svgImportError = "Import failed: could not read the SVG file.";
         animationImportWarnings = [];
       }
+      return false;
     } finally {
       input.value = "";
+    }
+  };
+
+  const importSvgFileAndClose = async (event: Event): Promise<void> => {
+    if (await importSvgFile(event)) {
+      closeEditorDialog();
     }
   };
 
@@ -3371,57 +3541,380 @@ ${runnableRuntimeScript}
     </div>
 
     <nav class="menu-actions" aria-label="Editor menu">
-      <button
-        type="button"
-        class:is-active={activePanel === "source"}
-        aria-label="Open SVG source panel"
-        on:click={() => openPanel("source")}
-      >
-        Source
-      </button>
-      <button
-        type="button"
-        class:is-active={activePanel === "targets"}
-        aria-label="Open targets panel"
-        on:click={() => openPanel("targets")}
-      >
-        Targets
-      </button>
-      <button
-        type="button"
-        class:is-active={activePanel === "export"}
-        aria-label="Open export panel"
-        on:click={() => openPanel("export")}
-      >
-        Export
-      </button>
-      <button
-        type="button"
-        class:is-active={activePanel === "palette"}
-        aria-label="Open palette panel"
-        on:click={() => openPanel("palette")}
-      >
-        Palette
-      </button>
-      <button
-        type="button"
-        class:is-active={activePanel === "workspace"}
-        aria-label="Open workspace panel"
-        on:click={() => openPanel("workspace")}
-      >
-        Workspace
-      </button>
-      <button
-        type="button"
-        class:is-active={activePanel === "fonts"}
-        aria-label="Open fonts panel"
-        on:click={() => openPanel("fonts")}
-      >
-        Fonts
-      </button>
-      <button type="button" on:click={() => (showKeyboardShortcuts = !showKeyboardShortcuts)}>
-        {showKeyboardShortcuts ? "Hide shortcuts" : "Show shortcuts"}
-      </button>
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "file"}
+          data-tadpole-menu-button="file"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "file"}
+          on:click={() => toggleMenu("file")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "file")}
+        >
+          File
+        </button>
+        {#if openMenu === "file"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="file" aria-label="File menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.openSvg"
+              on:click={() => openEditorDialog("open-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Open SVG...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.pasteSvg"
+              on:click={() => openEditorDialog("paste-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Paste SVG...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.saveSvg"
+              on:click={() => openEditorDialog("save-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Save SVG
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.saveSvgAs"
+              on:click={() => openEditorDialog("save-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Save SVG As...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.revertSvg"
+              on:click={runFileRevertCommand}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Revert to Sample SVG
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "edit"}
+          data-tadpole-menu-button="edit"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "edit"}
+          on:click={() => toggleMenu("edit")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "edit")}
+        >
+          Edit
+        </button>
+        {#if openMenu === "edit"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="edit" aria-label="Edit menu">
+            <button type="button" role="menuitem" data-tadpole-command="edit.undo" data-tadpole-disabled="true" disabled>
+              Undo
+            </button>
+            <button type="button" role="menuitem" data-tadpole-command="edit.redo" data-tadpole-disabled="true" disabled>
+              Redo
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.copyProjectJson"
+              on:click={() => {
+                void copyExport();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
+              Copy Project JSON
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "view"}
+          data-tadpole-menu-button="view"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "view"}
+          on:click={() => toggleMenu("view")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "view")}
+        >
+          View
+        </button>
+        {#if openMenu === "view"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="view" aria-label="View menu">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showSource"
+              aria-label="Open SVG source panel"
+              aria-checked={activePanel === "source" && drawerOpen}
+              on:click={() => runViewCommand("source")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Source Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showWarnings"
+              aria-checked={activePanel === "warnings" && drawerOpen}
+              on:click={() => runViewCommand("warnings")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Warnings Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showLayers"
+              aria-label="Open layers panel"
+              aria-checked={activePanel === "layers" && drawerOpen}
+              on:click={() => runViewCommand("layers")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Layers Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showInspector"
+              aria-label="Open inspector panel"
+              aria-checked={activePanel === "inspector" && drawerOpen}
+              on:click={() => runViewCommand("inspector")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Inspector Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showExport"
+              aria-label="Open export panel"
+              aria-checked={activePanel === "export" && drawerOpen}
+              on:click={() => runViewCommand("export")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Export Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showDebug"
+              aria-checked={activePanel === "debug" && drawerOpen}
+              on:click={() => runViewCommand("debug")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Debug Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showTargets"
+              aria-label="Open targets panel"
+              aria-checked={activePanel === "targets" && drawerOpen}
+              on:click={() => runViewCommand("targets")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Target Library
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showPalette"
+              aria-label="Open palette panel"
+              aria-checked={activePanel === "palette" && drawerOpen}
+              on:click={() => runViewCommand("palette")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Palette
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showWorkspace"
+              aria-label="Open workspace panel"
+              aria-checked={activePanel === "workspace" && drawerOpen}
+              on:click={() => runViewCommand("workspace")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Workspace
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showFonts"
+              aria-label="Open fonts panel"
+              aria-checked={activePanel === "fonts" && drawerOpen}
+              on:click={() => runViewCommand("fonts")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Fonts
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "timeline"}
+          data-tadpole-menu-button="timeline"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "timeline"}
+          on:click={() => toggleMenu("timeline")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "timeline")}
+        >
+          Timeline
+        </button>
+        {#if openMenu === "timeline"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="timeline" aria-label="Timeline menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.playPause"
+              on:click={() => {
+                togglePlay();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.stop"
+              on:click={() => {
+                stopTimeline();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Stop
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.previousKeyframe"
+              disabled={!selectedTrackHasKeyframes}
+              on:click={() => {
+                jumpToPreviousKeyframe();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Previous Keyframe
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.nextKeyframe"
+              disabled={!selectedTrackHasKeyframes}
+              on:click={() => {
+                jumpToNextKeyframe();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Next Keyframe
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.dropKeyframe"
+              disabled={selectedTrackId === ""}
+              on:click={() => {
+                addKeyframeAtCurrentForSelected();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Drop Keyframe at Playhead
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "export"}
+          data-tadpole-menu-button="export"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "export"}
+          on:click={() => toggleMenu("export")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "export")}
+        >
+          Export
+        </button>
+        {#if openMenu === "export"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="export" aria-label="Export menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="export.runnableHtml"
+              on:click={() => openEditorDialog("export-runnable", "export")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "export")}
+            >
+              Runnable HTML...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="export.projectJson"
+              on:click={() => togglePanelCommand("export")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "export")}
+            >
+              Project JSON Panel
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "help"}
+          data-tadpole-menu-button="help"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "help"}
+          on:click={() => toggleMenu("help")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "help")}
+        >
+          Help
+        </button>
+        {#if openMenu === "help"}
+          <div class="menu-popover align-end" role="menu" data-tadpole-menu="help" aria-label="Help menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="help.keyboardShortcuts"
+              on:click={runHelpShortcutsCommand}
+              on:keydown={(event) => handleMenuItemKeydown(event, "help")}
+            >
+              Keyboard Shortcuts
+            </button>
+          </div>
+        {/if}
+      </div>
     </nav>
 
     <div class="document-status" data-tadpole-document-status aria-live="polite">
@@ -3435,11 +3928,113 @@ ${runnableRuntimeScript}
     </div>
   </header>
 
+  {#if activeDialog !== null}
+    <div class="dialog-backdrop">
+      <div
+        class="document-dialog"
+        role="dialog"
+        tabindex="-1"
+        aria-modal="true"
+        aria-labelledby={`dialog-title-${activeDialog}`}
+        data-tadpole-active-dialog
+        data-tadpole-dialog={activeDialog}
+        on:keydown={handleDialogKeydown}
+      >
+        <div class="dialog-heading">
+          <div>
+            {#if activeDialog === "open-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-open-svg">Open SVG</h2>
+            {:else if activeDialog === "paste-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-paste-svg">Paste SVG</h2>
+            {:else if activeDialog === "save-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-save-svg">Save SVG</h2>
+            {:else}
+              <p class="eyebrow">Export</p>
+              <h2 id="dialog-title-export-runnable">Export Runnable HTML</h2>
+            {/if}
+          </div>
+          <button type="button" class="dialog-close" on:click={closeEditorDialog} aria-label="Close dialog">Close</button>
+        </div>
+
+        {#if activeDialog === "open-svg"}
+          <div class="dialog-body">
+            <p class="muted">Open an SVG file through the same parser and sanitizer used by the source panel.</p>
+            <label class="inline-label compact">
+              <span>SVG file</span>
+              <input type="file" accept=".svg,image/svg+xml" on:change={importSvgFileAndClose} />
+            </label>
+            {#if svgImportError}
+              <p class="error tiny" aria-live="assertive">{svgImportError}</p>
+            {:else}
+              <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+            {/if}
+          </div>
+        {:else if activeDialog === "paste-svg"}
+          <div class="dialog-body">
+            <p class="muted">Paste raw SVG markup. Scripts, external references, and unsupported animation nodes stay behind the import boundary.</p>
+            <label class="inline-label compact">
+              <span>SVG markup</span>
+              <textarea rows="9" spellcheck="false" bind:value={svgDraftSource}></textarea>
+            </label>
+            <div class="dialog-actions">
+              <button type="button" on:click={importSvgDraftAndClose} disabled={svgDraftSource.trim() === ""}>
+                Import Pasted SVG
+              </button>
+              <button type="button" on:click={closeEditorDialog}>Cancel</button>
+            </div>
+            {#if svgImportError}
+              <p class="error tiny" aria-live="assertive">{svgImportError}</p>
+            {:else}
+              <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+            {/if}
+          </div>
+        {:else if activeDialog === "save-svg"}
+          <div class="dialog-body">
+            <p class="muted">
+              SVG-native save is reserved for Goal 15. This dialog exposes the command and disabled serializer state now.
+            </p>
+            <div class="svg-source-summary">
+              <span class="status-chip">Document: {svgSourceLabel}</span>
+              <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
+              <span class="status-chip">Tracks: {tracks.length}</span>
+            </div>
+            <div class="dialog-actions">
+              <button type="button" data-tadpole-disabled="true" disabled title="Goal 15 implements SVG-native serialization.">
+                Download SVG
+              </button>
+              <button type="button" on:click={() => void copyExport()}>Copy Project JSON Instead</button>
+              <button type="button" on:click={closeEditorDialog}>Close</button>
+            </div>
+          </div>
+        {:else}
+          <div class="dialog-body">
+            <p class="muted">
+              Export a self-contained HTML file with the sanitized SVG and {runnableExportTrackCount} active tracks.
+            </p>
+            <div class="dialog-actions">
+              <button type="button" on:click={copyRunnableExport}>Copy Runnable HTML</button>
+              <button type="button" on:click={downloadRunnableExport}>Download Runnable HTML</button>
+              <button type="button" on:click={closeEditorDialog}>Close</button>
+            </div>
+            <p class="muted tiny" aria-live="polite">
+              {runnableExportStatus || `${runnableExportVersion} ready as ${runnableExportFile}.`}
+            </p>
+            <pre class="dialog-code" data-tadpole-runnable-dialog-output>{runnableExportHtml}</pre>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
   <section class="editor-layout" style={`--tadpole-drawer-width:${layoutColumnWidth};`}>
     <aside
       class="drawer panel-host"
       class:drawer-collapsed={!drawerOpen}
       data-tadpole-panel-host
+      data-tadpole-active-panel={drawerOpen ? activePanel : "none"}
       aria-label="Editor panels"
     >
       <div class="drawer-toggle-wrap">
@@ -3457,7 +4052,7 @@ ${runnableRuntimeScript}
       <div class="drawer-content" aria-hidden={!drawerOpen}>
         {#if activePanel === "none"}
           <section class="panel panel-host-empty">
-            <p class="muted tiny">Use the top menu to open source, target, export, palette, or workspace panels.</p>
+            <p class="muted tiny">Use View, File, or Export menus to open secondary editor surfaces.</p>
           </section>
         {/if}
 
@@ -3592,6 +4187,120 @@ ${runnableRuntimeScript}
           {#if projectMissingTargetIds.length > 0}
             <p class="warning tiny" aria-live="polite">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
           {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "warnings"}
+        <section class="panel panel-warning-list" data-tadpole-warnings-panel>
+          <h2>Warnings</h2>
+          <div class="svg-source-summary">
+            <span class="status-chip">Warnings: {documentWarningCount}</span>
+            <span class="status-chip">Import: {documentImportStatusLabel}</span>
+          </div>
+          {#if documentWarningCount === 0}
+            <p class="empty-state tiny">No document warnings are currently active.</p>
+          {/if}
+          {#if svgImportError}
+            <p class="error tiny">{svgImportError}</p>
+          {/if}
+          {#if projectImportError}
+            <p class="error tiny">{projectImportError}</p>
+          {/if}
+          {#if animationImportWarnings.length > 0}
+            <div class="warning tiny">
+              <strong>Animation import warnings</strong>
+              <ul>
+                {#each animationImportWarnings as warning}
+                  <li>{warning}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          {#if projectMissingTargetIds.length > 0}
+            <p class="warning tiny">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "layers"}
+        <section class="panel panel-layers" data-tadpole-layers-panel>
+          <h2>Layers</h2>
+          <p class="muted">SVG targets available to animate in the current document.</p>
+          {#if availableTargets.length === 0}
+            <p class="empty-state tiny">No editable SVG targets found.</p>
+          {:else}
+            <ul class="layer-list">
+              {#each availableTargets as target}
+                <li class:selected={target.id === selectedTargetId}>
+                  <button type="button" on:click={() => selectTarget(target.id, { syncTrack: true })}>
+                    <span>{target.name}</span>
+                    <code>#{target.id}</code>
+                  </button>
+                  <span class="chip">{target.kind}</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "inspector"}
+        <section class="panel panel-command-inspector" data-tadpole-inspector-panel>
+          <h2>Inspector</h2>
+          {#if selectedTarget}
+            <div class="inspector-grid">
+              <label class="inline-label compact">
+                <span>Target</span>
+                <input value={selectedTarget.name} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>ID</span>
+                <input value={selectedTarget.id} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Kind</span>
+                <input value={selectedTarget.kind} readonly />
+              </label>
+            </div>
+          {:else}
+            <p class="empty-state tiny">No SVG target selected.</p>
+          {/if}
+          {#if selectedTrack}
+            <div class="inspector-grid">
+              <label class="inline-label compact">
+                <span>Track</span>
+                <input value={selectedTrack.id} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Property</span>
+                <input value={selectedTrack.property} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Keyframes</span>
+                <input value={selectedTrack.keyframes.length} readonly />
+              </label>
+            </div>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "debug"}
+        <section class="panel panel-debug" data-tadpole-debug-panel>
+          <h2>Debug</h2>
+          <p class="muted">Machine-readable runtime facts for witnesses and agents.</p>
+          <pre><code>{JSON.stringify(
+            {
+              activePanel,
+              activeDialog,
+              documentDirty,
+              documentWarningCount,
+              targets: availableTargets.length,
+              tracks: tracks.length,
+              selectedTrackId,
+            },
+            null,
+            2,
+          )}</code></pre>
         </section>
         {/if}
 
@@ -4389,9 +5098,17 @@ ${runnableRuntimeScript}
     flex-wrap: wrap;
     gap: var(--size-2);
     align-items: center;
+    position: relative;
   }
 
-  .menu-actions button {
+  .menu-group {
+    position: relative;
+  }
+
+  .menu-actions button,
+  .menu-popover button,
+  .dialog-actions button,
+  .dialog-close {
     border: 1px solid var(--tadpole-border);
     border-radius: var(--radius-2);
     background: color-mix(in oklab, var(--color-12) 78%, transparent);
@@ -4403,9 +5120,117 @@ ${runnableRuntimeScript}
   }
 
   .menu-actions button:hover,
-  .menu-actions button.is-active {
+  .menu-actions button.is-active,
+  .menu-popover button:hover,
+  .menu-popover button:focus-visible,
+  .dialog-actions button:hover,
+  .dialog-close:hover {
     border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 18%, var(--color-12));
+  }
+
+  .menu-popover button:disabled,
+  .dialog-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .menu-popover {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + var(--size-1));
+    left: 0;
+    min-width: 13rem;
+    display: grid;
+    gap: 1px;
+    padding: var(--size-1);
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-14) 96%, black);
+    box-shadow: var(--shadow-4);
+  }
+
+  .menu-popover.align-end {
+    left: auto;
+    right: 0;
+  }
+
+  .menu-popover button {
+    width: 100%;
+    justify-content: start;
+    text-align: left;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .menu-popover button[role="menuitemcheckbox"]::before {
+    content: " ";
+    width: 0.75rem;
+    display: inline-block;
+  }
+
+  .menu-popover button[role="menuitemcheckbox"][aria-checked="true"]::before {
+    content: "✓";
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: start center;
+    padding: min(8vh, 5rem) var(--size-4) var(--size-4);
+    background: color-mix(in oklab, black 42%, transparent);
+  }
+
+  .document-dialog {
+    width: min(44rem, calc(100vw - var(--size-4) * 2));
+    max-height: min(78vh, 48rem);
+    overflow: auto;
+    display: grid;
+    gap: var(--size-3);
+    padding: var(--size-4);
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-14) 96%, black);
+    box-shadow: var(--shadow-5);
+  }
+
+  .dialog-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--size-3);
+    border-bottom: 1px solid var(--tadpole-border);
+    padding-bottom: var(--size-2);
+  }
+
+  .dialog-heading h2 {
+    margin: 0;
+    font-size: var(--font-size-4);
+  }
+
+  .dialog-body,
+  .dialog-actions {
+    display: grid;
+    gap: var(--size-3);
+  }
+
+  .dialog-actions {
+    grid-template-columns: repeat(auto-fit, minmax(10rem, max-content));
+    align-items: center;
+  }
+
+  .dialog-code,
+  .panel-debug pre {
+    margin: 0;
+    border: 1px solid var(--tadpole-border);
+    background: color-mix(in oklab, var(--color-13) 82%, transparent);
+    border-radius: var(--radius-2);
+    padding: var(--size-2);
+    overflow: auto;
+    max-height: 18rem;
+    font-size: 12px;
   }
 
   .document-status {
@@ -5380,6 +6205,47 @@ ${runnableRuntimeScript}
     list-style: none;
     display: grid;
     gap: var(--size-2);
+  }
+
+  .layer-list {
+    margin: var(--size-3) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--size-1);
+  }
+
+  .layer-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--size-2);
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-2);
+    padding: var(--size-1);
+  }
+
+  .layer-list li.selected {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 42%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 12%, transparent);
+  }
+
+  .layer-list button {
+    min-width: 0;
+    display: grid;
+    gap: 0.15rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .layer-list code {
+    color: var(--tadpole-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .font-list li {
