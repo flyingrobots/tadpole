@@ -167,6 +167,9 @@
   const runnableExportVersion = "tadpole-runnable-html-1";
   const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
   const defaultPanelReturnFocusSelector = "[data-tadpole-panel-toggle]";
+  const panelSheetMediaQueryText = "(max-width: 720px)";
+  const panelFocusableSelector =
+    "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])";
   const panelIds: ContextPanel[] = [
     "workspace",
     "source",
@@ -681,6 +684,9 @@
   let activeDialog: EditorDialog | null = null;
   let dialogReturnMenu: EditorMenu | null = null;
   let panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+  let panelHostIsSheet = false;
+  let panelHostUsesDialog = false;
+  let panelSheetMediaQuery: MediaQueryList | null = null;
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
@@ -753,6 +759,9 @@
   const focusActivePanelClose = (): void => {
     void nextDomUpdate().then(() => focusElementBySelector("[data-tadpole-panel-close]"));
   };
+  const syncPanelHostMode = (): void => {
+    panelHostIsSheet = panelSheetMediaQuery?.matches ?? false;
+  };
   const closePanel = (): void => {
     const returnFocusSelector = panelReturnFocusSelector || defaultPanelReturnFocusSelector;
     drawerOpen = false;
@@ -773,13 +782,13 @@
   };
 
   const openPanel = (panel: ContextPanel, returnFocusSelector = defaultPanelReturnFocusSelector): void => {
+    panelReturnFocusSelector = returnFocusSelector;
     if (activePanel === panel && drawerOpen) {
       closePanel();
       return;
     }
     activePanel = panel;
     drawerOpen = true;
-    panelReturnFocusSelector = returnFocusSelector;
     focusActivePanelClose();
   };
   const menuOrder: EditorMenu[] = ["file", "edit", "view", "timeline", "export", "help"];
@@ -914,6 +923,40 @@
     const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
     const focusableList = dialogElement
       ? Array.from(dialogElement.querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)"))
+      : [];
+    const focusable = focusableList.filter((item): item is HTMLElement => item instanceof HTMLElement);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  const handlePanelHostKeydown = (event: KeyboardEvent): void => {
+    if (!panelHostUsesDialog) {
+      return;
+    }
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePanel();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const panelElement = document.querySelector("[data-tadpole-panel-host]");
+    const focusableList = panelElement
+      ? Array.from(panelElement.querySelectorAll(panelFocusableSelector))
       : [];
     const focusable = focusableList.filter((item): item is HTMLElement => item instanceof HTMLElement);
     const first = focusable[0];
@@ -1469,6 +1512,9 @@ ${runnableRuntimeScript}
     document.documentElement.style.setProperty("--palette-hue", `${paletteHue}`);
     document.documentElement.style.setProperty("--palette-chroma", `${paletteChroma}`);
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
+    panelSheetMediaQuery = window.matchMedia(panelSheetMediaQueryText);
+    syncPanelHostMode();
+    panelSheetMediaQuery.addEventListener("change", syncPanelHostMode);
     void fetchFonts();
     void nextDomUpdate().then(applyTimelineToPreviewSvg);
     window.addEventListener("keydown", handleGlobalKeyboard);
@@ -1487,6 +1533,8 @@ ${runnableRuntimeScript}
     if (draggingKeyframe) {
       stopKeyframeDrag();
     }
+    panelSheetMediaQuery?.removeEventListener("change", syncPanelHostMode);
+    panelSheetMediaQuery = null;
     window.removeEventListener("keydown", handleGlobalKeyboard);
   });
 
@@ -1498,6 +1546,7 @@ ${runnableRuntimeScript}
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
   $: panelHostActivePanelId = drawerOpen ? activePanel : "none";
   $: panelHostOpenPanelIds = drawerOpen && activePanel !== "none" ? activePanel : "";
+  $: panelHostUsesDialog = panelHostIsSheet && drawerOpen && activePanel !== "none";
   $: activePanelLabel = panelLabelFor(panelHostActivePanelId);
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
@@ -4128,7 +4177,11 @@ ${runnableRuntimeScript}
       data-tadpole-open-panel-ids={panelHostOpenPanelIds}
       data-tadpole-warning-count={documentWarningCount}
       data-tadpole-dirty={documentDirty ? "true" : "false"}
+      role={panelHostUsesDialog ? "dialog" : "region"}
+      aria-modal={panelHostUsesDialog ? "true" : undefined}
+      aria-labelledby={panelHostUsesDialog ? "active-panel-title" : undefined}
       aria-label="Editor panels"
+      on:keydown={handlePanelHostKeydown}
     >
       <div class="drawer-toggle-wrap">
         <button

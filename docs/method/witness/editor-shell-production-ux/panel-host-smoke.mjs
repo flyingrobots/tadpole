@@ -125,6 +125,12 @@ const assertBadgeDrivenPanels = async (page) => {
   assert((await page.locator('[data-tadpole-panel-host][data-tadpole-active-panel="export"]').count()) === 1, "dirty badge did not open export panel");
   await assertPanelLedger(page, "export", true);
   await assertPanelCloseReturnsFocus(page, "dirty-badge", "closing Export panel did not return focus to dirty badge");
+
+  await page.locator("[data-tadpole-dirty-badge]").click();
+  await page.locator('[data-tadpole-panel-host][data-tadpole-active-panel="export"]').waitFor({ state: "visible" });
+  await runCommand(page, "view", "view.showExport");
+  await page.waitForFunction(() => document.querySelector("[data-tadpole-panel-host]")?.getAttribute("data-tadpole-panel-open") === "false");
+  assert((await activeElementFact(page)) === "view", "View > Export close did not override the stale dirty badge focus target");
 };
 
 const assertWidePanelHost = async (browser) => {
@@ -148,9 +154,26 @@ const assertNarrowPanelSheet = async (browser) => {
   await assertDefaultHiddenPanels(page, "narrow");
   await runCommand(page, "view", "view.showSource");
   await page.locator('[data-tadpole-panel-host][data-tadpole-active-panel="source"]').waitFor({ state: "visible" });
-  const position = await page.locator("[data-tadpole-panel-host]").evaluate((node) => window.getComputedStyle(node).position);
-  assert(position === "fixed", `narrow: panel host is ${position}, not a sheet`);
-  await assertPanelCloseReturnsFocus(page, "view", "narrow: closing Source sheet did not return focus to View menu root");
+  const sheetFacts = await page.locator("[data-tadpole-panel-host]").evaluate((node) => ({
+    ariaLabelledBy: node.getAttribute("aria-labelledby"),
+    ariaModal: node.getAttribute("aria-modal"),
+    position: window.getComputedStyle(node).position,
+    role: node.getAttribute("role"),
+  }));
+  assert(sheetFacts.position === "fixed", `narrow: panel host is ${sheetFacts.position}, not a sheet`);
+  assert(sheetFacts.role === "dialog", `narrow: panel sheet role is ${sheetFacts.role}, not dialog`);
+  assert(sheetFacts.ariaModal === "true", `narrow: panel sheet aria-modal is ${sheetFacts.ariaModal}, not true`);
+  assert(sheetFacts.ariaLabelledBy === "active-panel-title", "narrow: panel sheet is not labelled by the active panel title");
+  await page.locator("[data-tadpole-panel-close]").focus();
+  await page.keyboard.press("Shift+Tab");
+  const focusStayedInSheet = await page.evaluate(() => {
+    const host = document.querySelector("[data-tadpole-panel-host]");
+    return host !== null && host.contains(document.activeElement);
+  });
+  assert(focusStayedInSheet, "narrow: Shift+Tab escaped the modal panel sheet");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector("[data-tadpole-panel-host]")?.getAttribute("data-tadpole-panel-open") === "false");
+  assert((await activeElementFact(page)) === "view", "narrow: Escape close did not return focus to View menu root");
 
   assertCleanBrowser("narrow", consoleErrors, pageErrors);
   await page.close();

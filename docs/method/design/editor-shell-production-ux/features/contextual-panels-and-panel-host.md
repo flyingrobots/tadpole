@@ -25,7 +25,8 @@ updated: "2026-06-04"
 ## Cycle Start
 
 - [x] `git fetch origin` completed.
-- [x] Local merge target branch synced to `origin/main` by regular merge.
+- [x] Local merge target branch synced to
+  `origin/cycles/UIUX_editor-shell-design`.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
@@ -35,8 +36,8 @@ updated: "2026-06-04"
 ## Decision Summary
 
 Goal 12 introduces a panel host that keeps Source, Warnings, Export, Layers,
-Inspector, and Document Settings reachable but hidden by default. Important
-state remains visible through compact status badges.
+Inspector, Workspace, Targets, Palette, Fonts, and Debug reachable but hidden by
+default. Important state remains visible through compact status badges.
 
 ## Sponsored Human
 
