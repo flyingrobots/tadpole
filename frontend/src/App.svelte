@@ -783,6 +783,7 @@
     closeMenus();
   };
   const handleMenuButtonKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
     if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openMenuWithFocus(menu);
@@ -804,6 +805,7 @@
     }
   };
   const handleMenuItemKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
       closeMenus();

@@ -83,9 +83,27 @@ const assertCommandSurface = async (page) => {
 };
 
 const assertKeyboardFileDialog = async (page) => {
+  await page.evaluate(() => {
+    window.__tadpoleMenuKeyReachedWindow = false;
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("[data-tadpole-menubar]") && event.key === "ArrowRight") {
+          window.__tadpoleMenuKeyReachedWindow = true;
+        }
+      },
+      { once: true },
+    );
+  });
   await page.locator('[data-tadpole-menu-button="file"]').focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowRight");
+  assert((await page.evaluate(() => window.__tadpoleMenuKeyReachedWindow)) === false, "menu ArrowRight key bubbled to window");
+  await page.locator('[data-tadpole-menu-button="file"]').focus();
+  await page.keyboard.press(" ");
   await page.locator('[data-tadpole-menu="file"]').waitFor({ state: "visible" });
+  let statusText = await textOf(page.locator("[data-tadpole-document-status]"));
+  assert(statusText.includes("Playhead: Idle"), "menu Space key leaked to global playback shortcut");
   await page.keyboard.press("Enter");
   const dialog = page.locator('[data-tadpole-dialog="open-svg"]');
   await dialog.waitFor({ state: "visible" });
