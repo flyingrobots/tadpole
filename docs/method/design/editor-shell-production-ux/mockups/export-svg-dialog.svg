@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="620" viewBox="0 0 1040 620" role="img" aria-labelledby="title desc">
+  <title id="title">Save and export dialog</title>
+  <desc id="desc">A modal dialog explains SVG-native save, optimized SVG export, and runnable HTML export as a derived artifact.</desc>
+  <defs>
+    <style>
+      .overlay { fill: #0b0d12; }
+      .dialog { fill: #252a33; stroke: #64748b; }
+      .card { fill: #1c2028; stroke: #3d4654; }
+      .text { fill: #eef2f7; font: 15px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .muted { fill: #aab4c0; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #aab4c0; font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .button { fill: #303846; stroke: #4b5563; }
+      .primary { fill: #0f766e; }
+      .accent { fill: #2dd4bf; }
+    </style>
+  </defs>
+  <rect class="overlay" width="1040" height="620"/>
+  <rect class="dialog" x="90" y="72" width="860" height="476" rx="8"/>
+  <text class="text" x="122" y="112">Save / Export</text>
+  <text class="muted" x="122" y="136">The SVG is the source of truth. Artifacts are generated from it.</text>
+
+  <rect class="card" x="122" y="172" width="240" height="260" rx="6"/>
+  <circle class="accent" cx="148" cy="204" r="7"/>
+  <text class="text" x="166" y="210">Save SVG</text>
+  <text class="muted" x="144" y="244">Writes current animation</text>
+  <text class="muted" x="144" y="266">tracks back into SVG SMIL</text>
+  <text class="muted" x="144" y="288">or Tadpole metadata.</text>
+  <text class="tiny" x="144" y="334">Primary command</text>
+  <rect class="primary" x="144" y="370" width="178" height="34" rx="4"/>
+  <text class="text" x="196" y="393">Save</text>
+
+  <rect class="card" x="400" y="172" width="240" height="260" rx="6"/>
+  <circle class="accent" cx="426" cy="204" r="7"/>
+  <text class="text" x="444" y="210">Save SVG As</text>
+  <text class="muted" x="422" y="244">Creates a new SVG file.</text>
+  <text class="muted" x="422" y="266">Still no sidecar project.</text>
+  <text class="muted" x="422" y="288">Can include clean metadata.</text>
+  <text class="tiny" x="422" y="334">Document fork</text>
+  <rect class="button" x="422" y="370" width="178" height="34" rx="4"/>
+  <text class="text" x="474" y="393">Save As</text>
+
+  <rect class="card" x="678" y="172" width="240" height="260" rx="6"/>
+  <circle class="accent" cx="704" cy="204" r="7"/>
+  <text class="text" x="722" y="210">Runnable HTML</text>
+  <text class="muted" x="700" y="244">Generated preview artifact.</text>
+  <text class="muted" x="700" y="266">Does not become state.</text>
+  <text class="muted" x="700" y="288">Useful for review/share.</text>
+  <text class="tiny" x="700" y="334">Derived export</text>
+  <rect class="button" x="700" y="370" width="178" height="34" rx="4"/>
+  <text class="text" x="748" y="393">Export HTML</text>
+
+  <text class="tiny" x="122" y="474">Invariant: closing and reopening the SVG reconstructs the same editable timeline.</text>
+  <rect class="button" x="812" y="486" width="106" height="34" rx="4"/>
+  <text class="text" x="844" y="509">Done</text>
+</svg>

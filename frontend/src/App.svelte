@@ -1,5 +1,21 @@
 <script lang="ts">
   import { onDestroy, onMount, tick as nextDomUpdate } from "svelte";
+  import {
+    AddKeyframeCommand,
+    AddTrackCommand,
+    DeleteKeyframeCommand,
+    dispatchEditorCommand,
+    EditorCommandHistory,
+    type EditorCommandIntent,
+    EditorHistoryEntry,
+    EditorCommandStateSnapshot,
+    MoveKeyframeCommand,
+    RemoveTrackCommand,
+    SeekTimelineCommand,
+    SetKeyframeEasingCommand,
+    SetKeyframeValueCommand,
+  } from "./EditorCommands";
+  import { serializeSvgNativeSave, SvgNativeSaveRequest } from "./SvgNativeSave";
 
   type FontRecord = {
     file: string;
@@ -16,6 +32,22 @@
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
   type TrackSortMode = "manual" | "target" | "property";
+  type TimeDisplayMode = "seconds" | "frames";
+  type EditorPanel =
+    | "none"
+    | "workspace"
+    | "source"
+    | "palette"
+    | "targets"
+    | "fonts"
+    | "export"
+    | "warnings"
+    | "layers"
+    | "inspector"
+    | "debug";
+  type ContextPanel = Exclude<EditorPanel, "none">;
+  type EditorMenu = "file" | "edit" | "view" | "timeline" | "export" | "help";
+  type EditorDialog = "open-svg" | "paste-svg" | "save-svg" | "export-runnable";
 
   type KeyframeEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 
@@ -42,6 +74,8 @@
     trackId: string;
     keyframeId: string;
     lane: HTMLDivElement;
+    startTime: number;
+    startSnapshot: EditorCommandStateSnapshot;
   } | null;
 
   type TimelineTrack = {
@@ -50,6 +84,49 @@
     property: AnimationProperty;
     keyframes: Keyframe[];
     muted: boolean;
+  };
+
+  type KeyframeSpan = {
+    id: string;
+    startTime: number;
+    endTime: number;
+  };
+
+  type TargetSummaryKeyframe = {
+    id: string;
+    trackId: string;
+    keyframeId: string;
+    property: AnimationProperty;
+    time: number;
+    value: string;
+  };
+
+  type TimelineTargetKind = AnimationTarget["kind"] | "missing";
+
+  type PropertyTimelineRow = {
+    id: string;
+    track: TimelineTrack;
+    targetId: string;
+    targetLabel: string;
+    targetKind: TimelineTargetKind;
+    propertyLabel: string;
+    sortedKeyframes: Keyframe[];
+    spans: KeyframeSpan[];
+    currentValue: string;
+    keyframeCount: number;
+  };
+
+  type TargetTimelineRow = {
+    targetId: string;
+    targetLabel: string;
+    targetKind: TimelineTargetKind;
+    expanded: boolean;
+    trackCount: number;
+    keyframeCount: number;
+    mutedTrackCount: number;
+    warningCount: number;
+    propertyRows: PropertyTimelineRow[];
+    summaryKeyframes: TargetSummaryKeyframe[];
   };
 
   type SvgLoadOptions = {
@@ -151,6 +228,22 @@
   const projectExportVersion = "tadpole-project-1";
   const runnableExportVersion = "tadpole-runnable-html-1";
   const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
+  const defaultPanelReturnFocusSelector = "[data-tadpole-panel-toggle]";
+  const panelSheetMediaQueryText = "(max-width: 720px)";
+  const panelFocusableSelector =
+    "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])";
+  const panelIds: ContextPanel[] = [
+    "workspace",
+    "source",
+    "palette",
+    "targets",
+    "fonts",
+    "export",
+    "warnings",
+    "layers",
+    "inspector",
+    "debug",
+  ];
 
   // Animation timeline state.
   const easingModes: KeyframeEasing[] = ["linear", "power1.inOut", "power2.out", "power3.inOut", "expo.out", "back.inOut"];
@@ -524,6 +617,7 @@
   let svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   let availableTargets: AnimationTarget[] = discoverSvgTargets(svgMarkup);
   let svgSourceLabel = sampleSvgLabel;
+  let documentDirty = false;
   let svgDraftSource = svgMarkup;
   let svgImportStatus = `${sampleSvgLabel} loaded with ${availableTargets.length} targets.`;
   let svgImportError = "";
@@ -582,6 +676,21 @@
 
   const formatMs = (value: number): string => `${value}ms`;
   const formatSec = (value: number): string => `${(value / 1000).toFixed(2)}s`;
+  const frameDurationMsFor = (rate: number): number => 1000 / clamp(rate, 12, 144);
+  const frameForMs = (value: number, rate: number): number => Math.round(clampMs(value) / frameDurationMsFor(rate));
+  const formatFrame = (value: number, rate: number): string => `${frameForMs(value, rate)}f`;
+  const formatTimeDisplay = (value: number, mode: TimeDisplayMode, rate: number): string =>
+    mode === "frames" ? formatFrame(value, rate) : formatSec(value);
+  const formatWorkAreaPoint = (value: number | null, mode: TimeDisplayMode, rate: number): string =>
+    value === null ? "none" : `${formatMs(value)} / ${formatTimeDisplay(value, mode, rate)}`;
+  const normalizeWorkAreaToDuration = (): void => {
+    if (workAreaInMs !== null) {
+      workAreaInMs = clampMs(workAreaInMs);
+    }
+    if (workAreaOutMs !== null) {
+      workAreaOutMs = clampMs(workAreaOutMs);
+    }
+  };
 
   const createSampleTracks = (): TimelineTrack[] => [
     {
@@ -626,14 +735,28 @@
   let activeTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedTrackHasKeyframes = tracks[0]?.keyframes.length ? tracks[0].keyframes.length > 0 : false;
   let selectedTrackNeighborhood: PlayheadNeighborhood = { at: null, previous: null, next: null };
+  let documentWarningCount = 0;
+  let documentImportStatusLabel = sampleSvgLabel;
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let selectedTargetTracks: TimelineTrack[] = [];
+  let collapsedTimelineTargetIds = new Set<string>();
+  let timelineTargetRows: TargetTimelineRow[] = [];
   let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
   let isPlaying = false;
   let isLooping = true;
+  let loopWorkArea = false;
+  let workAreaInMs: number | null = null;
+  let workAreaOutMs: number | null = null;
+  let workAreaActive = false;
+  let workAreaStartMs = 0;
+  let workAreaEndMs = 0;
+  let workAreaLabel = "none";
+  let currentTimeDisplay = "";
+  let durationTimeDisplay = "";
+  let timeDisplayMode: TimeDisplayMode = "seconds";
   let frameRate = 60;
   let snapToFrames = true;
   let snapMs = 16;
@@ -644,7 +767,15 @@
   let isResizingDrawer = false;
   let isScrubbing = false;
   let scrubberSource: "timeline" | "preview" | null = null;
-  let drawerOpen = true;
+  let drawerOpen = false;
+  let activePanel: EditorPanel = "none";
+  let openMenu: EditorMenu | null = null;
+  let activeDialog: EditorDialog | null = null;
+  let dialogReturnMenu: EditorMenu | null = null;
+  let panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+  let panelHostIsSheet = false;
+  let panelHostUsesDialog = false;
+  let panelSheetMediaQuery: MediaQueryList | null = null;
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
@@ -654,6 +785,7 @@
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let runnableExportStatus = "";
+  let svgNativeSaveStatus = "";
   let projectDraftSource = "";
   let projectImportStatus = defaultProjectImportStatus;
   let projectImportError = "";
@@ -661,10 +793,18 @@
   let showOnlySelected = false;
   let trackFilterTerm = "";
   let trackSortMode: TrackSortMode = "manual";
-  let showKeyboardShortcuts = true;
+  let showKeyboardShortcuts = false;
   let selectedKeyframeId = "";
   let timelineGridDensity = defaultGridDivisions;
   let draggingKeyframe: DraggingKeyframe = null;
+  let editorCommandHistory = EditorCommandHistory.empty();
+  let editorCommandStatus = "Command history ready.";
+  let editorLastCommandId = "";
+  let canUndoEditorCommand = false;
+  let canRedoEditorCommand = false;
+  let svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
+  let svgNativeSaveWarnings = svgNativeSaveResult.warnings;
+  let svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
 
   let newTrackTargetId = availableTargets[0]?.id ?? "";
   let newTrackProperty: AnimationProperty = "fill";
@@ -682,8 +822,255 @@
     setDrawerWidth(value);
     drawerOpen = true;
   };
+  const panelLabelFor = (panel: EditorPanel): string => {
+    switch (panel) {
+      case "workspace":
+        return "Workspace";
+      case "source":
+        return "SVG Source";
+      case "palette":
+        return "Palette";
+      case "targets":
+        return "Target Library";
+      case "fonts":
+        return "Fonts";
+      case "export":
+        return "Project Export";
+      case "warnings":
+        return "Warnings";
+      case "layers":
+        return "Layers";
+      case "inspector":
+        return "Inspector";
+      case "debug":
+        return "Debug";
+      case "none":
+        return "Panels";
+    }
+  };
+  const focusElementBySelector = (selector: string): void => {
+    const target = document.querySelector(selector);
+    if (target instanceof HTMLElement) {
+      target.focus();
+    }
+  };
+  const focusActivePanelClose = (): void => {
+    void nextDomUpdate().then(() => focusElementBySelector("[data-tadpole-panel-close]"));
+  };
+  const syncPanelHostMode = (): void => {
+    panelHostIsSheet = panelSheetMediaQuery?.matches ?? false;
+  };
+  const closePanel = (): void => {
+    const returnFocusSelector = panelReturnFocusSelector || defaultPanelReturnFocusSelector;
+    drawerOpen = false;
+    activePanel = "none";
+    panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+    void nextDomUpdate().then(() => focusElementBySelector(returnFocusSelector));
+  };
   const toggleDrawer = (): void => {
     drawerOpen = !drawerOpen;
+    if (!drawerOpen) {
+      panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+      closePanel();
+    } else if (activePanel === "none") {
+      activePanel = "source";
+      panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+      focusActivePanelClose();
+    }
+  };
+
+  const openPanel = (panel: ContextPanel, returnFocusSelector = defaultPanelReturnFocusSelector): void => {
+    panelReturnFocusSelector = returnFocusSelector;
+    if (activePanel === panel && drawerOpen) {
+      closePanel();
+      return;
+    }
+    activePanel = panel;
+    drawerOpen = true;
+    focusActivePanelClose();
+  };
+  const menuOrder: EditorMenu[] = ["file", "edit", "view", "timeline", "export", "help"];
+  const closeMenus = (): void => {
+    openMenu = null;
+  };
+  const focusMenuButton = (menu: EditorMenu): void => {
+    const button = document.querySelector(`[data-tadpole-menu-button="${menu}"]`);
+    if (button instanceof HTMLElement) {
+      button.focus();
+    }
+  };
+  const focusFirstMenuItem = (menu: EditorMenu): void => {
+    void nextDomUpdate().then(() => {
+      const menuElement = document.querySelector(`[data-tadpole-menu="${menu}"]`);
+      const item = menuElement?.querySelector("button:not(:disabled)");
+      if (item instanceof HTMLElement) {
+        item.focus();
+      }
+    });
+  };
+  const toggleMenu = (menu: EditorMenu): void => {
+    openMenu = openMenu === menu ? null : menu;
+  };
+  const openMenuWithFocus = (menu: EditorMenu): void => {
+    openMenu = menu;
+    focusFirstMenuItem(menu);
+  };
+  const openEditorDialog = (dialog: EditorDialog, returnMenu: EditorMenu): void => {
+    activeDialog = dialog;
+    dialogReturnMenu = returnMenu;
+    closeMenus();
+    void nextDomUpdate().then(() => {
+      const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
+      const focusTarget = dialogElement?.querySelector("input, textarea, button");
+      if (focusTarget instanceof HTMLElement) {
+        focusTarget.focus();
+      }
+    });
+  };
+  const closeEditorDialog = (): void => {
+    const returnMenu = dialogReturnMenu;
+    activeDialog = null;
+    dialogReturnMenu = null;
+    if (returnMenu) {
+      void nextDomUpdate().then(() => focusMenuButton(returnMenu));
+    }
+  };
+  const togglePanelCommand = (panel: ContextPanel, returnFocusSelector = '[data-tadpole-menu-button="view"]'): void => {
+    openPanel(panel, returnFocusSelector);
+    closeMenus();
+  };
+  const runViewCommand = (panel: ContextPanel): void => {
+    togglePanelCommand(panel);
+  };
+  const openWarningsFromBadge = (): void => {
+    openPanel("warnings", "[data-tadpole-warning-badge]");
+    closeMenus();
+  };
+  const openDirtyStateFromBadge = (): void => {
+    openPanel("export", "[data-tadpole-dirty-badge]");
+    closeMenus();
+  };
+  const runFileRevertCommand = (): void => {
+    resetToSampleSvg();
+    closeMenus();
+  };
+  const runHelpShortcutsCommand = (): void => {
+    showKeyboardShortcuts = !showKeyboardShortcuts;
+    closeMenus();
+  };
+  const handleMenuButtonKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMenuWithFocus(menu);
+      return;
+    }
+    const index = menuOrder.indexOf(menu);
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusMenuButton(menuOrder[(index + 1) % menuOrder.length]);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusMenuButton(menuOrder[(index + menuOrder.length - 1) % menuOrder.length]);
+      return;
+    }
+    if (event.key === "Escape") {
+      closeMenus();
+    }
+  };
+  const handleMenuItemKeydown = (event: KeyboardEvent, menu: EditorMenu): void => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenus();
+      focusMenuButton(menu);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    event.preventDefault();
+    const menuElement = document.querySelector(`[data-tadpole-menu="${menu}"]`);
+    const itemList = menuElement ? Array.from(menuElement.querySelectorAll("button:not(:disabled)")) : [];
+    const items = itemList.filter((item): item is HTMLButtonElement => item instanceof HTMLButtonElement);
+    if (items.length === 0) {
+      return;
+    }
+    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    const fallbackIndex = event.key === "ArrowDown" ? 0 : items.length - 1;
+    const nextIndex =
+      activeIndex === -1
+        ? fallbackIndex
+        : event.key === "ArrowDown"
+          ? (activeIndex + 1) % items.length
+          : (activeIndex + items.length - 1) % items.length;
+    items[nextIndex]?.focus();
+  };
+  const handleDialogKeydown = (event: KeyboardEvent): void => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeEditorDialog();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+    const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
+    const focusableList = dialogElement
+      ? Array.from(dialogElement.querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)"))
+      : [];
+    const focusable = focusableList.filter((item): item is HTMLElement => item instanceof HTMLElement);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  const handlePanelHostKeydown = (event: KeyboardEvent): void => {
+    if (!panelHostUsesDialog) {
+      return;
+    }
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePanel();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const panelElement = document.querySelector("[data-tadpole-panel-host]");
+    const focusableList = panelElement
+      ? Array.from(panelElement.querySelectorAll(panelFocusableSelector))
+      : [];
+    const focusable = focusableList.filter((item): item is HTMLElement => item instanceof HTMLElement);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   };
   const resizeDrawerByKeyboard = (event: KeyboardEvent): void => {
     if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
@@ -740,6 +1127,10 @@
       !!target.closest("input, textarea, select, button, [contenteditable='true'], [role='textbox']")
     );
   };
+  const isLocalKeyboardSurface = (target: EventTarget | null): boolean =>
+    target instanceof HTMLElement && !!target.closest("[data-tadpole-menubar], [data-tadpole-active-dialog]");
+  const hasOpenLocalKeyboardSurface = (): boolean =>
+    document.querySelector("[data-tadpole-active-dialog], [data-tadpole-menu]") !== null;
   const propertySpec = (property: AnimationProperty): PropertyDefinition => propertyById.get(property) ?? propertyCatalog[0]!;
   const defaultValueFor = (property: AnimationProperty): string => propertySpec(property).defaultValue;
   const toCssValue = (value: string, property: AnimationProperty): string => {
@@ -752,6 +1143,103 @@
 
   const sortKeyframes = (items: Keyframe[]): Keyframe[] =>
     [...items].sort((first, second) => first.time - second.time);
+
+  const keyframeSpansFor = (items: Keyframe[]): KeyframeSpan[] => {
+    const sorted = sortKeyframes(items);
+    const spans: KeyframeSpan[] = [];
+    for (let index = 1; index < sorted.length; index += 1) {
+      const previous = sorted[index - 1];
+      const next = sorted[index];
+      if (!previous || !next || next.time <= previous.time) {
+        continue;
+      }
+      spans.push({
+        id: `${previous.id}-to-${next.id}`,
+        startTime: previous.time,
+        endTime: next.time,
+      });
+    }
+    return spans;
+  };
+
+  const spanWidthPercent = (startTime: number, endTime: number): number =>
+    Math.max(0, trackPercent(endTime) - trackPercent(startTime));
+
+  const buildTimelineTargetRows = (
+    trackItems: TimelineTrack[],
+    targets: AnimationTarget[],
+    collapsedTargetIds: Set<string>,
+    time: number,
+  ): TargetTimelineRow[] => {
+    const targetById = new Map(targets.map((target) => [target.id, target] as const));
+    const rowsByTargetId = new Map<string, TargetTimelineRow>();
+    const rows: TargetTimelineRow[] = [];
+
+    trackItems.forEach((track) => {
+      const target = targetById.get(track.targetId);
+      const targetLabel = target?.name ?? track.targetId;
+      const targetKind = target?.kind ?? "missing";
+      let targetRow = rowsByTargetId.get(track.targetId);
+      if (!targetRow) {
+        targetRow = {
+          targetId: track.targetId,
+          targetLabel,
+          targetKind,
+          expanded: !collapsedTargetIds.has(track.targetId),
+          trackCount: 0,
+          keyframeCount: 0,
+          mutedTrackCount: 0,
+          warningCount: target ? 0 : 1,
+          propertyRows: [],
+          summaryKeyframes: [],
+        };
+        rowsByTargetId.set(track.targetId, targetRow);
+        rows.push(targetRow);
+      }
+
+      const sortedKeyframes = sortKeyframes(track.keyframes);
+      const propertyLabel = propertySpec(track.property).label;
+      const propertyRow: PropertyTimelineRow = {
+        id: `${track.targetId}:${track.property}:${track.id}`,
+        track,
+        targetId: track.targetId,
+        targetLabel,
+        targetKind,
+        propertyLabel,
+        sortedKeyframes,
+        spans: keyframeSpansFor(sortedKeyframes),
+        currentValue: toCssValue(getCurrentValue(track, time), track.property),
+        keyframeCount: sortedKeyframes.length,
+      };
+
+      targetRow.propertyRows.push(propertyRow);
+      targetRow.trackCount += 1;
+      targetRow.keyframeCount += propertyRow.keyframeCount;
+      targetRow.mutedTrackCount += track.muted ? 1 : 0;
+      targetRow.summaryKeyframes.push(
+        ...sortedKeyframes.map((keyframe): TargetSummaryKeyframe => ({
+          id: `${track.id}:${keyframe.id}`,
+          trackId: track.id,
+          keyframeId: keyframe.id,
+          property: track.property,
+          time: keyframe.time,
+          value: keyframe.value,
+        })),
+      );
+    });
+
+    rows.forEach((row) => {
+      row.summaryKeyframes = row.summaryKeyframes.sort(
+        (first, second) =>
+          first.time - second.time ||
+          first.property.localeCompare(second.property) ||
+          first.trackId.localeCompare(second.trackId) ||
+          first.keyframeId.localeCompare(second.keyframeId),
+      );
+    });
+
+    return rows;
+  };
 
   const normalizeTrackList = (items: TimelineTrack[], duration = timelineDurationMs): TimelineTrack[] =>
     items.map((track) => ({
@@ -800,6 +1288,14 @@
       .replace(/^-+|-+$/g, "");
     return `${slug || "tadpole-animation"}.html`;
   };
+  function svgNativeSaveFilename(label: string): string {
+    const slug = label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return `${slug || "tadpole-animation"}.svg`;
+  }
 
   const runnableRuntimeScript = `(() => {
   const dataNode = document.getElementById("tadpole-animation-data");
@@ -1223,9 +1719,12 @@ ${runnableRuntimeScript}
     document.documentElement.style.setProperty("--palette-hue", `${paletteHue}`);
     document.documentElement.style.setProperty("--palette-chroma", `${paletteChroma}`);
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
+    panelSheetMediaQuery = window.matchMedia(panelSheetMediaQueryText);
+    syncPanelHostMode();
+    panelSheetMediaQuery.addEventListener("change", syncPanelHostMode);
     void fetchFonts();
     void nextDomUpdate().then(applyTimelineToPreviewSvg);
-    window.addEventListener("keydown", handleGlobalKeyboard);
+    window.addEventListener("keydown", handleGlobalKeyboard, { capture: true });
   });
 
   onDestroy(() => {
@@ -1241,7 +1740,9 @@ ${runnableRuntimeScript}
     if (draggingKeyframe) {
       stopKeyframeDrag();
     }
-    window.removeEventListener("keydown", handleGlobalKeyboard);
+    panelSheetMediaQuery?.removeEventListener("change", syncPanelHostMode);
+    panelSheetMediaQuery = null;
+    window.removeEventListener("keydown", handleGlobalKeyboard, { capture: true });
   });
 
   $: {
@@ -1250,6 +1751,10 @@ ${runnableRuntimeScript}
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
   }
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
+  $: panelHostActivePanelId = drawerOpen ? activePanel : "none";
+  $: panelHostOpenPanelIds = drawerOpen && activePanel !== "none" ? activePanel : "";
+  $: panelHostUsesDialog = panelHostIsSheet && drawerOpen && activePanel !== "none";
+  $: activePanelLabel = panelLabelFor(panelHostActivePanelId);
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
   $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
@@ -1282,6 +1787,14 @@ ${runnableRuntimeScript}
   $: timelineTicks = Array.from({ length: clampedGridCount + 1 }, (_, index) =>
     Math.round((index / clampedGridCount) * timelineDurationMs),
   );
+  $: workAreaActive = workAreaInMs !== null && workAreaOutMs !== null && workAreaOutMs > workAreaInMs;
+  $: workAreaStartMs = workAreaActive && workAreaInMs !== null ? workAreaInMs : 0;
+  $: workAreaEndMs = workAreaActive && workAreaOutMs !== null ? workAreaOutMs : 0;
+  $: workAreaLabel = workAreaActive
+    ? `${formatWorkAreaPoint(workAreaInMs, timeDisplayMode, frameRate)} to ${formatWorkAreaPoint(workAreaOutMs, timeDisplayMode, frameRate)}`
+    : "none";
+  $: currentTimeDisplay = formatTimeDisplay(currentTime, timeDisplayMode, frameRate);
+  $: durationTimeDisplay = formatTimeDisplay(timelineDurationMs, timeDisplayMode, frameRate);
   $: visibleTracks = (() => {
     const selectedOnlyTracks =
       showOnlySelected && selectedTrackId !== "" ? tracks.filter((track) => track.id === selectedTrackId) : tracks;
@@ -1326,8 +1839,15 @@ ${runnableRuntimeScript}
 
     return matchingFilter;
   })();
+  $: timelineTargetRows = buildTimelineTargetRows(visibleTracks, availableTargets, collapsedTimelineTargetIds, currentTime);
   $: totalTrackKeyframes = tracks.reduce((total, track) => total + track.keyframes.length, 0);
   $: playheadLabel = isPlaying ? "Playing" : currentTime === 0 ? "Idle" : "Paused";
+  $: documentWarningCount =
+    animationImportWarnings.length +
+    projectMissingTargetIds.length +
+    (svgImportError ? 1 : 0) +
+    (projectImportError ? 1 : 0);
+  $: documentImportStatusLabel = svgImportError ? "error" : svgSourceLabel;
   $: selectedTrackName =
     activeTrack === null
       ? "No track selected"
@@ -1370,6 +1890,11 @@ ${runnableRuntimeScript}
   $: runnableExportHtml = createRunnableAnimationHtml(runnableExportPayload);
   $: runnableExportTrackCount = runnableExportPayload.timeline.tracks.length;
   $: runnableExportFile = runnableExportFilename(svgSourceLabel);
+  $: svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
+  $: svgNativeSaveWarnings = svgNativeSaveResult.warnings;
+  $: svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
+  $: canUndoEditorCommand = editorCommandHistory.canUndo();
+  $: canRedoEditorCommand = editorCommandHistory.canRedo();
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -1415,20 +1940,42 @@ ${runnableRuntimeScript}
     const input = event.currentTarget as HTMLInputElement;
     timelineDurationMs = clamp(Math.max(250, Number(input.value)), 250, 30000);
     currentTime = clampMs(currentTime);
+    normalizeWorkAreaToDuration();
     normalizeTracks();
+    markDocumentDirty();
   };
   const setTimelineDurationPreset = (value: number): void => {
     timelineDurationMs = clamp(value, 250, 30000);
     currentTime = clampMs(currentTime);
+    normalizeWorkAreaToDuration();
     normalizeTracks();
+    markDocumentDirty();
   };
   const setCurrentTime = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     currentTime = applySnap(clampMs(Number(input.value)));
   };
+  const setWorkAreaInPoint = (): void => {
+    workAreaInMs = applySnap(clampMs(currentTime));
+  };
+  const setWorkAreaOutPoint = (): void => {
+    workAreaOutMs = applySnap(clampMs(currentTime));
+  };
+  const clearWorkArea = (): void => {
+    workAreaInMs = null;
+    workAreaOutMs = null;
+    loopWorkArea = false;
+  };
+  const toggleLoopWorkArea = (): void => {
+    loopWorkArea = !loopWorkArea;
+  };
+  const toggleTimeDisplayMode = (): void => {
+    timeDisplayMode = timeDisplayMode === "seconds" ? "frames" : "seconds";
+  };
   const setTimelineGridDensity = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     timelineGridDensity = clamp(Number(input.value), minGridDivisions, maxGridDivisions);
+    markDocumentDirty();
   };
   const setTrackFilterTerm = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
@@ -1440,6 +1987,21 @@ ${runnableRuntimeScript}
   const clearTrackFilters = (): void => {
     trackFilterTerm = "";
     showOnlySelected = false;
+  };
+  const toggleTimelineTargetStack = (targetId: string): void => {
+    const nextCollapsedTargetIds = new Set(collapsedTimelineTargetIds);
+    if (nextCollapsedTargetIds.has(targetId)) {
+      nextCollapsedTargetIds.delete(targetId);
+    } else {
+      nextCollapsedTargetIds.add(targetId);
+    }
+    collapsedTimelineTargetIds = nextCollapsedTargetIds;
+  };
+  const expandAllTimelineStacks = (): void => {
+    collapsedTimelineTargetIds = new Set<string>();
+  };
+  const collapseAllTimelineStacks = (): void => {
+    collapsedTimelineTargetIds = new Set(timelineTargetRows.map((row) => row.targetId));
   };
 
   const jumpToUsingRef = (ref: HTMLElement | null, event: MouseEvent): void => {
@@ -1497,6 +2059,92 @@ ${runnableRuntimeScript}
     projectImportStatus = defaultProjectImportStatus;
     projectImportError = "";
     projectMissingTargetIds = [];
+  };
+
+  const markDocumentDirty = (): void => {
+    documentDirty = true;
+  };
+
+  const markDocumentClean = (): void => {
+    documentDirty = false;
+  };
+
+  const resetEditorCommandHistory = (): void => {
+    editorCommandHistory = EditorCommandHistory.empty();
+    editorCommandStatus = "Command history reset.";
+    editorLastCommandId = "";
+  };
+
+  const editorCommandSnapshot = (): EditorCommandStateSnapshot =>
+    new EditorCommandStateSnapshot(tracks, selectedTargetId, selectedTrackId, selectedKeyframeId, currentTime);
+
+  const applyEditorCommandSnapshot = (snapshot: EditorCommandStateSnapshot): void => {
+    tracks = snapshot.tracks.map((track): TimelineTrack => ({
+      id: track.id,
+      targetId: track.targetId,
+      property: track.property,
+      muted: track.muted,
+      keyframes: track.keyframes.map((keyframe): Keyframe => ({
+        id: keyframe.id,
+        time: clampMs(keyframe.time),
+        value: keyframe.value,
+        easing: keyframe.easing,
+      })),
+    }));
+    selectedTargetId = availableTargets.some((target) => target.id === snapshot.selectedTargetId)
+      ? snapshot.selectedTargetId
+      : availableTargets[0]?.id ?? "";
+    newTrackTargetId = selectedTargetId;
+    const restoredTrack = tracks.find((track) => track.id === snapshot.selectedTrackId);
+    selectedTrackId = restoredTrack?.id ?? "";
+    selectedKeyframeId = restoredTrack?.keyframes.some((keyframe) => keyframe.id === snapshot.selectedKeyframeId)
+      ? snapshot.selectedKeyframeId
+      : "";
+    currentTime = applySnap(clampMs(snapshot.currentTime));
+  };
+
+  const runEditorCommand = (command: EditorCommandIntent, recordHistory: boolean, markDirty = recordHistory): boolean => {
+    const execution = dispatchEditorCommand(editorCommandSnapshot(), editorCommandHistory, command, recordHistory);
+    if (!execution.changed) {
+      return false;
+    }
+
+    applyEditorCommandSnapshot(execution.state);
+    editorCommandHistory = execution.history;
+    editorLastCommandId = execution.commandId;
+    editorCommandStatus = `Command ${execution.commandId} applied.`;
+    if (markDirty) {
+      markDocumentDirty();
+    }
+    return true;
+  };
+
+  const undoEditorCommand = (): void => {
+    const move = editorCommandHistory.undo();
+    if (!move.changed || move.state === null) {
+      editorCommandStatus = "Nothing to undo.";
+      return;
+    }
+
+    applyEditorCommandSnapshot(move.state);
+    editorCommandHistory = move.history;
+    editorLastCommandId = move.commandId ?? "";
+    editorCommandStatus = `Undid ${move.commandId ?? "command"}.`;
+    markDocumentDirty();
+  };
+
+  const redoEditorCommand = (): void => {
+    const move = editorCommandHistory.redo();
+    if (!move.changed || move.state === null) {
+      editorCommandStatus = "Nothing to redo.";
+      return;
+    }
+
+    applyEditorCommandSnapshot(move.state);
+    editorCommandHistory = move.history;
+    editorLastCommandId = move.commandId ?? "";
+    editorCommandStatus = `Redid ${move.commandId ?? "command"}.`;
+    markDocumentDirty();
   };
 
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
@@ -1588,15 +2236,22 @@ ${runnableRuntimeScript}
     svgSourceLabel = options.label;
     svgImportError = "";
     animationImportWarnings = importWarnings;
+    if (options.restoreSampleTracks && options.label === sampleSvgLabel) {
+      markDocumentClean();
+    } else {
+      markDocumentDirty();
+    }
     clearProjectImportStatus();
     if (importedTrackCount > 0 || restoredSampleTracks) {
       timelineDurationMs = nextDuration;
       currentTime = 0;
       isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : true;
+      normalizeWorkAreaToDuration();
     }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
+    resetEditorCommandHistory();
 
     const trackSummary =
       importedTrackCount > 0
@@ -1612,19 +2267,25 @@ ${runnableRuntimeScript}
     return true;
   };
 
-  const importSvgDraft = (): void => {
-    loadSvgSource(svgDraftSource, { label: "Pasted SVG", revision: beginSvgImport() });
+  const importSvgDraft = (): boolean => {
+    return loadSvgSource(svgDraftSource, { label: "Pasted SVG", revision: beginSvgImport() });
+  };
+
+  const importSvgDraftAndClose = (): void => {
+    if (importSvgDraft()) {
+      closeEditorDialog();
+    }
   };
 
   const resetToSampleSvg = (): void => {
     loadSvgSource(defaultSvgSource, { label: sampleSvgLabel, revision: beginSvgImport(), restoreSampleTracks: true });
   };
 
-  const importSvgFile = async (event: Event): Promise<void> => {
+  const importSvgFile = async (event: Event): Promise<boolean> => {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) {
-      return;
+      return false;
     }
 
     const revision = beginSvgImport();
@@ -1633,19 +2294,26 @@ ${runnableRuntimeScript}
       svgImportError = "Import failed: choose an SVG file.";
       animationImportWarnings = [];
       input.value = "";
-      return;
+      return false;
     }
 
     try {
       const text = await file.text();
-      loadSvgSource(text, { label: file.name, revision });
+      return loadSvgSource(text, { label: file.name, revision });
     } catch {
       if (revision === svgImportRevision) {
         svgImportError = "Import failed: could not read the SVG file.";
         animationImportWarnings = [];
       }
+      return false;
     } finally {
       input.value = "";
+    }
+  };
+
+  const importSvgFileAndClose = async (event: Event): Promise<void> => {
+    if (await importSvgFile(event)) {
+      closeEditorDialog();
     }
   };
 
@@ -2401,16 +3069,19 @@ ${runnableRuntimeScript}
     snapToFrames = parsed.project.timeline.snapToFrames;
     snapMs = clamp(Math.round(parsed.project.timeline.snapMs), 1, 250);
     timelineGridDensity = clamp(Math.round(parsed.project.timeline.gridDensity), minGridDivisions, maxGridDivisions);
+    normalizeWorkAreaToDuration();
     tracks = restoredTracks;
     syncIdCursorsFromTracks(restoredTracks);
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.parsedSvg.targets);
+    resetEditorCommandHistory();
 
     const skippedSummary = formatSkippedTargetSummary(missingTargetIds);
     projectImportError = "";
     projectMissingTargetIds = missingTargetIds;
     projectImportStatus = `Project restored: ${label} with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
     svgImportStatus = `${label} restored from project with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
+    markDocumentClean();
   };
 
   const addKeyframeAtCurrentForSelected = (): void => {
@@ -2478,12 +3149,35 @@ ${runnableRuntimeScript}
     }, 1600);
   };
 
+  const setSvgNativeSaveStatus = (status: string): void => {
+    svgNativeSaveStatus = status;
+    window.setTimeout(() => {
+      if (svgNativeSaveStatus === status) {
+        svgNativeSaveStatus = "";
+      }
+    }, 1600);
+  };
+
   const copyRunnableExport = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(runnableExportHtml);
       setRunnableExportStatus("Runnable HTML copied");
     } catch {
       setRunnableExportStatus("Runnable HTML copy failed");
+    }
+  };
+
+  const copyNativeSvg = async (): Promise<void> => {
+    if (!svgNativeSaveResult.ok) {
+      setSvgNativeSaveStatus("SVG-native save is blocked by serializer warnings.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(svgNativeSaveResult.svgText);
+      setSvgNativeSaveStatus("SVG copied");
+    } catch {
+      setSvgNativeSaveStatus("SVG copy failed");
     }
   };
 
@@ -2500,8 +3194,32 @@ ${runnableRuntimeScript}
     setRunnableExportStatus(`Downloaded ${runnableExportFile}`);
   };
 
+  const downloadNativeSvg = (): void => {
+    if (!svgNativeSaveResult.ok) {
+      setSvgNativeSaveStatus("SVG-native save is blocked by serializer warnings.");
+      return;
+    }
+
+    const blob = new Blob([svgNativeSaveResult.svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = svgNativeSaveFile;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setSvgNativeSaveStatus(`Downloaded ${svgNativeSaveFile}`);
+  };
+
   const jumpByTimelineKey = (event: KeyboardEvent): void => {
-    if (isTextInputTarget(event.target)) {
+    if (
+      activeDialog !== null ||
+      openMenu !== null ||
+      hasOpenLocalKeyboardSurface() ||
+      isTextInputTarget(event.target) ||
+      isLocalKeyboardSurface(event.target)
+    ) {
       return;
     }
     jumpByKeyboard(event);
@@ -2571,11 +3289,34 @@ ${runnableRuntimeScript}
   };
 
   const handleGlobalKeyboard = (event: KeyboardEvent): void => {
-    if (isTextInputTarget(event.target)) {
+    const key = event.key.toLowerCase();
+    const hasCommandModifier = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (
+      activeDialog !== null ||
+      openMenu !== null ||
+      hasOpenLocalKeyboardSurface() ||
+      isTextInputTarget(event.target) ||
+      isLocalKeyboardSurface(event.target)
+    ) {
       return;
     }
 
-    const key = event.key.toLowerCase();
+    if (hasCommandModifier && key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        redoEditorCommand();
+        return;
+      }
+      undoEditorCommand();
+      return;
+    }
+
+    if (hasCommandModifier && key === "y") {
+      event.preventDefault();
+      redoEditorCommand();
+      return;
+    }
+
     if (key === " " || key === "k" || key === "arrowleft" || key === "arrowright" || key === "arrowup" || key === "arrowdown" || key === "home" || key === "end" || key === "pageup" || key === "pagedown") {
       jumpByKeyboard(event);
       if (key === " ") {
@@ -2619,6 +3360,30 @@ ${runnableRuntimeScript}
         return;
       }
       jumpToNextKeyframe();
+      return;
+    }
+
+    if (key === "i") {
+      event.preventDefault();
+      setWorkAreaInPoint();
+      return;
+    }
+
+    if (key === "o") {
+      event.preventDefault();
+      setWorkAreaOutPoint();
+      return;
+    }
+
+    if (key === "l") {
+      event.preventDefault();
+      toggleLoopWorkArea();
+      return;
+    }
+
+    if (key === "u") {
+      event.preventDefault();
+      toggleTimeDisplayMode();
       return;
     }
 
@@ -2801,7 +3566,14 @@ ${runnableRuntimeScript}
   };
 
   const movePlayheadToTrack = (time: number): void => {
-    currentTime = clampMs(time);
+    runEditorCommand(new SeekTimelineCommand(clampMs(time)), false);
+  };
+
+  const activeWorkAreaLoopBounds = (): { start: number; end: number } | null => {
+    if (!loopWorkArea || !workAreaActive) {
+      return null;
+    }
+    return { start: workAreaStartMs, end: workAreaEndMs };
   };
 
   const tick = (timestamp: number): void => {
@@ -2817,7 +3589,12 @@ ${runnableRuntimeScript}
 
     const duration = Math.max(0.001, timelineDurationMs);
     const elapsed = timestamp - playbackStartTime;
+    const workAreaLoop = activeWorkAreaLoopBounds();
     let next = isLooping ? elapsed % duration : clamp(elapsed, 0, duration);
+    if (workAreaLoop) {
+      const workAreaDuration = Math.max(1, workAreaLoop.end - workAreaLoop.start);
+      next = workAreaLoop.start + (elapsed % workAreaDuration);
+    }
     next = applySnap(clampMs(next));
     currentTime = next;
 
@@ -2838,11 +3615,14 @@ ${runnableRuntimeScript}
     if (isPlaying) {
       return;
     }
-    if (currentTime >= timelineDurationMs && !isLooping) {
+    const workAreaLoop = activeWorkAreaLoopBounds();
+    if (workAreaLoop && (currentTime < workAreaLoop.start || currentTime >= workAreaLoop.end)) {
+      currentTime = workAreaLoop.start;
+    } else if (currentTime >= timelineDurationMs && !isLooping) {
       currentTime = 0;
     }
     isPlaying = true;
-    playbackStartTime = performance.now() - currentTime;
+    playbackStartTime = performance.now() - (workAreaLoop ? currentTime - workAreaLoop.start : currentTime);
     lastFrameTimestamp = performance.now();
     rafHandle = requestAnimationFrame((timestamp) => tick(timestamp));
   };
@@ -2862,20 +3642,24 @@ ${runnableRuntimeScript}
 
   const toggleLoop = (): void => {
     isLooping = !isLooping;
+    markDocumentDirty();
   };
 
   const setPlayRate = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     frameRate = clamp(Number(input.value), 12, 144);
+    markDocumentDirty();
   };
 
   const setSnapSetting = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     snapMs = Number(input.value);
+    markDocumentDirty();
   };
 
   const setTimelineSnap = (): void => {
     snapToFrames = !snapToFrames;
+    markDocumentDirty();
   };
 
   const resolvePreviewTargetId = (eventTarget: EventTarget | null): string | null => {
@@ -2937,9 +3721,7 @@ ${runnableRuntimeScript}
       muted: false,
       keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(property), easing: "linear" }],
     };
-    tracks = [...tracks, newTrack];
-    syncSelectedTrack(newTrack.id);
-    return newTrack;
+    return runEditorCommand(new AddTrackCommand(newTrack), true) ? newTrack : null;
   };
 
   const addTrack = (): void => {
@@ -2968,6 +3750,7 @@ ${runnableRuntimeScript}
     }
     nextTracks.splice(destination, 0, track);
     tracks = nextTracks;
+    markDocumentDirty();
   };
 
   const canMoveTrackUp = (trackId: string): boolean => tracks.findIndex((track) => track.id === trackId) > 0;
@@ -2984,6 +3767,7 @@ ${runnableRuntimeScript}
       return;
     }
     tracks = [track, ...nextTracks];
+    markDocumentDirty();
   };
 
   const moveTrackToBottom = (trackId: string): void => {
@@ -2997,6 +3781,7 @@ ${runnableRuntimeScript}
       return;
     }
     tracks = [...nextTracks, track];
+    markDocumentDirty();
   };
 
   const duplicateTrack = (trackId: string): void => {
@@ -3014,15 +3799,11 @@ ${runnableRuntimeScript}
         id: makeKeyframeId(),
       })),
     };
-    tracks = [...tracks, copy];
-    syncSelectedTrack(copy.id);
+    runEditorCommand(new AddTrackCommand(copy), true);
   };
 
   const removeTrack = (trackId: string): void => {
-    tracks = tracks.filter((track) => track.id !== trackId);
-    if (selectedTrackId === trackId) {
-      syncSelectedTrack(tracks[0]?.id ?? "");
-    }
+    runEditorCommand(new RemoveTrackCommand(trackId), true);
   };
 
   const clearTracks = (): void => {
@@ -3032,6 +3813,7 @@ ${runnableRuntimeScript}
     }
 
     tracks = [];
+    markDocumentDirty();
     syncSelectedTrack("");
     const suffix = clearedTrackCount === 1 ? "track" : "tracks";
     svgImportStatus = `Cleared ${clearedTrackCount} timeline ${suffix} from ${svgSourceLabel}.`;
@@ -3041,6 +3823,7 @@ ${runnableRuntimeScript}
     const input = event.currentTarget as HTMLSelectElement;
     const targetId = input.value;
     tracks = tracks.map((track) => (track.id === trackId ? { ...track, targetId } : track));
+    markDocumentDirty();
     if (selectedTrackId === trackId) {
       selectTarget(targetId);
     }
@@ -3054,6 +3837,7 @@ ${runnableRuntimeScript}
         ? { ...track, property, keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, value: defaultValueFor(property) })) }
         : track,
     );
+    markDocumentDirty();
   };
 
   const resetTrackValues = (trackId: string): void => {
@@ -3062,10 +3846,12 @@ ${runnableRuntimeScript}
         ? { ...track, keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, value: defaultValueFor(track.property) })) }
         : track,
     );
+    markDocumentDirty();
   };
 
   const toggleTrackMute = (trackId: string): void => {
     tracks = tracks.map((track) => (track.id === trackId ? { ...track, muted: !track.muted } : track));
+    markDocumentDirty();
   };
 
   const addKeyframeAtCurrent = (trackId: string): string | null => {
@@ -3083,30 +3869,20 @@ ${runnableRuntimeScript}
   const addKeyframe = (trackId: string, atMs: number, value?: string): string | null => {
     const snapped = applySnap(clampMs(atMs));
     let createdId: string | null = null;
-    tracks = tracks.map((track) => {
-      if (track.id !== trackId) {
-        return track;
-      }
-      const existingIndex = track.keyframes.findIndex((candidate) => candidate.time === snapped);
-      const newFrame: Keyframe = {
-        id: makeKeyframeId(),
-        time: snapped,
-        value: value ?? defaultValueFor(track.property),
-        easing: "linear",
-      };
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track) {
+      return null;
+    }
+    const existingFrame = track.keyframes.find((candidate) => candidate.time === snapped);
+    const newFrame: Keyframe = {
+      id: existingFrame?.id ?? makeKeyframeId(),
+      time: snapped,
+      value: value ?? defaultValueFor(track.property),
+      easing: "linear",
+    };
+    if (runEditorCommand(new AddKeyframeCommand(trackId, newFrame), true)) {
       createdId = newFrame.id;
-      if (existingIndex >= 0) {
-        const next = [...track.keyframes];
-        const existingFrame = next[existingIndex]!;
-        createdId = existingFrame.id;
-        next[existingIndex] = {
-          ...existingFrame,
-          value: newFrame.value,
-        };
-        return { ...track, keyframes: sortKeyframes(next) };
-      }
-      return { ...track, keyframes: sortKeyframes([...track.keyframes, newFrame]) };
-    });
+    }
     return createdId;
   };
 
@@ -3149,12 +3925,7 @@ ${runnableRuntimeScript}
   };
 
   const removeKeyframe = (trackId: string, keyframeId: string): void => {
-    tracks = tracks.map((track) =>
-      track.id === trackId ? { ...track, keyframes: track.keyframes.filter((keyframe) => keyframe.id !== keyframeId) } : track,
-    );
-    if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
-      selectedKeyframeId = "";
-    }
+    runEditorCommand(new DeleteKeyframeCommand(trackId, keyframeId), true);
   };
 
   const duplicateSelectedKeyframe = (): string | null => {
@@ -3189,24 +3960,9 @@ ${runnableRuntimeScript}
     setKeyframeTime(trackId, keyframeId, Number(input.value));
   };
 
-  const setKeyframeTime = (trackId: string, keyframeId: string, value: number): void => {
+  const setKeyframeTime = (trackId: string, keyframeId: string, value: number, recordHistory = true): void => {
     const snapped = applySnap(clampMs(value));
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: sortKeyframes(
-              track.keyframes.map((keyframe) =>
-                keyframe.id === keyframeId ? { ...keyframe, time: snapped } : keyframe,
-              ),
-            ),
-          }
-        : track,
-    );
-
-    if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
-      currentTime = snapped;
-    }
+    runEditorCommand(new MoveKeyframeCommand(trackId, keyframeId, snapped), recordHistory, true);
   };
 
   const startKeyframeDrag = (trackId: string, event: MouseEvent): void => {
@@ -3216,9 +3972,14 @@ ${runnableRuntimeScript}
     if (!keyframeId || !lane || event.button !== 0) {
       return;
     }
+    const keyframeTrack = tracks.find((track) => track.id === trackId);
+    const keyframe = keyframeTrack?.keyframes.find((candidate) => candidate.id === keyframeId);
+    if (!keyframe) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
-    draggingKeyframe = { trackId, keyframeId, lane };
+    draggingKeyframe = { trackId, keyframeId, lane, startTime: keyframe.time, startSnapshot: editorCommandSnapshot() };
     syncSelectedTrack(trackId, keyframeId);
     pauseTimeline();
     window.addEventListener("mousemove", onKeyframeDragMove);
@@ -3235,16 +3996,26 @@ ${runnableRuntimeScript}
       return;
     }
     const computedTime = ((event.clientX - rect.left) / rect.width) * timelineDurationMs;
-    setKeyframeTime(draggingKeyframe.trackId, draggingKeyframe.keyframeId, computedTime);
+    setKeyframeTime(draggingKeyframe.trackId, draggingKeyframe.keyframeId, computedTime, false);
   };
 
   const stopKeyframeDrag = (): void => {
     if (!draggingKeyframe) {
       return;
     }
+    const drag = draggingKeyframe;
     draggingKeyframe = null;
     window.removeEventListener("mousemove", onKeyframeDragMove);
     window.removeEventListener("mouseup", stopKeyframeDrag);
+    const keyframeTrack = tracks.find((track) => track.id === drag.trackId);
+    const keyframe = keyframeTrack?.keyframes.find((candidate) => candidate.id === drag.keyframeId);
+    if (!keyframe || keyframe.time === drag.startTime) {
+      return;
+    }
+    const after = editorCommandSnapshot();
+    editorCommandHistory = editorCommandHistory.record(new EditorHistoryEntry("keyframe.move", drag.startSnapshot, after));
+    editorLastCommandId = "keyframe.move";
+    editorCommandStatus = "Command keyframe.move applied.";
   };
 
   const updateKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
@@ -3257,35 +4028,15 @@ ${runnableRuntimeScript}
     if (nextValue === null) {
       return;
     }
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: track.keyframes.map((keyframe) =>
-              keyframe.id === keyframeId
-                ? {
-                    ...keyframe,
-                    value: nextValue,
-                  }
-                : keyframe,
-            ),
-          }
-        : track,
-    );
+    runEditorCommand(new SetKeyframeValueCommand(trackId, keyframeId, nextValue), true);
   };
 
   const updateKeyframeEasing = (trackId: string, keyframeId: string, event: Event): void => {
     const input = event.currentTarget as HTMLSelectElement;
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: track.keyframes.map((keyframe) =>
-              keyframe.id === keyframeId ? { ...keyframe, easing: input.value as KeyframeEasing } : keyframe,
-            ),
-          }
-        : track,
-    );
+    if (!isKeyframeEasing(input.value)) {
+      return;
+    }
+    runEditorCommand(new SetKeyframeEasingCommand(trackId, keyframeId, input.value), true);
   };
 
   const dropKeyframeAtPlayhead = (): void => {
@@ -3295,19 +4046,684 @@ ${runnableRuntimeScript}
 
 </script>
 
-<main class="shell">
-  <section class="panel app-intro">
-    <p class="eyebrow">{softwareBase}</p>
-    <h1>Tadpole</h1>
-    <p>Timeline-first UI for building SVG animation keyframes and sequencing element properties by group/element.</p>
-  </section>
+<main class="shell editor-shell" data-tadpole-editor-shell>
+  <header class="editor-menubar" data-tadpole-menubar>
+    <div class="editor-brand">
+      <span class="brand-mark" aria-hidden="true">T</span>
+      <div>
+        <p class="eyebrow">{softwareBase}</p>
+        <h1>Tadpole</h1>
+      </div>
+    </div>
+
+    <nav class="menu-actions" aria-label="Editor menu">
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "file"}
+          data-tadpole-menu-button="file"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "file"}
+          on:click={() => toggleMenu("file")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "file")}
+        >
+          File
+        </button>
+        {#if openMenu === "file"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="file" aria-label="File menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.openSvg"
+              on:click={() => openEditorDialog("open-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Open SVG...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.pasteSvg"
+              on:click={() => openEditorDialog("paste-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Paste SVG...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.saveSvg"
+              on:click={() => openEditorDialog("save-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Save SVG
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.saveSvgAs"
+              on:click={() => openEditorDialog("save-svg", "file")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Save SVG As...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="file.revertSvg"
+              on:click={runFileRevertCommand}
+              on:keydown={(event) => handleMenuItemKeydown(event, "file")}
+            >
+              Revert to Sample SVG
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "edit"}
+          data-tadpole-menu-button="edit"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "edit"}
+          on:click={() => toggleMenu("edit")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "edit")}
+        >
+          Edit
+        </button>
+        {#if openMenu === "edit"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="edit" aria-label="Edit menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.undo"
+              data-tadpole-disabled={canUndoEditorCommand ? "false" : "true"}
+              disabled={!canUndoEditorCommand}
+              on:click={() => {
+                undoEditorCommand();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.redo"
+              data-tadpole-disabled={canRedoEditorCommand ? "false" : "true"}
+              disabled={!canRedoEditorCommand}
+              on:click={() => {
+                redoEditorCommand();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
+              Redo
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.copyProjectJson"
+              on:click={() => {
+                void copyExport();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
+              Copy Project JSON
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "view"}
+          data-tadpole-menu-button="view"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "view"}
+          on:click={() => toggleMenu("view")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "view")}
+        >
+          View
+        </button>
+        {#if openMenu === "view"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="view" aria-label="View menu">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showSource"
+              aria-label="Open SVG source panel"
+              aria-checked={activePanel === "source" && drawerOpen}
+              on:click={() => runViewCommand("source")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Source Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showWarnings"
+              aria-checked={activePanel === "warnings" && drawerOpen}
+              on:click={() => runViewCommand("warnings")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Warnings Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showLayers"
+              aria-label="Open layers panel"
+              aria-checked={activePanel === "layers" && drawerOpen}
+              on:click={() => runViewCommand("layers")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Layers Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showInspector"
+              aria-label="Open inspector panel"
+              aria-checked={activePanel === "inspector" && drawerOpen}
+              on:click={() => runViewCommand("inspector")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Inspector Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showExport"
+              aria-label="Open export panel"
+              aria-checked={activePanel === "export" && drawerOpen}
+              on:click={() => runViewCommand("export")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Export Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showDebug"
+              aria-checked={activePanel === "debug" && drawerOpen}
+              on:click={() => runViewCommand("debug")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Debug Panel
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showTargets"
+              aria-label="Open targets panel"
+              aria-checked={activePanel === "targets" && drawerOpen}
+              on:click={() => runViewCommand("targets")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Target Library
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showPalette"
+              aria-label="Open palette panel"
+              aria-checked={activePanel === "palette" && drawerOpen}
+              on:click={() => runViewCommand("palette")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Palette
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showWorkspace"
+              aria-label="Open workspace panel"
+              aria-checked={activePanel === "workspace" && drawerOpen}
+              on:click={() => runViewCommand("workspace")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Workspace
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="view.showFonts"
+              aria-label="Open fonts panel"
+              aria-checked={activePanel === "fonts" && drawerOpen}
+              on:click={() => runViewCommand("fonts")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "view")}
+            >
+              Fonts
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "timeline"}
+          data-tadpole-menu-button="timeline"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "timeline"}
+          on:click={() => toggleMenu("timeline")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "timeline")}
+        >
+          Timeline
+        </button>
+        {#if openMenu === "timeline"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="timeline" aria-label="Timeline menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.playPause"
+              on:click={() => {
+                togglePlay();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.stop"
+              on:click={() => {
+                stopTimeline();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Stop
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.previousKeyframe"
+              disabled={!selectedTrackHasKeyframes}
+              on:click={() => {
+                jumpToPreviousKeyframe();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Previous Keyframe
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.nextKeyframe"
+              disabled={!selectedTrackHasKeyframes}
+              on:click={() => {
+                jumpToNextKeyframe();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Next Keyframe
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.toggleLoop"
+              on:click={() => {
+                toggleLoop();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Toggle Full Loop
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.dropKeyframe"
+              disabled={selectedTrackId === ""}
+              on:click={() => {
+                addKeyframeAtCurrentForSelected();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Drop Keyframe at Playhead
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.setInPoint"
+              on:click={() => {
+                setWorkAreaInPoint();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Set Work Area In
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.setOutPoint"
+              on:click={() => {
+                setWorkAreaOutPoint();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Set Work Area Out
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.clearWorkArea"
+              on:click={() => {
+                clearWorkArea();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Clear Work Area
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="timeline.toggleWorkAreaLoop"
+              aria-checked={loopWorkArea}
+              on:click={() => {
+                toggleLoopWorkArea();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Loop Work Area
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.toggleFramesSeconds"
+              on:click={() => {
+                toggleTimeDisplayMode();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Toggle Seconds/Frames
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "export"}
+          data-tadpole-menu-button="export"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "export"}
+          on:click={() => toggleMenu("export")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "export")}
+        >
+          Export
+        </button>
+        {#if openMenu === "export"}
+          <div class="menu-popover" role="menu" data-tadpole-menu="export" aria-label="Export menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="export.runnableHtml"
+              on:click={() => openEditorDialog("export-runnable", "export")}
+              on:keydown={(event) => handleMenuItemKeydown(event, "export")}
+            >
+              Runnable HTML...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="export.projectJson"
+              on:click={() => togglePanelCommand("export", '[data-tadpole-menu-button="export"]')}
+              on:keydown={(event) => handleMenuItemKeydown(event, "export")}
+            >
+              Project JSON Panel
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-group">
+        <button
+          type="button"
+          class="menu-root"
+          class:is-active={openMenu === "help"}
+          data-tadpole-menu-button="help"
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "help"}
+          on:click={() => toggleMenu("help")}
+          on:keydown={(event) => handleMenuButtonKeydown(event, "help")}
+        >
+          Help
+        </button>
+        {#if openMenu === "help"}
+          <div class="menu-popover align-end" role="menu" data-tadpole-menu="help" aria-label="Help menu">
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="help.keyboardShortcuts"
+              on:click={runHelpShortcutsCommand}
+              on:keydown={(event) => handleMenuItemKeydown(event, "help")}
+            >
+              Keyboard Shortcuts
+            </button>
+          </div>
+        {/if}
+      </div>
+    </nav>
+
+    <div class="document-status" data-tadpole-document-status aria-live="polite">
+      <span class="status-chip status-strong">Document: {svgSourceLabel}</span>
+      <span class="status-chip" title={svgImportError || svgImportStatus}>Import: {documentImportStatusLabel}</span>
+      <button
+        type="button"
+        class="status-chip status-button"
+        data-tadpole-dirty-badge
+        data-tadpole-dirty={documentDirty ? "true" : "false"}
+        on:click={openDirtyStateFromBadge}
+      >
+        Dirty: {documentDirty ? "yes" : "no"}
+      </button>
+      <span class="status-chip">Targets: {availableTargets.length}</span>
+      <span class="status-chip">Tracks: {tracks.length}</span>
+      <span
+        class="status-chip"
+        data-tadpole-command-history
+        data-tadpole-can-undo={canUndoEditorCommand ? "true" : "false"}
+        data-tadpole-can-redo={canRedoEditorCommand ? "true" : "false"}
+        data-tadpole-undo-count={editorCommandHistory.undoStack.length}
+        data-tadpole-redo-count={editorCommandHistory.redoStack.length}
+        data-tadpole-last-command={editorLastCommandId}
+        title={editorCommandStatus}
+      >
+        History: {editorCommandHistory.undoStack.length}/{editorCommandHistory.redoStack.length}
+      </span>
+      <button
+        type="button"
+        class="status-chip status-button"
+        class:status-warning={documentWarningCount > 0}
+        data-tadpole-warning-badge
+        data-tadpole-warning-count={documentWarningCount}
+        on:click={openWarningsFromBadge}
+      >
+        Warnings: {documentWarningCount}
+      </button>
+      <span class="status-chip">Playhead: {playheadLabel}</span>
+    </div>
+  </header>
+
+  {#if activeDialog !== null}
+    <div class="dialog-backdrop">
+      <div
+        class="document-dialog"
+        role="dialog"
+        tabindex="-1"
+        aria-modal="true"
+        aria-labelledby={`dialog-title-${activeDialog}`}
+        data-tadpole-active-dialog
+        data-tadpole-dialog={activeDialog}
+        on:keydown={handleDialogKeydown}
+      >
+        <div class="dialog-heading">
+          <div>
+            {#if activeDialog === "open-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-open-svg">Open SVG</h2>
+            {:else if activeDialog === "paste-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-paste-svg">Paste SVG</h2>
+            {:else if activeDialog === "save-svg"}
+              <p class="eyebrow">File</p>
+              <h2 id="dialog-title-save-svg">Save SVG</h2>
+            {:else}
+              <p class="eyebrow">Export</p>
+              <h2 id="dialog-title-export-runnable">Export Runnable HTML</h2>
+            {/if}
+          </div>
+          <button type="button" class="dialog-close" on:click={closeEditorDialog} aria-label="Close dialog">Close</button>
+        </div>
+
+        {#if activeDialog === "open-svg"}
+          <div class="dialog-body">
+            <p class="muted">Open an SVG file through the same parser and sanitizer used by the source panel.</p>
+            <label class="inline-label compact">
+              <span>SVG file</span>
+              <input type="file" accept=".svg,image/svg+xml" on:change={importSvgFileAndClose} />
+            </label>
+            {#if svgImportError}
+              <p class="error tiny" aria-live="assertive">{svgImportError}</p>
+            {:else}
+              <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+            {/if}
+          </div>
+        {:else if activeDialog === "paste-svg"}
+          <div class="dialog-body">
+            <p class="muted">Paste raw SVG markup. Scripts, external references, and unsupported animation nodes stay behind the import boundary.</p>
+            <label class="inline-label compact">
+              <span>SVG markup</span>
+              <textarea rows="9" spellcheck="false" bind:value={svgDraftSource}></textarea>
+            </label>
+            <div class="dialog-actions">
+              <button type="button" on:click={importSvgDraftAndClose} disabled={svgDraftSource.trim() === ""}>
+                Import Pasted SVG
+              </button>
+              <button type="button" on:click={closeEditorDialog}>Cancel</button>
+            </div>
+            {#if svgImportError}
+              <p class="error tiny" aria-live="assertive">{svgImportError}</p>
+            {:else}
+              <p class="muted tiny" aria-live="polite">{svgImportStatus}</p>
+            {/if}
+          </div>
+        {:else if activeDialog === "save-svg"}
+          <div
+            class="dialog-body"
+            data-tadpole-svg-save-state={svgNativeSaveResult.ok ? "ready" : "blocked"}
+            data-tadpole-svg-save-warning-count={svgNativeSaveWarnings.length}
+            data-tadpole-svg-save-blocking-count={svgNativeSaveResult.blockingWarningCount()}
+            data-tadpole-svg-save-track-count={svgNativeSaveResult.serializedTrackCount}
+          >
+            <p class="muted">
+              Save the current editable timeline back into one SVG file with standard SVG animation nodes.
+            </p>
+            <div class="svg-source-summary">
+              <span class="status-chip">Document: {svgSourceLabel}</span>
+              <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
+              <span class="status-chip">Tracks: {tracks.length}</span>
+              <span class="status-chip">Serialized: {svgNativeSaveResult.serializedTrackCount}</span>
+              <span class="status-chip">File: {svgNativeSaveFile}</span>
+            </div>
+            <div class="dialog-actions">
+              <button type="button" data-tadpole-command="file.copySvg" on:click={copyNativeSvg} disabled={!svgNativeSaveResult.ok}>
+                Copy SVG
+              </button>
+              <button type="button" data-tadpole-command="file.downloadSvg" on:click={downloadNativeSvg} disabled={!svgNativeSaveResult.ok}>
+                Download SVG
+              </button>
+              <button type="button" on:click={closeEditorDialog}>Close</button>
+            </div>
+            <p class={svgNativeSaveResult.ok ? "muted tiny" : "error tiny"} aria-live={svgNativeSaveResult.ok ? "polite" : "assertive"}>
+              {#if svgNativeSaveStatus}
+                {svgNativeSaveStatus}
+              {:else if svgNativeSaveResult.ok}
+                SVG-native save ready with {svgNativeSaveResult.serializedTrackCount} serialized tracks.
+              {:else}
+                SVG-native save blocked by {svgNativeSaveResult.blockingWarningCount()} serializer warnings.
+              {/if}
+            </p>
+            {#if svgNativeSaveWarnings.length > 0}
+              <div class="warning tiny" data-tadpole-svg-save-warnings aria-live="polite">
+                <strong>SVG-native save warnings</strong>
+                <ul>
+                  {#each svgNativeSaveWarnings as warning}
+                    <li data-tadpole-svg-save-warning={warning.code} data-tadpole-svg-save-warning-severity={warning.severity}>
+                      {warning.message}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+            {#if svgNativeSaveResult.ok}
+              <pre class="dialog-code" data-tadpole-svg-save-output>{svgNativeSaveResult.svgText}</pre>
+            {/if}
+          </div>
+        {:else}
+          <div class="dialog-body">
+            <p class="muted">
+              Export a self-contained HTML file with the sanitized SVG and {runnableExportTrackCount} active tracks.
+            </p>
+            <div class="dialog-actions">
+              <button type="button" on:click={copyRunnableExport}>Copy Runnable HTML</button>
+              <button type="button" on:click={downloadRunnableExport}>Download Runnable HTML</button>
+              <button type="button" on:click={closeEditorDialog}>Close</button>
+            </div>
+            <p class="muted tiny" aria-live="polite">
+              {runnableExportStatus || `${runnableExportVersion} ready as ${runnableExportFile}.`}
+            </p>
+            <pre class="dialog-code" data-tadpole-runnable-dialog-output>{runnableExportHtml}</pre>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <section class="editor-layout" style={`--tadpole-drawer-width:${layoutColumnWidth};`}>
-    <aside class="drawer" class:drawer-collapsed={!drawerOpen}>
+    <aside
+      class="drawer panel-host"
+      class:drawer-collapsed={!drawerOpen}
+      data-tadpole-panel-host
+      data-tadpole-active-panel={panelHostActivePanelId}
+      data-tadpole-panel-open={drawerOpen && activePanel !== "none" ? "true" : "false"}
+      data-tadpole-open-panel-ids={panelHostOpenPanelIds}
+      data-tadpole-warning-count={documentWarningCount}
+      data-tadpole-dirty={documentDirty ? "true" : "false"}
+      role={panelHostUsesDialog ? "dialog" : "region"}
+      aria-modal={panelHostUsesDialog ? "true" : undefined}
+      aria-labelledby={panelHostUsesDialog ? "active-panel-title" : undefined}
+      aria-label="Editor panels"
+      on:keydown={handlePanelHostKeydown}
+    >
       <div class="drawer-toggle-wrap">
         <button
           type="button"
           class="drawer-toggle"
+          data-tadpole-panel-toggle
           on:click={toggleDrawer}
           aria-expanded={drawerOpen}
           aria-label={drawerOpen ? "Collapse left drawer" : "Expand left drawer"}
@@ -3316,8 +4732,35 @@ ${runnableRuntimeScript}
         </button>
       </div>
 
+      <div class="panel-state-ledger" data-tadpole-panel-state-ledger aria-hidden="true">
+        {#each panelIds as panelId}
+          <span
+            data-tadpole-panel-id={panelId}
+            data-tadpole-panel-open={drawerOpen && activePanel === panelId ? "true" : "false"}
+            data-tadpole-panel-active={drawerOpen && activePanel === panelId ? "true" : "false"}
+          ></span>
+        {/each}
+      </div>
+
       <div class="drawer-content" aria-hidden={!drawerOpen}>
-        <section class="panel panel-workspace-controls">
+        {#if drawerOpen && activePanel !== "none"}
+          <div class="panel-host-heading" data-tadpole-panel-heading>
+            <div>
+              <p class="eyebrow">Panel</p>
+              <h2 id="active-panel-title">{activePanelLabel}</h2>
+            </div>
+            <button type="button" data-tadpole-panel-close on:click={closePanel}>Close Panel</button>
+          </div>
+        {/if}
+
+        {#if activePanel === "none"}
+          <section class="panel panel-host-empty" data-tadpole-panel-id="none" data-tadpole-panel-open="false">
+            <p class="muted tiny">Use View, File, or Export menus to open secondary editor surfaces.</p>
+          </section>
+        {/if}
+
+        {#if activePanel === "workspace"}
+        <section class="panel panel-workspace-controls" data-tadpole-panel-id="workspace" data-tadpole-panel-open="true">
           <h2>Workspace</h2>
           <p class="muted">Control the editor layout and quick workflow mode.</p>
           <div class="inline-label compact">
@@ -3362,8 +4805,10 @@ ${runnableRuntimeScript}
             </button>
           </div>
         </section>
+        {/if}
 
-        <section class="panel panel-svg-source">
+        {#if activePanel === "source"}
+        <section class="panel panel-svg-source" data-tadpole-panel-id="source" data-tadpole-panel-open="true">
           <h2>SVG Source</h2>
           <div class="svg-source-summary">
             <span class="status-chip">{svgSourceLabel}</span>
@@ -3402,8 +4847,173 @@ ${runnableRuntimeScript}
             </div>
           {/if}
         </section>
+        {/if}
 
-        <section class="panel">
+        {#if activePanel === "export"}
+        <section class="panel export-block" data-tadpole-panel-id="export" data-tadpole-panel-open="true">
+          <h2>Project Export</h2>
+          <p class="muted">
+            Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
+          </p>
+          <pre><code>{exportPayload}</code></pre>
+          <h3>Runnable Animation Export</h3>
+          <p class="muted">
+            Export a self-contained HTML artifact with the sanitized SVG and {runnableExportTrackCount} active tracks.
+          </p>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={copyRunnableExport}>Copy Runnable HTML</button>
+            <button type="button" on:click={downloadRunnableExport}>Download Runnable HTML</button>
+          </div>
+          <p class="muted tiny" aria-live="polite">
+            {runnableExportStatus || `${runnableExportVersion} ready as ${runnableExportFile}.`}
+          </p>
+          <pre class="runnable-export-output" data-tadpole-runnable-output>{runnableExportHtml}</pre>
+          <h3>Project JSON Import</h3>
+          <label class="inline-label compact">
+            <span>Upload Project</span>
+            <input type="file" accept=".json,application/json" on:change={importProjectFile} />
+          </label>
+          <label class="inline-label compact">
+            <span>Project JSON</span>
+            <textarea rows="6" spellcheck="false" bind:value={projectDraftSource}></textarea>
+          </label>
+          <div class="toolbar source-actions">
+            <button type="button" on:click={validateProjectDraft}>Validate Project JSON</button>
+            <button type="button" on:click={restoreProjectDraft}>Restore Project</button>
+            <button type="button" on:click={useCurrentProjectExport}>Use Current Export</button>
+          </div>
+          {#if projectImportError}
+            <p class="error tiny" aria-live="assertive">{projectImportError}</p>
+          {:else}
+            <p class="muted tiny" aria-live="polite">{projectImportStatus}</p>
+          {/if}
+          {#if projectMissingTargetIds.length > 0}
+            <p class="warning tiny" aria-live="polite">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "warnings"}
+        <section class="panel panel-warning-list" data-tadpole-warnings-panel data-tadpole-panel-id="warnings" data-tadpole-panel-open="true">
+          <h2>Warnings</h2>
+          <div class="svg-source-summary">
+            <span class="status-chip">Warnings: {documentWarningCount}</span>
+            <span class="status-chip">Import: {documentImportStatusLabel}</span>
+          </div>
+          {#if documentWarningCount === 0}
+            <p class="empty-state tiny">No document warnings are currently active.</p>
+          {/if}
+          {#if svgImportError}
+            <p class="error tiny">{svgImportError}</p>
+          {/if}
+          {#if projectImportError}
+            <p class="error tiny">{projectImportError}</p>
+          {/if}
+          {#if animationImportWarnings.length > 0}
+            <div class="warning tiny">
+              <strong>Animation import warnings</strong>
+              <ul>
+                {#each animationImportWarnings as warning}
+                  <li>{warning}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          {#if projectMissingTargetIds.length > 0}
+            <p class="warning tiny">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "layers"}
+        <section class="panel panel-layers" data-tadpole-layers-panel data-tadpole-panel-id="layers" data-tadpole-panel-open="true">
+          <h2>Layers</h2>
+          <p class="muted">SVG targets available to animate in the current document.</p>
+          {#if availableTargets.length === 0}
+            <p class="empty-state tiny">No editable SVG targets found.</p>
+          {:else}
+            <ul class="layer-list">
+              {#each availableTargets as target}
+                <li class:selected={target.id === selectedTargetId}>
+                  <button type="button" on:click={() => selectTarget(target.id, { syncTrack: true })}>
+                    <span>{target.name}</span>
+                    <code>#{target.id}</code>
+                  </button>
+                  <span class="chip">{target.kind}</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "inspector"}
+        <section
+          class="panel panel-command-inspector"
+          data-tadpole-inspector-panel
+          data-tadpole-panel-id="inspector"
+          data-tadpole-panel-open="true"
+        >
+          <h2>Inspector</h2>
+          {#if selectedTarget}
+            <div class="inspector-grid">
+              <label class="inline-label compact">
+                <span>Target</span>
+                <input value={selectedTarget.name} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>ID</span>
+                <input value={selectedTarget.id} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Kind</span>
+                <input value={selectedTarget.kind} readonly />
+              </label>
+            </div>
+          {:else}
+            <p class="empty-state tiny">No SVG target selected.</p>
+          {/if}
+          {#if selectedTrack}
+            <div class="inspector-grid">
+              <label class="inline-label compact">
+                <span>Track</span>
+                <input value={selectedTrack.id} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Property</span>
+                <input value={selectedTrack.property} readonly />
+              </label>
+              <label class="inline-label compact">
+                <span>Keyframes</span>
+                <input value={selectedTrack.keyframes.length} readonly />
+              </label>
+            </div>
+          {/if}
+        </section>
+        {/if}
+
+        {#if activePanel === "debug"}
+        <section class="panel panel-debug" data-tadpole-debug-panel data-tadpole-panel-id="debug" data-tadpole-panel-open="true">
+          <h2>Debug</h2>
+          <p class="muted">Machine-readable runtime facts for witnesses and agents.</p>
+          <pre><code>{JSON.stringify(
+            {
+              activePanel,
+              activeDialog,
+              documentDirty,
+              documentWarningCount,
+              targets: availableTargets.length,
+              tracks: tracks.length,
+              selectedTrackId,
+            },
+            null,
+            2,
+          )}</code></pre>
+        </section>
+        {/if}
+
+        {#if activePanel === "palette"}
+        <section class="panel" data-tadpole-panel-id="palette" data-tadpole-panel-open="true">
         <h2>Dynamic Palette (Open Props)</h2>
         <p class="muted">Tune hue/chroma/rotation and remix the full 16-color Open Props palette in place.</p>
         <div class="controls">
@@ -3456,8 +5066,10 @@ ${runnableRuntimeScript}
           {/each}
         </div>
         </section>
+        {/if}
 
-        <section class="panel panel-target-library">
+        {#if activePanel === "targets"}
+        <section class="panel panel-target-library" data-tadpole-panel-id="targets" data-tadpole-panel-open="true">
         <h2>SVG Target Library</h2>
         <p class="muted">Pick a group/element target, then add its properties as tracks.</p>
         {#if availableTargets.length === 0}
@@ -3479,8 +5091,10 @@ ${runnableRuntimeScript}
           </div>
         {/if}
         </section>
+        {/if}
 
-        <section class="panel">
+        {#if activePanel === "fonts"}
+        <section class="panel" data-tadpole-panel-id="fonts" data-tadpole-panel-open="true">
         <h2>Detected Fonts</h2>
         {#if loading}
           <p>Loading font inventory…</p>
@@ -3503,6 +5117,7 @@ ${runnableRuntimeScript}
           </ul>
         {/if}
         </section>
+        {/if}
       </div>
     </aside>
 
@@ -3541,7 +5156,7 @@ ${runnableRuntimeScript}
             <span class="status-chip">Keyframe: {selectedKeyframe?.id ?? "none"}</span>
           </div>
         </div>
-          <div class="toolbar">
+          <div class="toolbar" data-tadpole-playback-controls aria-label="Playback controls">
             <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
             <button type="button" on:click={stopTimeline}>Stop</button>
             <button type="button" on:click={toggleLoop} class:is-active={isLooping}>
@@ -3576,17 +5191,41 @@ ${runnableRuntimeScript}
           <span>.: Next keyframe</span>
           <span>Delete: remove selected keyframe</span>
           <span>[ / ]: previous/next track</span>
+          <span>I / O: set work area in/out</span>
+          <span>L: toggle work-area loop</span>
+          <span>U: toggle seconds/frames</span>
           <span>M: Mute selected track</span>
           <span>Ctrl/Cmd + D: duplicate selected track</span>
           <span>H: toggle this panel</span>
         </div>
       {/if}
-      <section class="panel panel-timeline">
+      <section
+        class="panel panel-timeline"
+        data-tadpole-bottom-timeline
+        data-tadpole-work-area-active={workAreaActive ? "true" : "false"}
+        data-tadpole-work-area-in={workAreaInMs ?? ""}
+        data-tadpole-work-area-out={workAreaOutMs ?? ""}
+        data-tadpole-loop-work-area={loopWorkArea ? "true" : "false"}
+        data-tadpole-time-display-mode={timeDisplayMode}
+        data-tadpole-current-time-ms={currentTime}
+        data-tadpole-duration-ms={timelineDurationMs}
+        data-tadpole-current-time-display={currentTimeDisplay}
+        aria-label="Animation timeline"
+      >
         <div class="panel-heading">
           <div>
             <h2>Animation Timeline</h2>
             <p class="muted">Create and edit GSAP-like tracks. Click the ruler to scrub, click track lanes to add keyframes.</p>
           </div>
+        </div>
+
+        <div class="timeline-playback-compact" data-tadpole-playback-controls aria-label="Timeline playback controls">
+          <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
+          <button type="button" on:click={stopTimeline}>Stop</button>
+          <button type="button" on:click={toggleLoop} class:is-active={isLooping}>Loop {isLooping ? "ON" : "OFF"}</button>
+          <button type="button" on:click={toggleLoopWorkArea} class:is-active={loopWorkArea}>
+            Work Area {loopWorkArea ? "ON" : "OFF"}
+          </button>
         </div>
 
         <div class="timeline-controls">
@@ -3601,7 +5240,7 @@ ${runnableRuntimeScript}
                 value={timelineDurationMs}
                 on:input={setTimelineDuration}
               />
-              <span>{formatMs(timelineDurationMs)} ({formatSec(timelineDurationMs)})</span>
+              <span>{formatMs(timelineDurationMs)} ({durationTimeDisplay})</span>
             </label>
             <label class="inline-label compact">
               <span>Preset</span>
@@ -3614,7 +5253,7 @@ ${runnableRuntimeScript}
             <label class="inline-label compact">
               <span>Time</span>
               <input type="range" min="0" max={timelineDurationMs} step="1" value={currentTime} on:input={setCurrentTime} />
-              <span>{formatMs(currentTime)} | {formatSec(currentTime)}</span>
+              <span>{formatMs(currentTime)} | {currentTimeDisplay}</span>
             </label>
           </div>
           <div class="control-row">
@@ -3633,6 +5272,7 @@ ${runnableRuntimeScript}
             <label class="inline-label compact">
               <span>Current</span>
               <input type="number" min="0" max={timelineDurationMs} value={currentTime} on:input={setCurrentTime} />
+              <span data-tadpole-current-time-label>{currentTimeDisplay}</span>
             </label>
             <label class="inline-label compact">
               <span>Grid density (ticks)</span>
@@ -3647,6 +5287,51 @@ ${runnableRuntimeScript}
               <span>{timelineGridDensity} marks</span>
             </label>
           </div>
+          <div class="control-row work-area-controls" data-tadpole-work-area-controls aria-label="Work area controls">
+            <div class="work-area-summary">
+              <span class="status-chip" data-tadpole-work-area-label>Work Area: {workAreaLabel}</span>
+              <span class="status-chip" data-tadpole-work-area-in-label>
+                In: {formatWorkAreaPoint(workAreaInMs, timeDisplayMode, frameRate)}
+              </span>
+              <span class="status-chip" data-tadpole-work-area-out-label>
+                Out: {formatWorkAreaPoint(workAreaOutMs, timeDisplayMode, frameRate)}
+              </span>
+            </div>
+            <div class="preset-row">
+              <button type="button" data-tadpole-command="timeline.setInPoint" on:click={setWorkAreaInPoint}>
+                Set In @ {formatMs(currentTime)}
+              </button>
+              <button type="button" data-tadpole-command="timeline.setOutPoint" on:click={setWorkAreaOutPoint}>
+                Set Out @ {formatMs(currentTime)}
+              </button>
+              <button type="button" data-tadpole-command="timeline.clearWorkArea" on:click={clearWorkArea}>
+                Clear Work Area
+              </button>
+              <button
+                type="button"
+                data-tadpole-command="timeline.toggleWorkAreaLoop"
+                class:is-active={loopWorkArea}
+                aria-pressed={loopWorkArea}
+                on:click={toggleLoopWorkArea}
+              >
+                Loop Work Area {loopWorkArea ? "ON" : "OFF"}
+              </button>
+              <button type="button" data-tadpole-command="timeline.toggleFramesSeconds" on:click={toggleTimeDisplayMode}>
+                Time: {timeDisplayMode === "seconds" ? "Seconds" : "Frames"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-stack-controls" data-tadpole-timeline-stack-controls>
+          <span class="status-chip">Stacks: {timelineTargetRows.length}</span>
+          <span class="status-chip">Visible tracks: {visibleTracks.length}</span>
+          <button type="button" on:click={expandAllTimelineStacks} disabled={timelineTargetRows.length === 0}>
+            Show timeline tracks
+          </button>
+          <button type="button" on:click={collapseAllTimelineStacks} disabled={timelineTargetRows.length === 0}>
+            Hide timeline tracks
+          </button>
         </div>
 
         <button
@@ -3664,8 +5349,33 @@ ${runnableRuntimeScript}
                 <span>{tick}ms</span>
               </div>
             {/each}
+            {#if workAreaActive}
+              <span
+                class="work-area-range"
+                data-tadpole-work-area-range
+                style={`left:${trackPercent(workAreaStartMs)}%; width:${spanWidthPercent(workAreaStartMs, workAreaEndMs)}%;`}
+              ></span>
+            {/if}
+            {#if workAreaInMs !== null}
+              <span
+                class="work-area-marker work-area-marker-in"
+                data-tadpole-work-area-marker="in"
+                style={`left:${trackPercent(workAreaInMs)}%;`}
+              >
+                In {formatTimeDisplay(workAreaInMs, timeDisplayMode, frameRate)}
+              </span>
+            {/if}
+            {#if workAreaOutMs !== null}
+              <span
+                class="work-area-marker work-area-marker-out"
+                data-tadpole-work-area-marker="out"
+                style={`left:${trackPercent(workAreaOutMs)}%;`}
+              >
+                Out {formatTimeDisplay(workAreaOutMs, timeDisplayMode, frameRate)}
+              </span>
+            {/if}
             <span class="scrubber" style={`left:${trackPercent(currentTime)}%;`}></span>
-            <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{formatMs(currentTime)}</span>
+            <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{currentTimeDisplay}</span>
           </div>
         </button>
 
@@ -3680,167 +5390,281 @@ ${runnableRuntimeScript}
                 <p class="muted tiny">No timeline tracks match the current filter or selected-track view.</p>
               {/if}
             {/if}
-            {#each visibleTracks as track (track.id)}
-              <div
-                class="track-card"
-                class:track-selected={track.id === selectedTrackId}
-                aria-label={`Track for ${targetNameById.get(track.targetId) ?? track.targetId} ${track.property}`}
+            {#each timelineTargetRows as targetRow (targetRow.targetId)}
+              <section
+                class="target-stack"
+                class:collapsed={!targetRow.expanded}
+                data-tadpole-target-row={targetRow.targetId}
+                data-tadpole-target-row-expanded={targetRow.expanded ? "true" : "false"}
+                data-tadpole-target-row-track-count={targetRow.trackCount}
+                data-tadpole-target-row-key-count={targetRow.keyframeCount}
+                aria-label={`${targetRow.targetLabel} target animation stack`}
               >
-                <div class="track-heading">
-                  <label class="inline-label">
-                    <span>Target</span>
-                    <select value={track.targetId} on:change={(event) => setTrackTarget(track.id, event)}>
-                      {#each availableTargets as target}
-                        <option value={target.id}>{target.name}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <label class="inline-label">
-                    <span>Property</span>
-                    <select value={track.property} on:change={(event) => setTrackProperty(track.id, event)}>
-                      {#each propertyCatalog as property}
-                        <option value={property.id}>{property.label}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <div class="track-meta">
-                    <button type="button" class="inline-select" on:click={() => selectTrack(track.id)}>
-                      {track.id === selectedTrackId ? "Selected" : "Select track"}
-                    </button>
-                    <button type="button" on:click={() => moveTrackOrder(track.id, -1)} disabled={!canMoveTrackUp(track.id)}>
-                      ↑
-                    </button>
-                    <button type="button" on:click={() => moveTrackOrder(track.id, 1)} disabled={!canMoveTrackDown(track.id)}>
-                      ↓
-                    </button>
-                    <button type="button" on:click={() => moveTrackToTop(track.id)} disabled={!canMoveTrackUp(track.id)}>
-                      ⤒
-                    </button>
-                    <button type="button" on:click={() => moveTrackToBottom(track.id)} disabled={!canMoveTrackDown(track.id)}>
-                      ⤓
-                    </button>
-                    <span class="chip">
-                      {targetNameById.get(track.targetId)} • {track.property}
-                    </span>
-                    <button type="button" class:active={!track.muted} on:click={() => toggleTrackMute(track.id)}>
-                      {track.muted ? "Unmute" : "Mute"}
-                    </button>
-                    <button type="button" on:click={() => resetTrackValues(track.id)}>
-                      Reset values
-                    </button>
-                    <button type="button" on:click={() => duplicateTrack(track.id)}>Duplicate</button>
-                    <button type="button" on:click={() => removeTrack(track.id)}>Delete</button>
-                  </div>
-                </div>
-
-                <p class="muted tiny">
-                  Live value at playhead: <code>{toCssValue(getCurrentValue(track, currentTime), track.property)}</code>
-                  <span class="muted-divider">|</span>
-                  Keyframes: {track.keyframes.length}
-                </p>
-
-                <div class="track-lane-shell">
-                  <div
-                    class="track-lane"
-                    role="button"
-                    tabindex="0"
-                    aria-label={`Add keyframe for ${targetNameById.get(track.targetId)} ${track.property}`}
-                    on:click={(event) => addKeyframeFromLane(track.id, event)}
-                    on:keydown={(event) => {
-                      if (event.key === " " || event.key === "Enter") {
-                        event.preventDefault();
-                        addKeyframeAtTimeForTrack(track.id, currentTime);
-                      }
-                    }}
+                <div class="target-stack-heading">
+                  <button
+                    type="button"
+                    class="target-stack-toggle"
+                    data-tadpole-target-stack-toggle={targetRow.targetId}
+                    aria-expanded={targetRow.expanded}
+                    on:click={() => toggleTimelineTargetStack(targetRow.targetId)}
                   >
-                    <span class={`track-line ${track.muted ? "is-muted" : ""}`}></span>
-                    {#each sortKeyframes(track.keyframes) as keyframe}
-                      <button
-                        type="button"
-                        class={`keyframe-marker ${
-                          keyframe.id === selectedKeyframeId && track.id === selectedTrackId ? "is-selected" : ""
-                        } ${
-                          draggingKeyframe?.trackId === track.id && draggingKeyframe?.keyframeId === keyframe.id
-                            ? "is-dragging"
-                            : ""
-                        }`}
-                        data-keyframe-id={keyframe.id}
-                        style={`left:${trackPercent(keyframe.time)}%;`}
-                        on:mousedown={(event) => startKeyframeDrag(track.id, event)}
-                        on:click|stopPropagation={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
-                        on:keydown={(event) => {
-                          if (event.key === " " || event.key === "Enter") {
-                            event.preventDefault();
-                            selectKeyframe(track.id, keyframe.id, keyframe.time);
-                          }
-                        }}
-                        title={`${keyframe.id} • ${keyframe.time}ms • ${keyframe.value}`}
-                      >
-                        {Math.round(keyframe.time)}
-                      </button>
-                    {/each}
-                    <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
+                    <span class="target-stack-disclosure">{targetRow.expanded ? "▾" : "▸"}</span>
+                    <span class="target-stack-title">{targetRow.targetLabel}</span>
+                    <code>#{targetRow.targetId}</code>
+                  </button>
+                  <div class="target-stack-facts">
+                    <span class="status-chip">{targetRow.targetKind}</span>
+                    <span class="status-chip">{targetRow.trackCount} tracks</span>
+                    <span class="status-chip">{targetRow.keyframeCount} keys</span>
+                    {#if targetRow.warningCount > 0}
+                      <span class="status-chip warning">{targetRow.warningCount} warnings</span>
+                    {/if}
                   </div>
                 </div>
 
-                <div class="track-keys">
-                  <div class="keyframe-header">
-                    <h3>Keyframes</h3>
-                    <button type="button" on:click={() => addKeyframeAtTimeForTrack(track.id, currentTime)}>
-                      + Drop keyframe at {currentTime}ms
+                <div
+                  class="target-summary-lane"
+                  data-tadpole-target-summary-lane={targetRow.targetId}
+                  data-tadpole-summary-key-count={targetRow.summaryKeyframes.length}
+                  aria-label={`${targetRow.targetLabel} collapsed keyframe summary`}
+                >
+                  <span class={`track-line ${targetRow.mutedTrackCount === targetRow.trackCount ? "is-muted" : ""}`}></span>
+                  {#each targetRow.summaryKeyframes as summaryKeyframe (summaryKeyframe.id)}
+                    <button
+                      type="button"
+                      class="summary-key-dot"
+                      data-tadpole-summary-keyframe={summaryKeyframe.keyframeId}
+                      data-tadpole-summary-track={summaryKeyframe.trackId}
+                      data-tadpole-summary-property={summaryKeyframe.property}
+                      data-tadpole-summary-time={summaryKeyframe.time}
+                      data-tadpole-summary-value={summaryKeyframe.value}
+                      aria-label={`${targetRow.targetLabel} ${summaryKeyframe.property} keyframe at ${formatMs(
+                        summaryKeyframe.time,
+                      )} value ${summaryKeyframe.value}`}
+                      style={`left:${trackPercent(summaryKeyframe.time)}%;`}
+                      on:click={() => selectKeyframe(summaryKeyframe.trackId, summaryKeyframe.keyframeId, summaryKeyframe.time)}
+                      title={`${summaryKeyframe.property} • ${summaryKeyframe.time}ms • ${summaryKeyframe.value}`}
+                    >
+                      {summaryKeyframe.property}
                     </button>
-                  </div>
-                  <ul>
-                    {#each sortKeyframes(track.keyframes) as keyframe}
-                      <li class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === track.id}>
-                        <button
-                          type="button"
-                          class="key-id-button"
-                          on:click={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
-                          on:keydown={(event) => {
-                            if (event.key === " " || event.key === "Enter") {
-                              event.preventDefault();
-                              selectKeyframe(track.id, keyframe.id, keyframe.time);
-                            }
-                          }}
-                        >
-                          <span class="key-id">{keyframe.id}</span>
-                        </button>
-                        <label class="inline-label">
-                          <span>time</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max={timelineDurationMs}
-                            value={keyframe.time}
-                            on:input={(event) => updateKeyframeTime(track.id, keyframe.id, event)}
-                          />
-                        </label>
-                        <label class="inline-label">
-                          <span>value</span>
-                          <input
-                            type={isNumericProperty(track.property) ? "number" : "text"}
-                            min={isNumericProperty(track.property) ? `${propertySpec(track.property).min ?? 0}` : undefined}
-                            max={isNumericProperty(track.property) ? `${propertySpec(track.property).max ?? 0}` : undefined}
-                            step={isNumericProperty(track.property) ? `${propertySpec(track.property).step ?? 1}` : undefined}
-                            value={keyframe.value}
-                            on:input={(event) => updateKeyframeValue(track.id, keyframe.id, event)}
-                          />
-                        </label>
-                        <label class="inline-label">
-                          <span>ease</span>
-                          <select value={keyframe.easing} on:change={(event) => updateKeyframeEasing(track.id, keyframe.id, event)}>
-                            {#each easingModes as easing}
-                              <option value={easing}>{easing}</option>
-                            {/each}
-                          </select>
-                        </label>
-                        <button type="button" on:click={() => removeKeyframe(track.id, keyframe.id)}>Delete</button>
-                      </li>
-                    {/each}
-                  </ul>
+                  {/each}
+                  <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
                 </div>
-              </div>
+
+                {#if targetRow.expanded}
+                  <div class="property-row-list">
+                    {#each targetRow.propertyRows as propertyRow (propertyRow.id)}
+                      <div
+                        class="track-card property-row-card"
+                        class:track-selected={propertyRow.track.id === selectedTrackId}
+                        data-tadpole-property-row={propertyRow.track.id}
+                        data-tadpole-target-id={propertyRow.targetId}
+                        data-tadpole-property={propertyRow.track.property}
+                        data-tadpole-key-count={propertyRow.keyframeCount}
+                        aria-label={`Track for ${propertyRow.targetLabel} ${propertyRow.track.property}`}
+                      >
+                        <div class="track-heading">
+                          <label class="inline-label">
+                            <span>Target</span>
+                            <select value={propertyRow.track.targetId} on:change={(event) => setTrackTarget(propertyRow.track.id, event)}>
+                              {#each availableTargets as target}
+                                <option value={target.id}>{target.name}</option>
+                              {/each}
+                            </select>
+                          </label>
+                          <label class="inline-label">
+                            <span>Property</span>
+                            <select
+                              value={propertyRow.track.property}
+                              on:change={(event) => setTrackProperty(propertyRow.track.id, event)}
+                            >
+                              {#each propertyCatalog as property}
+                                <option value={property.id}>{property.label}</option>
+                              {/each}
+                            </select>
+                          </label>
+                          <div class="track-meta">
+                            <button type="button" class="inline-select" on:click={() => selectTrack(propertyRow.track.id)}>
+                              {propertyRow.track.id === selectedTrackId ? "Selected" : "Select track"}
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackOrder(propertyRow.track.id, -1)}
+                              disabled={!canMoveTrackUp(propertyRow.track.id)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackOrder(propertyRow.track.id, 1)}
+                              disabled={!canMoveTrackDown(propertyRow.track.id)}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackToTop(propertyRow.track.id)}
+                              disabled={!canMoveTrackUp(propertyRow.track.id)}
+                            >
+                              ⤒
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackToBottom(propertyRow.track.id)}
+                              disabled={!canMoveTrackDown(propertyRow.track.id)}
+                            >
+                              ⤓
+                            </button>
+                            <span class="chip">
+                              {propertyRow.targetLabel} • {propertyRow.track.property} • {propertyRow.propertyLabel}
+                            </span>
+                            <button
+                              type="button"
+                              class:active={!propertyRow.track.muted}
+                              on:click={() => toggleTrackMute(propertyRow.track.id)}
+                            >
+                              {propertyRow.track.muted ? "Unmute" : "Mute"}
+                            </button>
+                            <button type="button" on:click={() => resetTrackValues(propertyRow.track.id)}>
+                              Reset values
+                            </button>
+                            <button type="button" on:click={() => duplicateTrack(propertyRow.track.id)}>Duplicate</button>
+                            <button type="button" on:click={() => removeTrack(propertyRow.track.id)}>Delete</button>
+                          </div>
+                        </div>
+
+                        <p class="muted tiny">
+                          Live value at playhead: <code>{propertyRow.currentValue}</code>
+                          <span class="muted-divider">|</span>
+                          Keyframes: {propertyRow.keyframeCount}
+                        </p>
+
+                        <div class="track-lane-shell">
+                          <div
+                            class="track-lane"
+                            role="button"
+                            tabindex="0"
+                            aria-label={`Add keyframe for ${propertyRow.targetLabel} ${propertyRow.track.property}`}
+                            on:click={(event) => addKeyframeFromLane(propertyRow.track.id, event)}
+                            on:keydown={(event) => {
+                              if (event.key === " " || event.key === "Enter") {
+                                event.preventDefault();
+                                addKeyframeAtTimeForTrack(propertyRow.track.id, currentTime);
+                              }
+                            }}
+                          >
+                            <span class={`track-line ${propertyRow.track.muted ? "is-muted" : ""}`}></span>
+                            {#each propertyRow.spans as span (span.id)}
+                              <span
+                                class="animation-span"
+                                data-tadpole-animation-span={span.id}
+                                data-tadpole-span-start={span.startTime}
+                                data-tadpole-span-end={span.endTime}
+                                style={`left:${trackPercent(span.startTime)}%; width:${spanWidthPercent(span.startTime, span.endTime)}%;`}
+                              ></span>
+                            {/each}
+                            {#each propertyRow.sortedKeyframes as keyframe}
+                              <button
+                                type="button"
+                                class={`keyframe-marker ${
+                                  keyframe.id === selectedKeyframeId && propertyRow.track.id === selectedTrackId ? "is-selected" : ""
+                                } ${
+                                  draggingKeyframe?.trackId === propertyRow.track.id && draggingKeyframe?.keyframeId === keyframe.id
+                                    ? "is-dragging"
+                                    : ""
+                                }`}
+                                data-keyframe-id={keyframe.id}
+                                style={`left:${trackPercent(keyframe.time)}%;`}
+                                on:mousedown={(event) => startKeyframeDrag(propertyRow.track.id, event)}
+                                on:click|stopPropagation={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
+                                on:keydown={(event) => {
+                                  if (event.key === " " || event.key === "Enter") {
+                                    event.preventDefault();
+                                    selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
+                                  }
+                                }}
+                                title={`${keyframe.id} • ${keyframe.time}ms • ${keyframe.value}`}
+                              >
+                                {Math.round(keyframe.time)}
+                              </button>
+                            {/each}
+                            <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
+                          </div>
+                        </div>
+
+                        <div class="track-keys">
+                          <div class="keyframe-header">
+                            <h3>Keyframes</h3>
+                            <button type="button" on:click={() => addKeyframeAtTimeForTrack(propertyRow.track.id, currentTime)}>
+                              + Drop keyframe at {currentTime}ms
+                            </button>
+                          </div>
+                          <ul>
+                            {#each propertyRow.sortedKeyframes as keyframe}
+                              <li class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === propertyRow.track.id}>
+                                <button
+                                  type="button"
+                                  class="key-id-button"
+                                  on:click={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
+                                  on:keydown={(event) => {
+                                    if (event.key === " " || event.key === "Enter") {
+                                      event.preventDefault();
+                                      selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
+                                    }
+                                  }}
+                                >
+                                  <span class="key-id">{keyframe.id}</span>
+                                </button>
+                                <label class="inline-label">
+                                  <span>time</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={timelineDurationMs}
+                                    value={keyframe.time}
+                                    on:input={(event) => updateKeyframeTime(propertyRow.track.id, keyframe.id, event)}
+                                  />
+                                </label>
+                                <label class="inline-label">
+                                  <span>value</span>
+                                  <input
+                                    type={isNumericProperty(propertyRow.track.property) ? "number" : "text"}
+                                    min={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).min ?? 0}`
+                                      : undefined}
+                                    max={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).max ?? 0}`
+                                      : undefined}
+                                    step={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).step ?? 1}`
+                                      : undefined}
+                                    value={keyframe.value}
+                                    on:input={(event) => updateKeyframeValue(propertyRow.track.id, keyframe.id, event)}
+                                  />
+                                </label>
+                                <label class="inline-label">
+                                  <span>ease</span>
+                                  <select
+                                    value={keyframe.easing}
+                                    on:change={(event) => updateKeyframeEasing(propertyRow.track.id, keyframe.id, event)}
+                                  >
+                                    {#each easingModes as easing}
+                                      <option value={easing}>{easing}</option>
+                                    {/each}
+                                  </select>
+                                </label>
+                                <button type="button" on:click={() => removeKeyframe(propertyRow.track.id, keyframe.id)}>
+                                  Delete
+                                </button>
+                              </li>
+                            {/each}
+                          </ul>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </section>
             {/each}
           </div>
         </div>
@@ -4008,50 +5832,9 @@ ${runnableRuntimeScript}
           </p>
         </div>
 
-        <div class="export-block">
-          <h3>Project Export</h3>
-          <p class="muted">
-            Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
-          </p>
-          <pre><code>{exportPayload}</code></pre>
-          <h3>Runnable Animation Export</h3>
-          <p class="muted">
-            Export a self-contained HTML artifact with the sanitized SVG and {runnableExportTrackCount} active tracks.
-          </p>
-          <div class="toolbar source-actions">
-            <button type="button" on:click={copyRunnableExport}>Copy Runnable HTML</button>
-            <button type="button" on:click={downloadRunnableExport}>Download Runnable HTML</button>
-          </div>
-          <p class="muted tiny" aria-live="polite">
-            {runnableExportStatus || `${runnableExportVersion} ready as ${runnableExportFile}.`}
-          </p>
-          <pre class="runnable-export-output" data-tadpole-runnable-output>{runnableExportHtml}</pre>
-          <h3>Project JSON Import</h3>
-          <label class="inline-label compact">
-            <span>Upload Project</span>
-            <input type="file" accept=".json,application/json" on:change={importProjectFile} />
-          </label>
-          <label class="inline-label compact">
-            <span>Project JSON</span>
-            <textarea rows="6" spellcheck="false" bind:value={projectDraftSource}></textarea>
-          </label>
-          <div class="toolbar source-actions">
-            <button type="button" on:click={validateProjectDraft}>Validate Project JSON</button>
-            <button type="button" on:click={restoreProjectDraft}>Restore Project</button>
-            <button type="button" on:click={useCurrentProjectExport}>Use Current Export</button>
-          </div>
-          {#if projectImportError}
-            <p class="error tiny" aria-live="assertive">{projectImportError}</p>
-          {:else}
-            <p class="muted tiny" aria-live="polite">{projectImportStatus}</p>
-          {/if}
-          {#if projectMissingTargetIds.length > 0}
-            <p class="warning tiny" aria-live="polite">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
-          {/if}
-        </div>
       </section>
 
-      <section class="panel panel-preview">
+      <section class="panel panel-preview" data-tadpole-canvas-stage aria-label="SVG canvas stage">
         <div class="panel-heading">
           <div>
             <h2>Live Preview</h2>
@@ -4133,6 +5916,17 @@ ${runnableRuntimeScript}
         </div>
 
         <div class="preview-shell">
+          <div class="preview-stage">
+            <div
+              class="preview-svg-host"
+              bind:this={previewSvgHostElement}
+              role="group"
+              aria-label={`Source SVG Animation Preview${selectedTarget ? `, selected target ${selectedTarget.name}` : ""}`}
+              on:pointerup={selectPreviewTarget}
+            >
+              {@html svgMarkup}
+            </div>
+          </div>
           <div
             class="preview-track"
             bind:this={previewScrubberElement}
@@ -4164,17 +5958,6 @@ ${runnableRuntimeScript}
               {formatMs(currentTime)}
             </span>
           </div>
-          <div class="preview-stage">
-            <div
-              class="preview-svg-host"
-              bind:this={previewSvgHostElement}
-              role="group"
-              aria-label={`Source SVG Animation Preview${selectedTarget ? `, selected target ${selectedTarget.name}` : ""}`}
-              on:pointerup={selectPreviewTarget}
-            >
-              {@html svgMarkup}
-            </div>
-          </div>
         </div>
       </section>
     </div>
@@ -4183,36 +5966,260 @@ ${runnableRuntimeScript}
 
 <style>
   .shell {
-    width: min(110rem, 100%);
-    margin: 0 auto;
+    width: 100%;
+    min-height: 100vh;
     display: grid;
-    gap: var(--size-4);
-    align-content: start;
+    grid-template-rows: auto minmax(0, 1fr);
+    background: color-mix(in oklab, var(--color-15) 88%, black);
+    overflow: hidden;
+  }
+
+  .editor-menubar {
+    min-height: 4.75rem;
+    display: grid;
+    grid-template-columns: auto minmax(18rem, 1fr) auto;
+    gap: var(--size-3);
+    align-items: center;
+    padding: var(--size-2) var(--size-4);
+    border-bottom: 1px solid var(--tadpole-border);
+    background: color-mix(in oklab, var(--color-14) 92%, black);
+  }
+
+  .editor-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    min-width: 11rem;
+  }
+
+  .brand-mark {
+    width: 2.25rem;
+    aspect-ratio: 1;
+    border: 1px solid color-mix(in oklab, var(--tadpole-accent) 45%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    display: grid;
+    place-items: center;
+    background: color-mix(in oklab, var(--color-8) 20%, var(--color-13));
+    color: var(--tadpole-text);
+    font-weight: var(--font-weight-7);
+  }
+
+  .menu-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+    align-items: center;
+    position: relative;
+  }
+
+  .menu-group {
+    position: relative;
+  }
+
+  .menu-actions button,
+  .menu-popover button,
+  .dialog-actions button,
+  .dialog-close {
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-12) 78%, transparent);
+    color: var(--tadpole-text);
+    min-height: 2rem;
+    padding: 0.4rem 0.62rem;
+    cursor: pointer;
+    font-weight: var(--font-weight-5);
+  }
+
+  .menu-actions button:hover,
+  .menu-actions button.is-active,
+  .menu-popover button:hover,
+  .menu-popover button:focus-visible,
+  .dialog-actions button:hover,
+  .dialog-close:hover {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, var(--color-12));
+  }
+
+  .menu-popover button:disabled,
+  .dialog-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .menu-popover {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + var(--size-1));
+    left: 0;
+    min-width: 13rem;
+    display: grid;
+    gap: 1px;
+    padding: var(--size-1);
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-14) 96%, black);
+    box-shadow: var(--shadow-4);
+  }
+
+  .menu-popover.align-end {
+    left: auto;
+    right: 0;
+  }
+
+  .menu-popover button {
+    width: 100%;
+    justify-content: start;
+    text-align: left;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .menu-popover button[role="menuitemcheckbox"]::before {
+    content: " ";
+    width: 0.75rem;
+    display: inline-block;
+  }
+
+  .menu-popover button[role="menuitemcheckbox"][aria-checked="true"]::before {
+    content: "✓";
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: start center;
+    padding: min(8vh, 5rem) var(--size-4) var(--size-4);
+    background: color-mix(in oklab, black 42%, transparent);
+  }
+
+  .document-dialog {
+    width: min(44rem, calc(100vw - var(--size-4) * 2));
+    max-height: min(78vh, 48rem);
+    overflow: auto;
+    display: grid;
+    gap: var(--size-3);
+    padding: var(--size-4);
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-14) 96%, black);
+    box-shadow: var(--shadow-5);
+  }
+
+  .dialog-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--size-3);
+    border-bottom: 1px solid var(--tadpole-border);
+    padding-bottom: var(--size-2);
+  }
+
+  .dialog-heading h2 {
+    margin: 0;
+    font-size: var(--font-size-4);
+  }
+
+  .dialog-body,
+  .dialog-actions {
+    display: grid;
+    gap: var(--size-3);
+  }
+
+  .dialog-actions {
+    grid-template-columns: repeat(auto-fit, minmax(10rem, max-content));
+    align-items: center;
+  }
+
+  .dialog-code,
+  .panel-debug pre {
+    margin: 0;
+    border: 1px solid var(--tadpole-border);
+    background: color-mix(in oklab, var(--color-13) 82%, transparent);
+    border-radius: var(--radius-2);
+    padding: var(--size-2);
+    overflow: auto;
+    max-height: 18rem;
+    font-size: 12px;
+  }
+
+  .document-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+    justify-content: flex-end;
+    max-width: 34rem;
   }
 
   .editor-layout {
     display: grid;
-    gap: var(--size-4);
-    grid-template-columns: var(--tadpole-drawer-width, 24rem) var(--size-1) 1fr;
-    align-items: start;
+    grid-template-columns: var(--tadpole-drawer-width, 3.25rem) var(--size-1) minmax(0, 1fr);
+    gap: 0;
+    align-items: stretch;
+    min-height: 0;
+    height: 100%;
   }
 
   .drawer {
     display: grid;
-    gap: var(--size-4);
-    position: sticky;
-    top: var(--size-3);
+    gap: var(--size-2);
     width: var(--tadpole-drawer-width, 24rem);
     min-width: var(--tadpole-drawer-width, 24rem);
     max-width: var(--tadpole-drawer-width, 24rem);
-    overflow: hidden;
+    overflow: auto;
     transition: width 0.1s ease;
+    border-right: 1px solid var(--tadpole-border);
+    background: color-mix(in oklab, var(--color-14) 90%, black);
+    padding: var(--size-2);
+    align-content: start;
   }
 
   .drawer-content {
     display: grid;
-    gap: var(--size-4);
+    gap: var(--size-2);
     min-width: 0;
+  }
+
+  .panel-state-ledger {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .panel-host-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--size-2);
+    border: 1px solid color-mix(in oklab, var(--tadpole-border), black 10%);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-13) 76%, transparent);
+    padding: var(--size-2);
+  }
+
+  .panel-host-heading h2 {
+    margin: 0;
+    font-size: var(--font-size-3);
+  }
+
+  .panel-host-heading button {
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    min-height: 2rem;
+    padding: 0.35rem 0.6rem;
+    color: var(--tadpole-text);
+    background: var(--color-10);
+    cursor: pointer;
+    font-weight: var(--font-weight-5);
+  }
+
+  .panel-host-heading button:hover,
+  .panel-host-heading button:focus-visible {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, var(--color-12));
   }
 
   .drawer-collapsed .drawer-content {
@@ -4221,7 +6228,7 @@ ${runnableRuntimeScript}
 
   .drawer-toggle-wrap {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
   }
 
   .drawer-toggle {
@@ -4241,16 +6248,13 @@ ${runnableRuntimeScript}
   }
 
   .layout-resizer {
-    margin-top: calc(var(--size-8) - 0.2rem);
     width: var(--size-1);
     border: 0;
-    border-radius: var(--radius-2);
-    background: color-mix(in oklab, var(--tadpole-border), black);
+    border-radius: 0;
+    background: color-mix(in oklab, var(--tadpole-border), black 18%);
     padding: 0;
     cursor: col-resize;
-    position: sticky;
-    top: calc(var(--size-3) + 2.6rem);
-    height: calc(100% - var(--size-8));
+    height: 100%;
   }
 
   .layout-resizer-indicator {
@@ -4269,25 +6273,27 @@ ${runnableRuntimeScript}
 
   .workbench {
     display: grid;
-    gap: var(--size-4);
+    gap: 0;
     min-width: 0;
+    min-height: 0;
+    height: 100%;
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) minmax(16rem, 32vh);
     grid-template-areas:
       "toolbar"
-      "timeline"
-      "preview";
+      "preview"
+      "timeline";
   }
 
   .workbench-toolbar {
     grid-area: toolbar;
-    border: 1px dashed var(--tadpole-border);
-    border-radius: var(--radius);
-    background: var(--tadpole-panel);
-    padding: var(--size-3) var(--size-4);
+    border-bottom: 1px solid var(--tadpole-border);
+    background: color-mix(in oklab, var(--color-14) 82%, black);
+    padding: var(--size-2) var(--size-4);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--size-4);
+    gap: var(--size-3);
     flex-wrap: wrap;
   }
 
@@ -4331,12 +6337,50 @@ ${runnableRuntimeScript}
     background: color-mix(in oklab, var(--color-13) 72%, transparent);
   }
 
+  .status-chip.warning {
+    color: var(--yellow-3);
+    border-color: color-mix(in oklab, var(--yellow-3) 58%, var(--tadpole-border));
+  }
+
+  .status-button {
+    cursor: pointer;
+    font: inherit;
+    min-height: 1.65rem;
+  }
+
+  .status-button:hover,
+  .status-button:focus-visible {
+    color: var(--tadpole-text);
+    border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, var(--color-13));
+  }
+
+  .status-warning {
+    color: var(--yellow-3);
+    border-color: color-mix(in oklab, var(--yellow-3) 56%, var(--tadpole-border));
+  }
+
+  .status-strong {
+    color: var(--tadpole-text);
+    border-color: color-mix(in oklab, var(--tadpole-accent) 42%, var(--tadpole-border));
+  }
+
   .panel-timeline {
     grid-area: timeline;
+    border-radius: 0;
+    border-inline: 0;
+    border-bottom: 0;
+    border-color: color-mix(in oklab, var(--tadpole-border), black 12%);
+    background: color-mix(in oklab, var(--color-14) 90%, black);
+    min-height: 0;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   }
 
   .panel-preview {
     grid-area: preview;
+    min-height: 0;
   }
 
   .eyebrow {
@@ -4349,12 +6393,14 @@ ${runnableRuntimeScript}
 
   h1 {
     margin: 0;
-    font-size: clamp(1.9rem, 4vw, 2.75rem);
+    font-size: clamp(1.45rem, 2.4vw, 2rem);
     line-height: 1.1;
   }
 
   h2 {
     margin: 0 0 0.5rem;
+    font-size: clamp(1.25rem, 2vw, 1.75rem);
+    line-height: 1.08;
   }
 
   h3 {
@@ -4376,11 +6422,19 @@ ${runnableRuntimeScript}
   }
 
   .panel-preview {
-    height: clamp(18rem, 38vh, 24rem);
-    min-height: 20rem;
-    max-height: clamp(20rem, 42vh, 24rem);
+    height: 100%;
+    min-height: 0;
+    max-height: none;
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    border: 0;
+    border-radius: 0;
+    padding: var(--size-3) var(--size-4) var(--size-4);
+    background:
+      linear-gradient(color-mix(in oklab, var(--color-13) 14%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--color-13) 14%, transparent) 1px, transparent 1px),
+      color-mix(in oklab, var(--color-15) 92%, black);
+    background-size: 2rem 2rem;
   }
 
   .muted {
@@ -4401,7 +6455,7 @@ ${runnableRuntimeScript}
   }
 
   .preview-controls {
-    margin: var(--size-3) 0;
+    display: none;
   }
 
   .preview-controls-row {
@@ -4452,6 +6506,8 @@ ${runnableRuntimeScript}
   }
 
   .toolbar button,
+  .timeline-playback-compact button,
+  .timeline-stack-controls button,
   .palette-actions button,
   .track-meta button {
     border-radius: var(--radius-2);
@@ -4465,23 +6521,29 @@ ${runnableRuntimeScript}
   }
 
   .toolbar button:hover,
+  .timeline-playback-compact button:hover,
+  .timeline-stack-controls button:hover,
   .palette-actions button:hover,
   .track-meta button:hover {
     background: color-mix(in oklab, var(--color-10) 88%, white);
   }
 
   .preset-row button.active,
+  .preset-row button.is-active,
   .inline-label button.is-active {
     border-color: color-mix(in oklab, var(--tadpole-accent) 45%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
   }
 
-  .toolbar button.is-active {
+  .toolbar button.is-active,
+  .timeline-playback-compact button.is-active {
     border-color: color-mix(in oklab, var(--tadpole-accent) 45%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
   }
 
   .toolbar button:disabled,
+  .timeline-playback-compact button:disabled,
+  .timeline-stack-controls button:disabled,
   .track-meta button:disabled,
   .inline-label select:disabled {
     opacity: 0.5;
@@ -4627,6 +6689,24 @@ ${runnableRuntimeScript}
     gap: var(--size-2);
   }
 
+  .work-area-controls {
+    align-items: center;
+  }
+
+  .work-area-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .timeline-playback-compact {
+    display: none;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+    margin: var(--size-2) 0 var(--size-3);
+  }
+
   .control-row {
     display: grid;
     gap: var(--size-2);
@@ -4687,6 +6767,38 @@ ${runnableRuntimeScript}
     pointer-events: none;
   }
 
+  .work-area-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    border-inline: 1px solid color-mix(in oklab, var(--color-8) 72%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, transparent);
+    pointer-events: none;
+  }
+
+  .work-area-marker {
+    position: absolute;
+    top: 0.2rem;
+    z-index: 4;
+    min-width: 3.2rem;
+    transform: translateX(-50%);
+    border: 1px solid color-mix(in oklab, var(--color-8) 64%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    padding: 0.1rem 0.32rem;
+    color: var(--color-0);
+    background: var(--color-8);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-6);
+    line-height: 1.2;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .work-area-marker-out {
+    background: color-mix(in oklab, var(--color-8) 78%, var(--color-10));
+  }
+
   .track-list {
     margin-top: var(--size-4);
     display: grid;
@@ -4694,7 +6806,7 @@ ${runnableRuntimeScript}
   }
 
   .track-scroll {
-    max-height: min(48vh, 36rem);
+    max-height: 100%;
     overflow: auto;
     padding-right: var(--size-2);
     padding-bottom: var(--size-1);
@@ -4707,6 +6819,122 @@ ${runnableRuntimeScript}
   .track-scroll::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--tadpole-border), white);
     border-radius: var(--radius-2);
+  }
+
+  .timeline-stack-controls {
+    margin-top: var(--size-3);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .target-stack {
+    display: grid;
+    gap: var(--size-2);
+    padding-top: var(--size-3);
+    border-top: 1px solid color-mix(in oklab, var(--tadpole-border) 82%, transparent);
+  }
+
+  .target-stack:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .target-stack-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--size-3);
+    align-items: center;
+  }
+
+  .target-stack-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    max-width: 100%;
+    gap: var(--size-2);
+    min-height: 2rem;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-2);
+    color: var(--tadpole-text);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .target-stack-toggle:hover,
+  .target-stack-toggle:focus-visible {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 36%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 12%, transparent);
+  }
+
+  .target-stack-disclosure {
+    display: grid;
+    width: 1rem;
+    place-items: center;
+    color: var(--tadpole-text-muted);
+  }
+
+  .target-stack-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--font-weight-6);
+  }
+
+  .target-stack-facts {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .target-summary-lane {
+    position: relative;
+    min-height: 2rem;
+    border: 1px solid color-mix(in oklab, var(--tadpole-border) 78%, transparent);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-12) 66%, transparent);
+  }
+
+  .target-stack.collapsed .target-summary-lane {
+    background: color-mix(in oklab, var(--color-9) 9%, var(--color-13));
+  }
+
+  .summary-key-dot {
+    position: absolute;
+    top: 50%;
+    z-index: 3;
+    width: 0.85rem;
+    aspect-ratio: 1;
+    overflow: hidden;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--color-0);
+    border-radius: 999px;
+    color: transparent;
+    background: var(--color-8);
+    cursor: pointer;
+  }
+
+  .summary-key-dot:hover,
+  .summary-key-dot:focus-visible {
+    background: var(--color-6);
+    outline: 2px solid color-mix(in oklab, var(--tadpole-accent) 52%, transparent);
+    outline-offset: 2px;
+  }
+
+  .property-row-list {
+    display: grid;
+    gap: var(--size-2);
+    padding-left: var(--size-5);
+    border-left: 1px solid color-mix(in oklab, var(--tadpole-border) 72%, transparent);
+  }
+
+  .property-row-card {
+    background: color-mix(in oklab, var(--color-12) 78%, transparent);
   }
 
   .track-card {
@@ -4778,6 +7006,7 @@ ${runnableRuntimeScript}
     top: 50%;
     left: 0;
     right: 0;
+    z-index: 0;
     height: 2px;
     background: var(--color-9);
     transform: translateY(-50%);
@@ -4785,6 +7014,18 @@ ${runnableRuntimeScript}
 
   .track-line.is-muted {
     opacity: 0.2;
+  }
+
+  .animation-span {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    height: 0.54rem;
+    transform: translateY(-50%);
+    border: 1px solid color-mix(in oklab, var(--color-8) 68%, var(--color-0));
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--color-8) 48%, transparent);
+    pointer-events: none;
   }
 
   .keyframe-marker {
@@ -4980,6 +7221,8 @@ ${runnableRuntimeScript}
     gap: var(--size-3);
     align-content: start;
     min-height: 0;
+    height: 100%;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .preview-track {
@@ -5059,18 +7302,20 @@ ${runnableRuntimeScript}
   }
 
   .preview-stage {
-    min-height: 10rem;
+    min-height: 18rem;
     border-radius: var(--radius-2);
-    border: 1px dashed color-mix(in oklab, var(--tadpole-border), white);
-    background: var(--color-13);
+    border: 1px solid color-mix(in oklab, var(--tadpole-border), white 12%);
+    background:
+      linear-gradient(135deg, color-mix(in oklab, var(--color-13) 74%, black), color-mix(in oklab, var(--color-12) 84%, black));
     overflow: hidden;
     display: grid;
     place-items: center;
     height: 100%;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, white 4%, transparent);
   }
 
   .preview-svg-host {
-    width: min(420px, 100%);
+    width: min(760px, 92%);
     max-width: 100%;
     display: grid;
     place-items: center;
@@ -5083,8 +7328,9 @@ ${runnableRuntimeScript}
 
   .preview-svg,
   .preview-svg-host :global(svg) {
-    width: min(420px, 100%);
+    width: min(760px, 100%);
     max-width: 100%;
+    max-height: min(52vh, 32rem);
     height: auto;
     display: block;
   }
@@ -5110,6 +7356,47 @@ ${runnableRuntimeScript}
     list-style: none;
     display: grid;
     gap: var(--size-2);
+  }
+
+  .layer-list {
+    margin: var(--size-3) 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--size-1);
+  }
+
+  .layer-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--size-2);
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-2);
+    padding: var(--size-1);
+  }
+
+  .layer-list li.selected {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 42%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 12%, transparent);
+  }
+
+  .layer-list button {
+    min-width: 0;
+    display: grid;
+    gap: 0.15rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .layer-list code {
+    color: var(--tadpole-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .font-list li {
@@ -5145,7 +7432,7 @@ ${runnableRuntimeScript}
 
   @media (max-width: 960px) {
     .editor-layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: var(--tadpole-drawer-width, 3.25rem) minmax(0, 1fr);
     }
 
     .layout-resizer {
@@ -5153,20 +7440,17 @@ ${runnableRuntimeScript}
     }
 
     .drawer {
-      position: static;
-      order: 2;
-      width: auto;
-      min-width: 0;
-      max-width: none;
-      overflow: auto;
+      width: var(--tadpole-drawer-width, 3.25rem);
+      min-width: var(--tadpole-drawer-width, 3.25rem);
+      max-width: var(--tadpole-drawer-width, 3.25rem);
     }
 
     .workbench {
-      order: 1;
+      min-width: 0;
     }
 
     .drawer-collapsed .drawer-content {
-      display: grid;
+      display: none;
     }
 
     .panel-heading,
@@ -5203,36 +7487,91 @@ ${runnableRuntimeScript}
     .workbench {
       grid-template-areas:
         "toolbar"
-        "timeline"
-        "preview";
+        "preview"
+        "timeline";
     }
 
     .workbench-toolbar {
-      flex-direction: column;
+      display: none;
+    }
+
+    .timeline-playback-compact {
+      display: flex;
+    }
+
+    .editor-menubar {
+      grid-template-columns: 1fr;
       align-items: stretch;
+    }
+
+    .document-status {
+      justify-content: flex-start;
+      max-width: none;
+    }
+
+    .menu-actions {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      padding-bottom: var(--size-1);
+    }
+
+    .menu-actions button {
+      white-space: nowrap;
+    }
+
+    .preview-tick,
+    .ruler-stop span {
+      display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .editor-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .drawer {
+      position: fixed;
+      z-index: 50;
+      inset: auto var(--size-2) var(--size-2) var(--size-2);
+      width: auto;
+      min-width: 0;
+      max-width: none;
+      max-height: min(72vh, 40rem);
+      border: 1px solid var(--tadpole-border);
+      border-radius: var(--radius-2);
+      box-shadow: var(--shadow-5);
+    }
+
+    .drawer.drawer-collapsed {
+      display: none;
+    }
+
+    .drawer-toggle-wrap {
+      justify-content: flex-end;
     }
   }
 
   @media (min-width: 1200px) {
     .workbench {
-      grid-template-columns: 1fr minmax(18rem, 26rem);
+      grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(0, 1fr) minmax(16rem, 30vh);
       grid-template-areas:
-        "toolbar toolbar"
-        "timeline preview";
-      align-items: start;
+        "toolbar"
+        "preview"
+        "timeline";
+      align-items: stretch;
     }
 
     .panel-preview {
       min-height: 0;
-      height: min(100%, 32rem);
-      max-height: 32rem;
-      position: sticky;
-      top: var(--size-3);
+      height: 100%;
+      max-height: none;
     }
 
     .panel-timeline {
-      max-height: min(62vh, 48rem);
-      overflow: auto;
+      max-height: none;
+      overflow: hidden;
     }
   }
 </style>

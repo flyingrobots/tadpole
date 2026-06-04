@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">Tadpole editor component sheet</title>
+  <desc id="desc">Component mockups for menus, toolbar buttons, timeline keys, warning badges, panels, and SVG-native state indicators.</desc>
+  <defs>
+    <style>
+      .bg { fill: #181a1f; }
+      .panel { fill: #222731; stroke: #4b5563; }
+      .card { fill: #2a303a; stroke: #556173; }
+      .button { fill: #303846; stroke: #4b5563; }
+      .primary { fill: #0f766e; }
+      .text { fill: #eef2f7; font: 15px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .muted { fill: #aab4c0; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #aab4c0; font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .accent { fill: #2dd4bf; }
+      .blue { fill: #60a5fa; }
+      .warning { fill: #f59e0b; }
+      .danger { fill: #f87171; }
+      .lineA { stroke: #2dd4bf; stroke-width: 4; stroke-linecap: round; }
+      .lineB { stroke: #60a5fa; stroke-width: 4; stroke-linecap: round; }
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="760"/>
+  <text class="text" x="34" y="42">Tadpole Component Sheet</text>
+
+  <rect class="panel" x="34" y="72" width="360" height="162" rx="8"/>
+  <text class="text" x="58" y="104">Menubar</text>
+  <rect class="button" x="58" y="126" width="54" height="30" rx="4"/>
+  <text class="tiny" x="74" y="145">File</text>
+  <rect class="button" x="120" y="126" width="54" height="30" rx="4"/>
+  <text class="tiny" x="136" y="145">Edit</text>
+  <rect class="button" x="182" y="126" width="58" height="30" rx="4"/>
+  <text class="tiny" x="198" y="145">View</text>
+  <rect class="button" x="248" y="126" width="82" height="30" rx="4"/>
+  <text class="tiny" x="264" y="145">Timeline</text>
+  <text class="muted" x="58" y="190">Menus own secondary surfaces.</text>
+  <text class="muted" x="58" y="212">Canvas and timeline stay visible.</text>
+
+  <rect class="panel" x="428" y="72" width="360" height="162" rx="8"/>
+  <text class="text" x="452" y="104">Playback controls</text>
+  <rect class="button" x="452" y="128" width="42" height="30" rx="4"/>
+  <text class="tiny" x="466" y="148">|&lt;</text>
+  <rect class="primary" x="504" y="128" width="58" height="30" rx="4"/>
+  <text class="tiny" x="520" y="148">Play</text>
+  <rect class="button" x="572" y="128" width="42" height="30" rx="4"/>
+  <text class="tiny" x="586" y="148">&gt;|</text>
+  <rect class="button" x="630" y="128" width="76" height="30" rx="4"/>
+  <text class="tiny" x="646" y="148">Loop</text>
+  <text class="muted" x="452" y="190">Supports in/out work area and time scale.</text>
+
+  <rect class="panel" x="822" y="72" width="424" height="162" rx="8"/>
+  <text class="text" x="846" y="104">Document state</text>
+  <rect class="card" x="846" y="128" width="106" height="30" rx="15"/>
+  <circle class="accent" cx="864" cy="143" r="5"/>
+  <text class="tiny" x="878" y="147">SVG saved</text>
+  <rect class="card" x="964" y="128" width="126" height="30" rx="15"/>
+  <circle class="warning" cx="982" cy="143" r="5"/>
+  <text class="tiny" x="996" y="147">3 warnings</text>
+  <rect class="card" x="1102" y="128" width="106" height="30" rx="15"/>
+  <circle class="danger" cx="1120" cy="143" r="5"/>
+  <text class="tiny" x="1134" y="147">dirty</text>
+  <text class="muted" x="846" y="190">State is inspectable; warnings open a panel.</text>
+
+  <rect class="panel" x="34" y="270" width="580" height="196" rx="8"/>
+  <text class="text" x="58" y="302">Timeline row parts</text>
+  <rect class="card" x="58" y="326" width="520" height="44" rx="4"/>
+  <text class="text" x="78" y="354">v #ui</text>
+  <text class="tiny" x="146" y="354">UI Text</text>
+  <rect class="card" x="470" y="334" width="82" height="24" rx="12"/>
+  <text class="tiny" x="486" y="351">2 tracks</text>
+  <rect class="card" x="58" y="382" width="520" height="44" rx="4"/>
+  <text class="tiny" x="78" y="410">x</text>
+  <line class="lineA" x1="166" y1="404" x2="430" y2="404"/>
+  <circle class="accent" cx="166" cy="404" r="7"/>
+  <circle class="accent" cx="430" cy="404" r="7"/>
+  <text class="muted" x="58" y="448">Target rows group property tracks; property rows own keys.</text>
+
+  <rect class="panel" x="652" y="270" width="594" height="196" rx="8"/>
+  <text class="text" x="676" y="302">Keyframe states</text>
+  <circle class="accent" cx="704" cy="348" r="8"/>
+  <text class="muted" x="724" y="353">normal key</text>
+  <circle class="blue" cx="704" cy="386" r="8"/>
+  <text class="muted" x="724" y="391">selected key</text>
+  <rect class="card" x="852" y="330" width="170" height="36" rx="4"/>
+  <text class="tiny" x="870" y="352">time 3.00s</text>
+  <rect class="card" x="852" y="378" width="170" height="36" rx="4"/>
+  <text class="tiny" x="870" y="400">value 48px</text>
+  <text class="muted" x="676" y="448">Dragging changes time; inspector edits time, value, and easing.</text>
+
+  <rect class="panel" x="34" y="502" width="580" height="196" rx="8"/>
+  <text class="text" x="58" y="534">Context panels</text>
+  <rect class="button" x="58" y="558" width="108" height="30" rx="4"/>
+  <text class="tiny" x="78" y="577">Layers</text>
+  <rect class="button" x="178" y="558" width="108" height="30" rx="4"/>
+  <text class="tiny" x="198" y="577">Inspector</text>
+  <rect class="button" x="298" y="558" width="108" height="30" rx="4"/>
+  <text class="tiny" x="318" y="577">Source</text>
+  <rect class="button" x="418" y="558" width="108" height="30" rx="4"/>
+  <text class="tiny" x="438" y="577">Warnings</text>
+  <text class="muted" x="58" y="634">Panels appear from View/menu commands or selected tools.</text>
+  <text class="muted" x="58" y="656">They never hide the SVG stage by default.</text>
+
+  <rect class="panel" x="652" y="502" width="594" height="196" rx="8"/>
+  <text class="text" x="676" y="534">SVG-native API labels</text>
+  <rect class="card" x="676" y="560" width="242" height="34" rx="4"/>
+  <text class="tiny" x="694" y="582">timeline.seek(3.0)</text>
+  <rect class="card" x="934" y="560" width="242" height="34" rx="4"/>
+  <text class="tiny" x="952" y="582">track.setKey(...)</text>
+  <rect class="card" x="676" y="606" width="242" height="34" rx="4"/>
+  <text class="tiny" x="694" y="628">serializeToSvg()</text>
+  <rect class="card" x="934" y="606" width="242" height="34" rx="4"/>
+  <text class="tiny" x="952" y="628">parseFromSvg()</text>
+  <text class="muted" x="676" y="674">API mirrors GSAP concepts but writes SVG animation truth.</text>
+</svg>

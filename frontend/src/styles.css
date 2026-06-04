@@ -28,12 +28,8 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-sans);
-  background:
-    radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--color-7) 22%, transparent), transparent 42%),
-    radial-gradient(circle at 80% 0%, color-mix(in oklab, var(--color-6) 20%, transparent), transparent 35%),
-    var(--tadpole-bg);
+  background: var(--tadpole-bg);
   color: var(--tadpole-text);
-  padding: 1.5rem;
 }
 
 #app {
