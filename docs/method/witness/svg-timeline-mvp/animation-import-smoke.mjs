@@ -54,6 +54,12 @@ const unsafeHrefSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/sv
   </rect>
 </svg>`;
 
+const unsafeXlinkHrefSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-label="Unsafe XLink Href Fixture">
+  <rect id="safe-parent-xlink" data-tadpole-name="Safe Parent XLink" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate xlink:href="https://example.invalid/#target" attributeName="opacity" values="0;1" dur="800ms" />
+  </rect>
+</svg>`;
+
 const oneArgumentTranslateSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="One Argument Translate Fixture">
   <rect id="slider" data-tadpole-name="Slider" x="8" y="8" width="28" height="18" fill="#2563eb">
     <animateTransform attributeName="transform" type="translate" values="0;24" dur="800ms" />
@@ -269,6 +275,20 @@ const runUnsafeHrefWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runUnsafeXlinkHrefWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, unsafeXlinkHrefSvg);
+  await page.waitForSelector(".preview-svg-host #safe-parent-xlink");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported animate without a local target ID."), "unsafe xlink:href warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `unsafe xlink:href animation retargeted to parent: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const runOneArgumentTranslateSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await importSvgMarkup(page, oneArgumentTranslateSvg);
@@ -415,6 +435,7 @@ try {
   await runDiscreteCalcModeWarningSmoke(browser);
   await runFailedFileClearsWarningSmoke(browser);
   await runUnsafeHrefWarningSmoke(browser);
+  await runUnsafeXlinkHrefWarningSmoke(browser);
   await runOneArgumentTranslateSmoke(browser);
   await runNonUniformScaleWarningSmoke(browser);
   await runPivotRotateWarningSmoke(browser);
