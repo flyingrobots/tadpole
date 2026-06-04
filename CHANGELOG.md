@@ -29,6 +29,12 @@ All notable changes for Tadpole are documented here.
   chip, and clear-tracks recovery.
 - Added runnable animation export as self-contained HTML generated from the
   current sanitized SVG and active timeline tracks.
+- Added SVG animation timeline import for a safe SMIL subset, converting
+  supported `<animate>` and `<animateTransform>` nodes into editable Tadpole
+  tracks while reporting unsupported CSS/Web Animations features and rejecting
+  unsupported transform, timing, repeat, composition, reference, and color
+  semantics, preserving one-shot versus indefinite loop intent, and restoring
+  sample timeline duration on reset.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

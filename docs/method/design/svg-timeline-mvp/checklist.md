@@ -82,8 +82,8 @@
 
 ## Goal 9: Import Existing SVG Animation Timelines
 
-- [ ] Parse existing SVG SMIL/CSS/Web Animations where safe and map them into
-      Tadpole tracks.
-- [ ] Preserve the current import sanitizer trust boundary while extracting
+- [x] Import a safe SVG SMIL subset into Tadpole tracks and surface CSS/Web
+      Animations as warnings, not imported tracks.
+- [x] Preserve the current import sanitizer trust boundary while extracting
       animation intent.
-- [ ] Prove imported animation timelines become editable Tadpole keyframes.
+- [x] Prove imported animation timelines become editable Tadpole keyframes.
