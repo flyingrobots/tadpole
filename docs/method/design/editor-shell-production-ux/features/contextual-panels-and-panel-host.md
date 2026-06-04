@@ -3,7 +3,7 @@ title: "G12-001 - Contextual Panels And Panel Host"
 lane: "design"
 goal: "Goal 12"
 issue: "https://github.com/flyingrobots/tadpole/issues/34"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
+pr: "https://github.com/flyingrobots/tadpole/pull/44"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -254,3 +254,7 @@ What remains open:
 
 - Goal 17 still owns full Layers navigation.
 - Goal 18 still owns the full Inspector editing surface.
+
+PR:
+
+- [Goal 12 PR](https://github.com/flyingrobots/tadpole/pull/44)
