@@ -1843,6 +1843,12 @@ ${runnableRuntimeScript}
       return numbers.length > 1 && numbers[1] !== numbers[0];
     });
 
+  const hasUnsupportedTransformValueArity = (values: string[], min: number, max: number): boolean =>
+    values.some((value) => {
+      const count = numbersFromSmilValue(value).length;
+      return count < min || count > max;
+    });
+
   const hasExplicitRotatePivotValues = (values: string[]): boolean =>
     values.some((value) => numbersFromSmilValue(value).length > 1);
 
@@ -1916,6 +1922,10 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "translate") {
+      if (hasUnsupportedTransformValueArity(values, 1, 2)) {
+        warnings.push(`Unsupported translate value arity on #${targetId}.`);
+        return [];
+      }
       const xValues = dimensionValuesFromTransformValues(values, 0);
       const yValues = dimensionValuesFromTransformValues(values, 1);
       const tracks: ImportedAnimationTrack[] = [];
@@ -1934,6 +1944,10 @@ ${runnableRuntimeScript}
     }
 
     if (transformType === "scale") {
+      if (hasUnsupportedTransformValueArity(values, 1, 2)) {
+        warnings.push(`Unsupported scale value arity on #${targetId}.`);
+        return [];
+      }
       if (hasNonUniformScaleValues(values)) {
         warnings.push(`Unsupported non-uniform scale values on #${targetId}.`);
         return [];

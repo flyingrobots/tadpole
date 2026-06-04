@@ -90,6 +90,12 @@ const rgbaColorSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg
   </rect>
 </svg>`;
 
+const extraTransformComponentSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Extra Transform Component Fixture">
+  <rect id="extra" data-tadpole-name="Extra" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="translate" values="0 0 5;24 12 5" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -329,6 +335,20 @@ const runRgbaColorWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runExtraTransformComponentWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, extraTransformComponentSvg);
+  await page.waitForSelector(".preview-svg-host #extra");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported translate value arity on #extra."), "extra transform component warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `extra transform component imported as motion: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -342,6 +362,7 @@ try {
   await runFiniteRepeatWarningSmoke(browser);
   await runMalformedTransformWarningSmoke(browser);
   await runRgbaColorWarningSmoke(browser);
+  await runExtraTransformComponentWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
