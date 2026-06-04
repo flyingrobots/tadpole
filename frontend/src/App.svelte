@@ -665,7 +665,7 @@
   let activePanel: EditorPanel = "none";
   let openMenu: EditorMenu | null = null;
   let activeDialog: EditorDialog | null = null;
-  let dialogReturnCommand = "";
+  let dialogReturnMenu: EditorMenu | null = null;
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
@@ -725,12 +725,6 @@
   const closeMenus = (): void => {
     openMenu = null;
   };
-  const focusCommandElement = (commandId: string): void => {
-    const command = document.querySelector(`[data-tadpole-command="${commandId}"]`);
-    if (command instanceof HTMLElement) {
-      command.focus();
-    }
-  };
   const focusMenuButton = (menu: EditorMenu): void => {
     const button = document.querySelector(`[data-tadpole-menu-button="${menu}"]`);
     if (button instanceof HTMLElement) {
@@ -753,9 +747,9 @@
     openMenu = menu;
     focusFirstMenuItem(menu);
   };
-  const openEditorDialog = (dialog: EditorDialog, returnCommand: string): void => {
+  const openEditorDialog = (dialog: EditorDialog, returnMenu: EditorMenu): void => {
     activeDialog = dialog;
-    dialogReturnCommand = returnCommand;
+    dialogReturnMenu = returnMenu;
     closeMenus();
     void nextDomUpdate().then(() => {
       const dialogElement = document.querySelector("[data-tadpole-active-dialog]");
@@ -766,11 +760,11 @@
     });
   };
   const closeEditorDialog = (): void => {
-    const returnCommand = dialogReturnCommand;
+    const returnMenu = dialogReturnMenu;
     activeDialog = null;
-    dialogReturnCommand = "";
-    if (returnCommand) {
-      void nextDomUpdate().then(() => focusCommandElement(returnCommand));
+    dialogReturnMenu = null;
+    if (returnMenu) {
+      void nextDomUpdate().then(() => focusMenuButton(returnMenu));
     }
   };
   const togglePanelCommand = (panel: EditorPanel): void => {
@@ -3563,7 +3557,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="file.openSvg"
-              on:click={() => openEditorDialog("open-svg", "file.openSvg")}
+              on:click={() => openEditorDialog("open-svg", "file")}
               on:keydown={(event) => handleMenuItemKeydown(event, "file")}
             >
               Open SVG...
@@ -3572,7 +3566,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="file.pasteSvg"
-              on:click={() => openEditorDialog("paste-svg", "file.pasteSvg")}
+              on:click={() => openEditorDialog("paste-svg", "file")}
               on:keydown={(event) => handleMenuItemKeydown(event, "file")}
             >
               Paste SVG...
@@ -3581,7 +3575,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="file.saveSvg"
-              on:click={() => openEditorDialog("save-svg", "file.saveSvg")}
+              on:click={() => openEditorDialog("save-svg", "file")}
               on:keydown={(event) => handleMenuItemKeydown(event, "file")}
             >
               Save SVG
@@ -3590,7 +3584,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="file.saveSvgAs"
-              on:click={() => openEditorDialog("save-svg", "file.saveSvgAs")}
+              on:click={() => openEditorDialog("save-svg", "file")}
               on:keydown={(event) => handleMenuItemKeydown(event, "file")}
             >
               Save SVG As...
@@ -3873,7 +3867,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="export.runnableHtml"
-              on:click={() => openEditorDialog("export-runnable", "export.runnableHtml")}
+              on:click={() => openEditorDialog("export-runnable", "export")}
               on:keydown={(event) => handleMenuItemKeydown(event, "export")}
             >
               Runnable HTML...

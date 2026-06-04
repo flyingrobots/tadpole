@@ -14,6 +14,9 @@ const assert = (condition, message) => {
 
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 
+const activeMenuButton = async (page) =>
+  page.evaluate(() => document.activeElement?.getAttribute("data-tadpole-menu-button") ?? "");
+
 const fileSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Goal 11 File SVG">
   <rect id="file-badge" data-tadpole-name="File Badge" x="16" y="18" width="72" height="36" fill="#2563eb" />
 </svg>`;
@@ -91,6 +94,7 @@ const assertKeyboardFileDialog = async (page) => {
   assert((await page.locator("[data-tadpole-bottom-timeline]").count()) === 1, "timeline disappeared behind Open SVG dialog");
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
+  assert((await activeMenuButton(page)) === "file", "closing File > Open SVG did not restore focus to File menu");
 };
 
 const assertOpenSvgDialog = async (page) => {
@@ -104,6 +108,7 @@ const assertOpenSvgDialog = async (page) => {
   });
   await page.waitForSelector("[data-tadpole-canvas-stage] #file-badge");
   await dialog.waitFor({ state: "hidden" });
+  assert((await activeMenuButton(page)) === "file", "successful File > Open SVG import did not restore focus to File menu");
   const statusText = await textOf(page.locator("[data-tadpole-document-status]"));
   assert(statusText.includes("Document: goal-11-file.svg"), "file dialog did not update document label");
   assert(statusText.includes("Dirty: yes"), "file dialog import did not mark document dirty");
