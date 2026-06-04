@@ -35,7 +35,9 @@ const openExportPanel = async (page) => {
   if (await panel.isVisible()) {
     return;
   }
-  await page.getByRole("button", { name: "Open export panel" }).click();
+  await page.locator('[data-tadpole-menu-button="view"]').click();
+  await page.locator('[data-tadpole-menu="view"]').waitFor({ state: "visible" });
+  await page.locator('[data-tadpole-command="view.showExport"]').click();
   await panel.waitFor({ state: "visible" });
 };
 

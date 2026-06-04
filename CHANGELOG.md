@@ -43,6 +43,9 @@ All notable changes for Tadpole are documented here.
 - Added the Goal 10 canvas-first editor shell with top menu commands,
   document-status badges, hidden-by-default secondary panels, centered SVG
   stage, bottom-pinned timeline, and browser layout witnesses.
+- Added Goal 11 menu commands and document dialogs with File/Edit/View/
+  Timeline/Export/Help command IDs, Open/Paste/Save/Export dialogs, View panel
+  toggles, and browser keyboard/pointer witnesses.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

@@ -151,17 +151,19 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(pageErrors.length === 0, `browser page errors: ${pageErrors.join(" | ")}`);
 };
 
-const openPanel = async (page, buttonName, selector) => {
+const openPanel = async (page, menu, command, selector) => {
   const panel = page.locator(selector);
   if (await panel.isVisible()) {
     return;
   }
-  await page.getByRole("button", { name: buttonName }).click();
+  await page.locator(`[data-tadpole-menu-button="${menu}"]`).click();
+  await page.locator(`[data-tadpole-menu="${menu}"]`).waitFor({ state: "visible" });
+  await page.locator(`[data-tadpole-command="${command}"]`).click();
   await panel.waitFor({ state: "visible" });
 };
 
-const openSourcePanel = async (page) => openPanel(page, "Open SVG source panel", ".panel-svg-source");
-const openExportPanel = async (page) => openPanel(page, "Open export panel", ".export-block");
+const openSourcePanel = async (page) => openPanel(page, "view", "view.showSource", ".panel-svg-source");
+const openExportPanel = async (page) => openPanel(page, "view", "view.showExport", ".export-block");
 
 const importSvgMarkup = async (page, svgMarkup) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
