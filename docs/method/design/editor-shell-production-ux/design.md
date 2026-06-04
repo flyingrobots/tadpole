@@ -1,8 +1,9 @@
 ---
-title: "G10-001 - Editor Shell Production UX"
+title: "G10-G19 - Editor Shell Production UX"
 legend: "UIUX"
 lane: "design"
-issue: "TBD"
+issue: "https://github.com/flyingrobots/tadpole/issues/32"
+pr: "https://github.com/flyingrobots/tadpole/pull/27"
 status: "draft"
 owners:
   - "@flyingrobots"
@@ -11,11 +12,24 @@ updated: "2026-06-03"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
-# G10-001 - Editor Shell Production UX
+# G10-G19 - Editor Shell Production UX
 
 ## Linked Issue
 
-- TBD
+- [G10-001 - Canvas-First Editor Shell](https://github.com/flyingrobots/tadpole/issues/32)
+- [G11-001 - Menu Commands And Document Dialogs](https://github.com/flyingrobots/tadpole/issues/33)
+- [G12-001 - Contextual Panels And Panel Host](https://github.com/flyingrobots/tadpole/issues/34)
+- [G13-001 - Target Property Timeline Stacks](https://github.com/flyingrobots/tadpole/issues/35)
+- [G14-001 - Playback Work Area Controls](https://github.com/flyingrobots/tadpole/issues/36)
+- [G15-001 - SVG Native Save Roundtrip](https://github.com/flyingrobots/tadpole/issues/37)
+- [G16-001 - Editor Command Model And History](https://github.com/flyingrobots/tadpole/issues/38)
+- [G17-001 - Layers Panel Navigation](https://github.com/flyingrobots/tadpole/issues/39)
+- [G18-001 - Inspector Editing Surface](https://github.com/flyingrobots/tadpole/issues/40)
+- [G19-001 - Keyboard Accessibility Witnesses](https://github.com/flyingrobots/tadpole/issues/41)
+
+## Feature Roadmap
+
+- [G10-G19 feature roadmap](feature-roadmap.md)
 
 ## Decision Summary
 
@@ -1214,15 +1228,18 @@ node docs/method/witness/editor-shell-production-ux/svg-save-roundtrip-smoke.mjs
 
 ## Follow-On Issues
 
-Create or link implementation issues for:
-
-- editor shell and menu layout,
-- SVG-native save serializer,
-- timeline row collapse/expand,
-- layer tree navigation,
-- undo/redo command history,
-- curves mode,
-- static SVG starter timeline suggestions.
+- [G10-001 - Canvas-First Editor Shell](https://github.com/flyingrobots/tadpole/issues/32)
+- [G11-001 - Menu Commands And Document Dialogs](https://github.com/flyingrobots/tadpole/issues/33)
+- [G12-001 - Contextual Panels And Panel Host](https://github.com/flyingrobots/tadpole/issues/34)
+- [G13-001 - Target Property Timeline Stacks](https://github.com/flyingrobots/tadpole/issues/35)
+- [G14-001 - Playback Work Area Controls](https://github.com/flyingrobots/tadpole/issues/36)
+- [G15-001 - SVG Native Save Roundtrip](https://github.com/flyingrobots/tadpole/issues/37)
+- [G16-001 - Editor Command Model And History](https://github.com/flyingrobots/tadpole/issues/38)
+- [G17-001 - Layers Panel Navigation](https://github.com/flyingrobots/tadpole/issues/39)
+- [G18-001 - Inspector Editing Surface](https://github.com/flyingrobots/tadpole/issues/40)
+- [G19-001 - Keyboard Accessibility Witnesses](https://github.com/flyingrobots/tadpole/issues/41)
+- [#24 - Suggest starter timelines for static SVGs](https://github.com/flyingrobots/tadpole/issues/24)
+- [#25 - Multi-select SVG targets for batch editing](https://github.com/flyingrobots/tadpole/issues/25)
 
 ## Retrospective
 

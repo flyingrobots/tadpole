@@ -35,6 +35,8 @@ All notable changes for Tadpole are documented here.
   unsupported transform, timing, repeat, composition, reference, and color
   semantics, preserving one-shot versus indefinite loop intent, and restoring
   sample timeline duration on reset.
+- Added the editor-shell production UX feature roadmap with Goals 10-19,
+  issue-backed design docs, and task-template roadmap options.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
