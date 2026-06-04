@@ -106,13 +106,23 @@ const runProjectExportSmoke = async (browser) => {
     "current export did not validate as an importable project",
   );
 
+  const uploadedPayloadText = JSON.stringify({
+    ...payload,
+    svg: {
+      ...payload.svg,
+      label: "Uploaded Sample Project",
+    },
+  });
   await projectImportFile(page).setInputFiles({
     name: "sample.tadpole.json",
     mimeType: "application/json",
-    buffer: Buffer.from(payloadText),
+    buffer: Buffer.from(uploadedPayloadText),
   });
+  await page.waitForFunction(() =>
+    document.querySelector(".export-block")?.textContent?.includes("Project JSON validated: Uploaded Sample Project with 6 targets and 3 tracks."),
+  );
   assert(
-    (await textOf(page.locator(".export-block"))).includes("Project JSON validated: Sample Logo with 6 targets and 3 tracks."),
+    (await textOf(page.locator(".export-block"))).includes("Project JSON validated: Uploaded Sample Project with 6 targets and 3 tracks."),
     "uploaded project JSON did not validate",
   );
 
@@ -154,8 +164,16 @@ const runProjectExportSmoke = async (browser) => {
   };
 
   await projectImportSource(page).fill(JSON.stringify(restoreProject, null, 2));
+  await projectImportButton(page, "Validate Project JSON").click();
+  await page.waitForFunction(() =>
+    document.querySelector(".export-block")?.textContent?.includes("Project JSON validated: Restored Project with 1 targets and 2 tracks."),
+  );
+  assert(
+    (await textOf(page.locator(".export-block"))).includes("Project JSON validated: Restored Project with 1 targets and 2 tracks."),
+    "restore project JSON did not validate before restore",
+  );
   await projectImportButton(page, "Restore Project").click();
-  await page.waitForSelector(".preview-svg-host #box");
+  await page.waitForSelector("[data-tadpole-canvas-stage] #box", { state: "attached" });
 
   const restorePanelText = await textOf(page.locator(".export-block"));
   assert(
@@ -167,7 +185,7 @@ const runProjectExportSmoke = async (browser) => {
   assert((await page.locator(".target-chip", { hasText: "Restored Box" }).count()) === 1, "restored target chip missing");
   assert((await page.locator(".track-card", { hasText: "Restored Box" }).locator("text=Translate X").count()) > 0, "restored box track missing");
 
-  const boxTransform = await page.locator(".preview-svg-host #box").evaluate((element) => element.style.transform);
+  const boxTransform = await page.locator("[data-tadpole-canvas-stage] #box").evaluate((element) => element.style.transform);
   assert(boxTransform.includes("translate(30px"), `restored track did not apply at restored current time: ${boxTransform}`);
 
   await openExportPanel(page);

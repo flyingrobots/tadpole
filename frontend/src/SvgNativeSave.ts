@@ -29,6 +29,23 @@ type NormalizedTrack = {
   readonly keyframes: readonly NormalizedKeyframe[];
 };
 
+const cloneKeyframe = (keyframe: SvgNativeSaveKeyframe): SvgNativeSaveKeyframe =>
+  Object.freeze({
+    id: keyframe.id,
+    time: keyframe.time,
+    value: keyframe.value,
+    easing: keyframe.easing,
+  });
+
+const cloneTrack = (track: SvgNativeSaveTrack): SvgNativeSaveTrack =>
+  Object.freeze({
+    id: track.id,
+    targetId: track.targetId,
+    property: track.property,
+    keyframes: Object.freeze(track.keyframes.map(cloneKeyframe)),
+    muted: track.muted,
+  });
+
 export class SvgNativeSaveWarning {
   readonly code: string;
   readonly severity: SvgNativeSaveSeverity;
@@ -56,7 +73,7 @@ export class SvgNativeSaveRequest {
 
   constructor(source: string, tracks: readonly SvgNativeSaveTrack[], durationMs: number, isLooping: boolean) {
     this.source = source;
-    this.tracks = tracks;
+    this.tracks = Object.freeze(tracks.map(cloneTrack));
     this.durationMs = durationMs;
     this.isLooping = isLooping;
     Object.freeze(this);
@@ -72,7 +89,7 @@ export class SvgNativeSaveResult {
   private constructor(ok: boolean, svgText: string, warnings: readonly SvgNativeSaveWarning[], serializedTrackCount: number) {
     this.ok = ok;
     this.svgText = svgText;
-    this.warnings = warnings;
+    this.warnings = Object.freeze([...warnings]);
     this.serializedTrackCount = serializedTrackCount;
     Object.freeze(this);
   }
@@ -373,7 +390,7 @@ const appendTranslateAnimation = (
   applyAnimationAttributes(
     element,
     referenceTrack,
-    referenceTrack.keyframes.map((keyframe, index) => `${valueAtIndex(xTrack, index, "0")} ${valueAtIndex(yTrack, index, "0")}`),
+    referenceTrack.keyframes.map((_, index) => `${valueAtIndex(xTrack, index, "0")} ${valueAtIndex(yTrack, index, "0")}`),
     durationMs,
     isLooping,
   );

@@ -163,6 +163,16 @@ const runCommandHistorySmoke = async (browser) => {
     "keyboard redo did not restore edited value",
   );
 
+  await openPanel(page, "view", "view.showSource", ".panel-svg-source");
+  await page.getByLabel("Raw SVG").focus();
+  await page.keyboard.press(undoShortcut);
+  await assertHistory(page, 2, 0, true, false, "keyframe.set");
+  payload = await projectPayload(page);
+  assert(
+    opacityTrack(payload).keyframes.some((keyframe) => keyframe.time === 496 && keyframe.value === "0.4"),
+    "text-field undo shortcut mutated editor history",
+  );
+
   await opacityRow.locator(".track-meta").getByRole("button", { name: "Duplicate" }).click();
   await assertHistory(page, 3, 0, true, false, "track.add");
   payload = await projectPayload(page);

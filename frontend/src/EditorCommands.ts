@@ -57,7 +57,10 @@ const sameTrack = (left: EditorCommandTrack, right: EditorCommandTrack): boolean
   left.property === right.property &&
   left.muted === right.muted &&
   left.keyframes.length === right.keyframes.length &&
-  left.keyframes.every((keyframe, index) => sameKeyframe(keyframe, right.keyframes[index]));
+  left.keyframes.every((keyframe, index) => {
+    const rightKeyframe = right.keyframes.at(index);
+    return rightKeyframe !== undefined && sameKeyframe(keyframe, rightKeyframe);
+  });
 
 export class EditorCommandStateSnapshot {
   readonly tracks: readonly EditorCommandTrack[];
@@ -88,7 +91,10 @@ export class EditorCommandStateSnapshot {
       this.selectedKeyframeId === other.selectedKeyframeId &&
       this.currentTime === other.currentTime &&
       this.tracks.length === other.tracks.length &&
-      this.tracks.every((track, index) => sameTrack(track, other.tracks[index]))
+      this.tracks.every((track, index) => {
+        const otherTrack = other.tracks.at(index);
+        return otherTrack !== undefined && sameTrack(track, otherTrack);
+      })
     );
   }
 }
@@ -393,7 +399,10 @@ export class EditorCommandHistory {
     if (this.undoStack.length === 0) {
       return EditorHistoryMove.idle(this);
     }
-    const entry = this.undoStack[this.undoStack.length - 1];
+    const entry = this.undoStack.at(-1);
+    if (entry === undefined) {
+      return EditorHistoryMove.idle(this);
+    }
     return EditorHistoryMove.changed(
       entry.before,
       new EditorCommandHistory(this.undoStack.slice(0, -1), [...this.redoStack, entry]),
@@ -405,7 +414,10 @@ export class EditorCommandHistory {
     if (this.redoStack.length === 0) {
       return EditorHistoryMove.idle(this);
     }
-    const entry = this.redoStack[this.redoStack.length - 1];
+    const entry = this.redoStack.at(-1);
+    if (entry === undefined) {
+      return EditorHistoryMove.idle(this);
+    }
     return EditorHistoryMove.changed(
       entry.after,
       new EditorCommandHistory([...this.undoStack, entry], this.redoStack.slice(0, -1)),

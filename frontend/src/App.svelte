@@ -3291,6 +3291,16 @@ ${runnableRuntimeScript}
   const handleGlobalKeyboard = (event: KeyboardEvent): void => {
     const key = event.key.toLowerCase();
     const hasCommandModifier = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (
+      activeDialog !== null ||
+      openMenu !== null ||
+      hasOpenLocalKeyboardSurface() ||
+      isTextInputTarget(event.target) ||
+      isLocalKeyboardSurface(event.target)
+    ) {
+      return;
+    }
+
     if (hasCommandModifier && key === "z") {
       event.preventDefault();
       if (event.shiftKey) {
@@ -3304,16 +3314,6 @@ ${runnableRuntimeScript}
     if (hasCommandModifier && key === "y") {
       event.preventDefault();
       redoEditorCommand();
-      return;
-    }
-
-    if (
-      activeDialog !== null ||
-      openMenu !== null ||
-      hasOpenLocalKeyboardSurface() ||
-      isTextInputTarget(event.target) ||
-      isLocalKeyboardSurface(event.target)
-    ) {
       return;
     }
 

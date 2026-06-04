@@ -14,7 +14,7 @@
     "build": "npm run build --workspace backend && npm run build --workspace frontend",
     "check": "npm run check --workspace frontend && npm run lint:systems && npm run typecheck:systems",
     "lint:systems": "eslint \"backend/src/**/*.ts\" \"frontend/src/**/*.ts\" frontend/vite.config.ts && node scripts/systems-style-audit.mjs",
-    "typecheck:systems": "tsc -p backend/tsconfig.json --noEmit && tsc -p frontend/tsconfig.systems.json",
+    "typecheck:systems": "tsc -p backend/tsconfig.json --noEmit && tsc -p frontend/tsconfig.systems.json && node scripts/verify-systems-typecheck-coverage.mjs",
     "start": "npm run start --workspace backend"
   },
   "devDependencies": {
