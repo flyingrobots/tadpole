@@ -853,7 +853,7 @@
 	        b: parseInt(hex.slice(4, 6), 16),
 	      };
 	    }
-	    const rgb = /^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.exec(trimmed);
+	    const rgb = /^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$/i.exec(trimmed);
 	    if (!rgb) {
 	      return null;
 	    }
@@ -1108,9 +1108,7 @@ ${runnableRuntimeScript}
       };
     }
 
-    const rgb = /^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.exec(
-      trimmed,
-    );
+    const rgb = /^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$/i.exec(trimmed);
     if (!rgb) {
       return null;
     }

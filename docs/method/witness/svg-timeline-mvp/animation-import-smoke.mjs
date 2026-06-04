@@ -84,6 +84,12 @@ const malformedTransformSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org
   </rect>
 </svg>`;
 
+const rgbaColorSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="RGBA Color Fixture">
+  <rect id="rgba-box" data-tadpole-name="RGBA Box" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="fill" values="rgba(0, 0, 0, 0);rgba(255, 255, 255, 1)" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -309,6 +315,20 @@ const runMalformedTransformWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runRgbaColorWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, rgbaColorSvg);
+  await page.waitForSelector(".preview-svg-host #rgba-box");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported fill values on #rgba-box."), "rgba color warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `rgba color imported without alpha semantics: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -321,6 +341,7 @@ try {
   await runPivotRotateWarningSmoke(browser);
   await runFiniteRepeatWarningSmoke(browser);
   await runMalformedTransformWarningSmoke(browser);
+  await runRgbaColorWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
