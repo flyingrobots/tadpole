@@ -3,7 +3,7 @@ title: "G16-001 - Editor Command Model And History"
 lane: "design"
 goal: "Goal 16"
 issue: "https://github.com/flyingrobots/tadpole/issues/38"
-pr: "TBD"
+pr: "https://github.com/flyingrobots/tadpole/pull/48"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -56,7 +56,14 @@ command tests and browser smoke coverage.
 
 ## Current Truth
 
-- Much editor behavior currently lives directly in `frontend/src/App.svelte`.
+- Much editor UI behavior currently lives directly in `frontend/src/App.svelte`.
+- Goal 16 adds runtime-backed command state and history objects in
+  `frontend/src/EditorCommands.ts`.
+- Undo/redo is exposed through the Edit menu and platform keyboard shortcuts in
+  `frontend/src/App.svelte`.
+- The proof set includes
+  `docs/method/witness/editor-shell-production-ux/command-history-core.ts` and
+  `docs/method/witness/editor-shell-production-ux/command-history-smoke.mjs`.
 - Existing issues track related debt: [#17](https://github.com/flyingrobots/tadpole/issues/17)
   and [#23](https://github.com/flyingrobots/tadpole/issues/23).
 - Parent design: [Public Editor Commands](../design.md#public-editor-commands).
@@ -113,7 +120,9 @@ Initial command types:
 - `edit.undo`
 - `edit.redo`
 
-Command handlers return next state plus optional history entry.
+Command handlers return next state plus optional history entry. Drag previews
+may update state without stack growth, but commit a single `keyframe.move`
+history transition when the drag ends.
 
 ## Data / State / Schema Model
 
@@ -129,9 +138,9 @@ before values enter state.
 
 | Surface | Requirement |
 | ------- | ----------- |
-| Edit menu | Undo/redo disabled state exposed. |
-| Keyboard | Cmd/Ctrl+Z and Shift redo paths. |
-| Status | Undo/redo action result visible as text when useful. |
+| Edit menu | Undo/redo disabled state exposed by menu items and facts. |
+| Keyboard | Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z redo paths. |
+| Status | Undo/redo action result exposed in a command-history status chip. |
 | Focus | Undo/redo must not lose selected row/keyframe unexpectedly. |
 
 ## Localization / Directionality Posture
@@ -179,17 +188,17 @@ editing.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Extract pure timeline mutation helpers.
-- [ ] Slice 2: Add command intent types and dispatcher.
-- [ ] Slice 3: Route keyframe set/move/delete through commands.
-- [ ] Slice 4: Add reversible history stack and undo/redo commands.
-- [ ] Slice 5: Add focused tests and browser smoke.
+- [x] Slice 1: Extract pure timeline mutation helpers.
+- [x] Slice 2: Add command intent types and dispatcher.
+- [x] Slice 3: Route keyframe set/move/delete through commands.
+- [x] Slice 4: Add reversible history stack and undo/redo commands.
+- [x] Slice 5: Add focused tests and browser smoke.
 
 ## Tests To Write First
 
-- [ ] Focused command test: set/move/delete keyframe changes state.
-- [ ] Focused command test: undo/redo restores previous state.
-- [ ] Browser witness: Edit > Undo reverses keyframe edit.
+- [x] Focused command test: set/move/delete keyframe changes state.
+- [x] Focused command test: undo/redo restores previous state.
+- [x] Browser witness: Edit > Undo reverses keyframe edit.
 
 ## Proof Matrix
 
@@ -201,27 +210,37 @@ editing.
 
 ## Acceptance Criteria
 
-- [ ] Core timeline edits dispatch through commands.
-- [ ] Undo/redo covers keyframe and track operations.
-- [ ] Existing import/preview behavior remains green.
-- [ ] Command tests do not require pixel scraping.
-- [ ] Local validation is green.
+- [x] Core timeline edits dispatch through commands.
+- [x] Undo/redo covers keyframe and track operations.
+- [x] Existing import/preview behavior remains green.
+- [x] Command tests do not require pixel scraping.
+- [x] Local validation is green.
 
 ## Validation Plan
 
 ```bash
 npm run check
 npm run build
+npm audit --audit-level=moderate
+npx tsx docs/method/witness/editor-shell-production-ux/command-history-core.ts
+node docs/method/witness/editor-shell-production-ux/command-history-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/svg-save-roundtrip-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/work-area-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/timeline-stacks-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/menu-dialogs-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/panel-host-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/editor-shell-smoke.mjs
 ```
 
 ## Playback / Witness
 
-Focused command tests plus a browser undo/redo flow after UI wiring.
+- `npx tsx docs/method/witness/editor-shell-production-ux/command-history-core.ts`
+- `node docs/method/witness/editor-shell-production-ux/command-history-smoke.mjs`
 
 ## Open Questions
 
 - @flyingrobots: Should import/revert be undoable in this goal or a follow-on?
-  Keep import/revert follow-on unless slices finish early.
+  Answer: follow-on. Goal 16 covers timeline keyframe and track command history.
 
 ## Follow-On Issues
 
@@ -232,12 +251,25 @@ Focused command tests plus a browser undo/redo flow after UI wiring.
 
 What changed from the design:
 
-- TBD
+- Added `EditorCommands.ts` as the runtime command/history boundary and wired
+  keyframe set/move/delete plus track add/remove through command dispatch.
+- Added a single committed drag-history transition so drag previews do not flood
+  undo but still produce coherent redo/undo snapshots.
+- Added Edit menu undo/redo controls, platform keyboard shortcuts, and an
+  inspectable command-history status chip.
 
 What the tests proved:
 
-- TBD
+- Pure command dispatch mutates state deterministically, records undo/redo
+  entries, preserves drag-preview stack shape, and clears redo on new commands.
+- Browser witness proves keyframe add/value edit, track duplicate/delete,
+  Edit-menu undo, and keyboard undo/redo update the exported project timeline.
 
 What remains open:
 
-- TBD
+- Import/revert undo, multi-document history, full app decomposition, and
+  command history persistence remain follow-ons.
+
+PR:
+
+- [#48](https://github.com/flyingrobots/tadpole/pull/48)

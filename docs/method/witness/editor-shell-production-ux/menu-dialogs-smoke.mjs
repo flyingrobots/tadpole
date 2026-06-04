@@ -34,13 +34,17 @@ const createPage = async (browser) => {
       consoleErrors.push(message.text());
     }
   });
-  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
   return { page, consoleErrors, pageErrors };
 };
 
 const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(pageErrors.length === 0, `page errors: ${pageErrors.join("\n")}`);
   assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join("\n")}`);
+};
+
+const assertNoPageErrors = (pageErrors, section) => {
+  assert(pageErrors.length === 0, `${section} page errors: ${pageErrors.join("\n")}`);
 };
 
 const openMenu = async (page, menu) => {
@@ -200,11 +204,17 @@ try {
   await page.waitForSelector("[data-tadpole-canvas-stage] svg");
 
   await assertCommandSurface(page);
+  assertNoPageErrors(pageErrors, "command surface");
   await assertKeyboardFileDialog(page);
+  assertNoPageErrors(pageErrors, "keyboard file dialog");
   await assertOpenSvgDialog(page);
+  assertNoPageErrors(pageErrors, "open svg dialog");
   await assertPasteSvgDialog(page);
+  assertNoPageErrors(pageErrors, "paste svg dialog");
   await assertViewCommands(page);
+  assertNoPageErrors(pageErrors, "view commands");
   await assertExportDialog(page);
+  assertNoPageErrors(pageErrors, "export dialog");
 
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();

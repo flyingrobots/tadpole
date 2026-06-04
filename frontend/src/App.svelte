@@ -1,5 +1,20 @@
 <script lang="ts">
   import { onDestroy, onMount, tick as nextDomUpdate } from "svelte";
+  import {
+    AddKeyframeCommand,
+    AddTrackCommand,
+    DeleteKeyframeCommand,
+    dispatchEditorCommand,
+    EditorCommandHistory,
+    type EditorCommandIntent,
+    EditorHistoryEntry,
+    EditorCommandStateSnapshot,
+    MoveKeyframeCommand,
+    RemoveTrackCommand,
+    SeekTimelineCommand,
+    SetKeyframeEasingCommand,
+    SetKeyframeValueCommand,
+  } from "./EditorCommands";
   import { serializeSvgNativeSave, SvgNativeSaveRequest } from "./SvgNativeSave";
 
   type FontRecord = {
@@ -59,6 +74,8 @@
     trackId: string;
     keyframeId: string;
     lane: HTMLDivElement;
+    startTime: number;
+    startSnapshot: EditorCommandStateSnapshot;
   } | null;
 
   type TimelineTrack = {
@@ -780,6 +797,11 @@
   let selectedKeyframeId = "";
   let timelineGridDensity = defaultGridDivisions;
   let draggingKeyframe: DraggingKeyframe = null;
+  let editorCommandHistory = EditorCommandHistory.empty();
+  let editorCommandStatus = "Command history ready.";
+  let editorLastCommandId = "";
+  let canUndoEditorCommand = false;
+  let canRedoEditorCommand = false;
   let svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
   let svgNativeSaveWarnings = svgNativeSaveResult.warnings;
   let svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
@@ -1105,6 +1127,10 @@
       !!target.closest("input, textarea, select, button, [contenteditable='true'], [role='textbox']")
     );
   };
+  const isLocalKeyboardSurface = (target: EventTarget | null): boolean =>
+    target instanceof HTMLElement && !!target.closest("[data-tadpole-menubar], [data-tadpole-active-dialog]");
+  const hasOpenLocalKeyboardSurface = (): boolean =>
+    document.querySelector("[data-tadpole-active-dialog], [data-tadpole-menu]") !== null;
   const propertySpec = (property: AnimationProperty): PropertyDefinition => propertyById.get(property) ?? propertyCatalog[0]!;
   const defaultValueFor = (property: AnimationProperty): string => propertySpec(property).defaultValue;
   const toCssValue = (value: string, property: AnimationProperty): string => {
@@ -1698,7 +1724,7 @@ ${runnableRuntimeScript}
     panelSheetMediaQuery.addEventListener("change", syncPanelHostMode);
     void fetchFonts();
     void nextDomUpdate().then(applyTimelineToPreviewSvg);
-    window.addEventListener("keydown", handleGlobalKeyboard);
+    window.addEventListener("keydown", handleGlobalKeyboard, { capture: true });
   });
 
   onDestroy(() => {
@@ -1716,7 +1742,7 @@ ${runnableRuntimeScript}
     }
     panelSheetMediaQuery?.removeEventListener("change", syncPanelHostMode);
     panelSheetMediaQuery = null;
-    window.removeEventListener("keydown", handleGlobalKeyboard);
+    window.removeEventListener("keydown", handleGlobalKeyboard, { capture: true });
   });
 
   $: {
@@ -1867,6 +1893,8 @@ ${runnableRuntimeScript}
   $: svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
   $: svgNativeSaveWarnings = svgNativeSaveResult.warnings;
   $: svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
+  $: canUndoEditorCommand = editorCommandHistory.canUndo();
+  $: canRedoEditorCommand = editorCommandHistory.canRedo();
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -2041,6 +2069,84 @@ ${runnableRuntimeScript}
     documentDirty = false;
   };
 
+  const resetEditorCommandHistory = (): void => {
+    editorCommandHistory = EditorCommandHistory.empty();
+    editorCommandStatus = "Command history reset.";
+    editorLastCommandId = "";
+  };
+
+  const editorCommandSnapshot = (): EditorCommandStateSnapshot =>
+    new EditorCommandStateSnapshot(tracks, selectedTargetId, selectedTrackId, selectedKeyframeId, currentTime);
+
+  const applyEditorCommandSnapshot = (snapshot: EditorCommandStateSnapshot): void => {
+    tracks = snapshot.tracks.map((track): TimelineTrack => ({
+      id: track.id,
+      targetId: track.targetId,
+      property: track.property,
+      muted: track.muted,
+      keyframes: track.keyframes.map((keyframe): Keyframe => ({
+        id: keyframe.id,
+        time: clampMs(keyframe.time),
+        value: keyframe.value,
+        easing: keyframe.easing,
+      })),
+    }));
+    selectedTargetId = availableTargets.some((target) => target.id === snapshot.selectedTargetId)
+      ? snapshot.selectedTargetId
+      : availableTargets[0]?.id ?? "";
+    newTrackTargetId = selectedTargetId;
+    const restoredTrack = tracks.find((track) => track.id === snapshot.selectedTrackId);
+    selectedTrackId = restoredTrack?.id ?? "";
+    selectedKeyframeId = restoredTrack?.keyframes.some((keyframe) => keyframe.id === snapshot.selectedKeyframeId)
+      ? snapshot.selectedKeyframeId
+      : "";
+    currentTime = applySnap(clampMs(snapshot.currentTime));
+  };
+
+  const runEditorCommand = (command: EditorCommandIntent, recordHistory: boolean, markDirty = recordHistory): boolean => {
+    const execution = dispatchEditorCommand(editorCommandSnapshot(), editorCommandHistory, command, recordHistory);
+    if (!execution.changed) {
+      return false;
+    }
+
+    applyEditorCommandSnapshot(execution.state);
+    editorCommandHistory = execution.history;
+    editorLastCommandId = execution.commandId;
+    editorCommandStatus = `Command ${execution.commandId} applied.`;
+    if (markDirty) {
+      markDocumentDirty();
+    }
+    return true;
+  };
+
+  const undoEditorCommand = (): void => {
+    const move = editorCommandHistory.undo();
+    if (!move.changed || move.state === null) {
+      editorCommandStatus = "Nothing to undo.";
+      return;
+    }
+
+    applyEditorCommandSnapshot(move.state);
+    editorCommandHistory = move.history;
+    editorLastCommandId = move.commandId ?? "";
+    editorCommandStatus = `Undid ${move.commandId ?? "command"}.`;
+    markDocumentDirty();
+  };
+
+  const redoEditorCommand = (): void => {
+    const move = editorCommandHistory.redo();
+    if (!move.changed || move.state === null) {
+      editorCommandStatus = "Nothing to redo.";
+      return;
+    }
+
+    applyEditorCommandSnapshot(move.state);
+    editorCommandHistory = move.history;
+    editorLastCommandId = move.commandId ?? "";
+    editorCommandStatus = `Redid ${move.commandId ?? "command"}.`;
+    markDocumentDirty();
+  };
+
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
     const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
     if (!track) {
@@ -2145,6 +2251,7 @@ ${runnableRuntimeScript}
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
+    resetEditorCommandHistory();
 
     const trackSummary =
       importedTrackCount > 0
@@ -2967,6 +3074,7 @@ ${runnableRuntimeScript}
     syncIdCursorsFromTracks(restoredTracks);
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.parsedSvg.targets);
+    resetEditorCommandHistory();
 
     const skippedSummary = formatSkippedTargetSummary(missingTargetIds);
     projectImportError = "";
@@ -3105,7 +3213,13 @@ ${runnableRuntimeScript}
   };
 
   const jumpByTimelineKey = (event: KeyboardEvent): void => {
-    if (isTextInputTarget(event.target)) {
+    if (
+      activeDialog !== null ||
+      openMenu !== null ||
+      hasOpenLocalKeyboardSurface() ||
+      isTextInputTarget(event.target) ||
+      isLocalKeyboardSurface(event.target)
+    ) {
       return;
     }
     jumpByKeyboard(event);
@@ -3175,11 +3289,34 @@ ${runnableRuntimeScript}
   };
 
   const handleGlobalKeyboard = (event: KeyboardEvent): void => {
-    if (isTextInputTarget(event.target)) {
+    const key = event.key.toLowerCase();
+    const hasCommandModifier = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (hasCommandModifier && key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        redoEditorCommand();
+        return;
+      }
+      undoEditorCommand();
       return;
     }
 
-    const key = event.key.toLowerCase();
+    if (hasCommandModifier && key === "y") {
+      event.preventDefault();
+      redoEditorCommand();
+      return;
+    }
+
+    if (
+      activeDialog !== null ||
+      openMenu !== null ||
+      hasOpenLocalKeyboardSurface() ||
+      isTextInputTarget(event.target) ||
+      isLocalKeyboardSurface(event.target)
+    ) {
+      return;
+    }
+
     if (key === " " || key === "k" || key === "arrowleft" || key === "arrowright" || key === "arrowup" || key === "arrowdown" || key === "home" || key === "end" || key === "pageup" || key === "pagedown") {
       jumpByKeyboard(event);
       if (key === " ") {
@@ -3429,7 +3566,7 @@ ${runnableRuntimeScript}
   };
 
   const movePlayheadToTrack = (time: number): void => {
-    currentTime = clampMs(time);
+    runEditorCommand(new SeekTimelineCommand(clampMs(time)), false);
   };
 
   const activeWorkAreaLoopBounds = (): { start: number; end: number } | null => {
@@ -3584,10 +3721,7 @@ ${runnableRuntimeScript}
       muted: false,
       keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(property), easing: "linear" }],
     };
-    tracks = [...tracks, newTrack];
-    markDocumentDirty();
-    syncSelectedTrack(newTrack.id);
-    return newTrack;
+    return runEditorCommand(new AddTrackCommand(newTrack), true) ? newTrack : null;
   };
 
   const addTrack = (): void => {
@@ -3665,17 +3799,11 @@ ${runnableRuntimeScript}
         id: makeKeyframeId(),
       })),
     };
-    tracks = [...tracks, copy];
-    markDocumentDirty();
-    syncSelectedTrack(copy.id);
+    runEditorCommand(new AddTrackCommand(copy), true);
   };
 
   const removeTrack = (trackId: string): void => {
-    tracks = tracks.filter((track) => track.id !== trackId);
-    markDocumentDirty();
-    if (selectedTrackId === trackId) {
-      syncSelectedTrack(tracks[0]?.id ?? "");
-    }
+    runEditorCommand(new RemoveTrackCommand(trackId), true);
   };
 
   const clearTracks = (): void => {
@@ -3741,32 +3869,19 @@ ${runnableRuntimeScript}
   const addKeyframe = (trackId: string, atMs: number, value?: string): string | null => {
     const snapped = applySnap(clampMs(atMs));
     let createdId: string | null = null;
-    tracks = tracks.map((track) => {
-      if (track.id !== trackId) {
-        return track;
-      }
-      const existingIndex = track.keyframes.findIndex((candidate) => candidate.time === snapped);
-      const newFrame: Keyframe = {
-        id: makeKeyframeId(),
-        time: snapped,
-        value: value ?? defaultValueFor(track.property),
-        easing: "linear",
-      };
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track) {
+      return null;
+    }
+    const existingFrame = track.keyframes.find((candidate) => candidate.time === snapped);
+    const newFrame: Keyframe = {
+      id: existingFrame?.id ?? makeKeyframeId(),
+      time: snapped,
+      value: value ?? defaultValueFor(track.property),
+      easing: "linear",
+    };
+    if (runEditorCommand(new AddKeyframeCommand(trackId, newFrame), true)) {
       createdId = newFrame.id;
-      if (existingIndex >= 0) {
-        const next = [...track.keyframes];
-        const existingFrame = next[existingIndex]!;
-        createdId = existingFrame.id;
-        next[existingIndex] = {
-          ...existingFrame,
-          value: newFrame.value,
-        };
-        return { ...track, keyframes: sortKeyframes(next) };
-      }
-      return { ...track, keyframes: sortKeyframes([...track.keyframes, newFrame]) };
-    });
-    if (createdId !== null) {
-      markDocumentDirty();
     }
     return createdId;
   };
@@ -3810,13 +3925,7 @@ ${runnableRuntimeScript}
   };
 
   const removeKeyframe = (trackId: string, keyframeId: string): void => {
-    tracks = tracks.map((track) =>
-      track.id === trackId ? { ...track, keyframes: track.keyframes.filter((keyframe) => keyframe.id !== keyframeId) } : track,
-    );
-    markDocumentDirty();
-    if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
-      selectedKeyframeId = "";
-    }
+    runEditorCommand(new DeleteKeyframeCommand(trackId, keyframeId), true);
   };
 
   const duplicateSelectedKeyframe = (): string | null => {
@@ -3851,25 +3960,9 @@ ${runnableRuntimeScript}
     setKeyframeTime(trackId, keyframeId, Number(input.value));
   };
 
-  const setKeyframeTime = (trackId: string, keyframeId: string, value: number): void => {
+  const setKeyframeTime = (trackId: string, keyframeId: string, value: number, recordHistory = true): void => {
     const snapped = applySnap(clampMs(value));
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: sortKeyframes(
-              track.keyframes.map((keyframe) =>
-                keyframe.id === keyframeId ? { ...keyframe, time: snapped } : keyframe,
-              ),
-            ),
-          }
-        : track,
-    );
-
-    if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
-      currentTime = snapped;
-    }
-    markDocumentDirty();
+    runEditorCommand(new MoveKeyframeCommand(trackId, keyframeId, snapped), recordHistory, true);
   };
 
   const startKeyframeDrag = (trackId: string, event: MouseEvent): void => {
@@ -3879,9 +3972,14 @@ ${runnableRuntimeScript}
     if (!keyframeId || !lane || event.button !== 0) {
       return;
     }
+    const keyframeTrack = tracks.find((track) => track.id === trackId);
+    const keyframe = keyframeTrack?.keyframes.find((candidate) => candidate.id === keyframeId);
+    if (!keyframe) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
-    draggingKeyframe = { trackId, keyframeId, lane };
+    draggingKeyframe = { trackId, keyframeId, lane, startTime: keyframe.time, startSnapshot: editorCommandSnapshot() };
     syncSelectedTrack(trackId, keyframeId);
     pauseTimeline();
     window.addEventListener("mousemove", onKeyframeDragMove);
@@ -3898,16 +3996,26 @@ ${runnableRuntimeScript}
       return;
     }
     const computedTime = ((event.clientX - rect.left) / rect.width) * timelineDurationMs;
-    setKeyframeTime(draggingKeyframe.trackId, draggingKeyframe.keyframeId, computedTime);
+    setKeyframeTime(draggingKeyframe.trackId, draggingKeyframe.keyframeId, computedTime, false);
   };
 
   const stopKeyframeDrag = (): void => {
     if (!draggingKeyframe) {
       return;
     }
+    const drag = draggingKeyframe;
     draggingKeyframe = null;
     window.removeEventListener("mousemove", onKeyframeDragMove);
     window.removeEventListener("mouseup", stopKeyframeDrag);
+    const keyframeTrack = tracks.find((track) => track.id === drag.trackId);
+    const keyframe = keyframeTrack?.keyframes.find((candidate) => candidate.id === drag.keyframeId);
+    if (!keyframe || keyframe.time === drag.startTime) {
+      return;
+    }
+    const after = editorCommandSnapshot();
+    editorCommandHistory = editorCommandHistory.record(new EditorHistoryEntry("keyframe.move", drag.startSnapshot, after));
+    editorLastCommandId = "keyframe.move";
+    editorCommandStatus = "Command keyframe.move applied.";
   };
 
   const updateKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
@@ -3920,37 +4028,15 @@ ${runnableRuntimeScript}
     if (nextValue === null) {
       return;
     }
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: track.keyframes.map((keyframe) =>
-              keyframe.id === keyframeId
-                ? {
-                    ...keyframe,
-                    value: nextValue,
-                  }
-                : keyframe,
-            ),
-          }
-        : track,
-    );
-    markDocumentDirty();
+    runEditorCommand(new SetKeyframeValueCommand(trackId, keyframeId, nextValue), true);
   };
 
   const updateKeyframeEasing = (trackId: string, keyframeId: string, event: Event): void => {
     const input = event.currentTarget as HTMLSelectElement;
-    tracks = tracks.map((track) =>
-      track.id === trackId
-        ? {
-            ...track,
-            keyframes: track.keyframes.map((keyframe) =>
-              keyframe.id === keyframeId ? { ...keyframe, easing: input.value as KeyframeEasing } : keyframe,
-            ),
-          }
-        : track,
-    );
-    markDocumentDirty();
+    if (!isKeyframeEasing(input.value)) {
+      return;
+    }
+    runEditorCommand(new SetKeyframeEasingCommand(trackId, keyframeId, input.value), true);
   };
 
   const dropKeyframeAtPlayhead = (): void => {
@@ -4050,10 +4136,32 @@ ${runnableRuntimeScript}
         </button>
         {#if openMenu === "edit"}
           <div class="menu-popover" role="menu" data-tadpole-menu="edit" aria-label="Edit menu">
-            <button type="button" role="menuitem" data-tadpole-command="edit.undo" data-tadpole-disabled="true" disabled>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.undo"
+              data-tadpole-disabled={canUndoEditorCommand ? "false" : "true"}
+              disabled={!canUndoEditorCommand}
+              on:click={() => {
+                undoEditorCommand();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
               Undo
             </button>
-            <button type="button" role="menuitem" data-tadpole-command="edit.redo" data-tadpole-disabled="true" disabled>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="edit.redo"
+              data-tadpole-disabled={canRedoEditorCommand ? "false" : "true"}
+              disabled={!canRedoEditorCommand}
+              on:click={() => {
+                redoEditorCommand();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "edit")}
+            >
               Redo
             </button>
             <button
@@ -4434,6 +4542,18 @@ ${runnableRuntimeScript}
       </button>
       <span class="status-chip">Targets: {availableTargets.length}</span>
       <span class="status-chip">Tracks: {tracks.length}</span>
+      <span
+        class="status-chip"
+        data-tadpole-command-history
+        data-tadpole-can-undo={canUndoEditorCommand ? "true" : "false"}
+        data-tadpole-can-redo={canRedoEditorCommand ? "true" : "false"}
+        data-tadpole-undo-count={editorCommandHistory.undoStack.length}
+        data-tadpole-redo-count={editorCommandHistory.redoStack.length}
+        data-tadpole-last-command={editorLastCommandId}
+        title={editorCommandStatus}
+      >
+        History: {editorCommandHistory.undoStack.length}/{editorCommandHistory.redoStack.length}
+      </span>
       <button
         type="button"
         class="status-chip status-button"
