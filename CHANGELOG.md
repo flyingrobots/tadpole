@@ -49,6 +49,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 12 contextual panel host state with stable panel open facts,
   warning and dirty status badge actions, panel close focus return, responsive
   narrow-screen sheets, and browser panel-host witnesses.
+- Added Goal 13 target/property timeline stacks with expandable SVG target
+  rows, property-row keyframe editing, animation spans, collapsed summary dots,
+  and browser stack witnesses.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

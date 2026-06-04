@@ -29,6 +29,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Contextual editor panels now publish stable open-state facts, warning/dirty
   status badges open the relevant panels, and panel close actions return focus
   to the invoking control.
+- Timeline tracks now render as expandable target/property stacks with
+  property-row keyframe controls, animation spans, and collapsed summary dots.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -63,6 +65,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   the editor-shell production UX design branch.
 - Completed Goal 12 contextual panels and panel host as a stacked cycle on the
   editor-shell production UX design branch.
+- Completed Goal 13 target/property timeline stacks as a stacked cycle on the
+  contextual-panel host branch.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
@@ -70,8 +74,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
-- Timeline stacks, layer tree, undo/redo, SVG-native save, and multi-select
-  target editing remain deferred.
+- Layer tree, undo/redo, SVG-native save, dense timeline summary sampling, and
+  multi-select target editing remain deferred.
 - The current `frontend/src/App.svelte` monolith predates the systems-style
   standard and remains explicit migration debt while new infrastructure code is
   held to the stricter gate.

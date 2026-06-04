@@ -3,12 +3,12 @@ title: "G13-001 - Target Property Timeline Stacks"
 lane: "design"
 goal: "Goal 13"
 issue: "https://github.com/flyingrobots/tadpole/issues/35"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "TBD"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -25,10 +25,10 @@ updated: "2026-06-03"
 ## Cycle Start
 
 - [x] `git fetch origin` completed.
-- [x] Local merge target branch synced to `origin/main` by regular merge.
+- [x] Local merge target branch synced to `origin/cycles/UIUX_contextual-panel-host`.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -183,17 +183,17 @@ Choose Option B. Dopesheet rows are the core production timeline abstraction.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Build target/property row view model.
-- [ ] Slice 2: Render target rows with counts and warnings.
-- [ ] Slice 3: Render property rows with keyframe markers.
-- [ ] Slice 4: Render animation spans between adjacent keyframes.
-- [ ] Slice 5: Add collapse/expand summary dots and witness.
+- [x] Slice 1: Build target/property row view model.
+- [x] Slice 2: Render target rows with counts and warnings.
+- [x] Slice 3: Render property rows with keyframe markers.
+- [x] Slice 4: Render animation spans between adjacent keyframes.
+- [x] Slice 5: Add collapse/expand summary dots and witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: imported SMIL creates target row and child property rows.
-- [ ] Browser witness: collapsed target row keeps summary key dots.
-- [ ] Browser witness: keyframe add/edit still works on property rows.
+- [x] Browser witness: imported SMIL creates target row and child property rows.
+- [x] Browser witness: collapsed target row keeps summary key dots.
+- [x] Browser witness: keyframe add/edit still works on property rows.
 
 ## Proof Matrix
 
@@ -205,11 +205,11 @@ Choose Option B. Dopesheet rows are the core production timeline abstraction.
 
 ## Acceptance Criteria
 
-- [ ] Target rows group property tracks.
-- [ ] Keyframe markers and spans align to timeline ruler.
-- [ ] Collapsed rows show summary key facts.
-- [ ] Existing timeline edits still pass.
-- [ ] Local validation is green.
+- [x] Target rows group property tracks.
+- [x] Keyframe markers and spans align to timeline ruler.
+- [x] Collapsed rows show summary key facts.
+- [x] Existing timeline edits still pass.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -221,12 +221,14 @@ node docs/method/witness/editor-shell-production-ux/timeline-stacks-smoke.mjs
 
 ## Playback / Witness
 
-Run `timeline-stacks-smoke.mjs` after importing an animated SVG fixture.
+Run `timeline-stacks-smoke.mjs` against the local app. The witness imports an
+animated SVG fixture, asserts target/property row facts, collapses a target row
+into summary dots, expands it, and edits a nested property-row keyframe.
 
 ## Open Questions
 
-- @flyingrobots: Should collapsed rows show all key dots or sampled summary dots
-  for dense tracks? Decide during implementation.
+- Dense documents currently show all collapsed summary dots. Sampling remains a
+  follow-on option if real SVGs make collapsed rows noisy.
 
 ## Follow-On Issues
 
@@ -236,12 +238,17 @@ Run `timeline-stacks-smoke.mjs` after importing an animated SVG fixture.
 
 What changed from the design:
 
-- TBD
+- The implementation keeps existing track-card editing controls inside
+  property rows so older witnesses and direct keyframe edits continue to use the
+  same runtime track objects.
 
 What the tests proved:
 
-- TBD
+- Imported SMIL tracks group under target rows, property rows expose keyframe
+  markers and animation spans, collapsed target rows keep summary key dots, and
+  edited property-row keyframes persist into project export.
 
 What remains open:
 
-- TBD
+- Curves mode, dense summary-dot sampling, multi-select keyframe editing, and
+  SVG-native save serialization remain follow-on work.

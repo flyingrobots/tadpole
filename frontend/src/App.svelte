@@ -67,6 +67,49 @@
     muted: boolean;
   };
 
+  type KeyframeSpan = {
+    id: string;
+    startTime: number;
+    endTime: number;
+  };
+
+  type TargetSummaryKeyframe = {
+    id: string;
+    trackId: string;
+    keyframeId: string;
+    property: AnimationProperty;
+    time: number;
+    value: string;
+  };
+
+  type TimelineTargetKind = AnimationTarget["kind"] | "missing";
+
+  type PropertyTimelineRow = {
+    id: string;
+    track: TimelineTrack;
+    targetId: string;
+    targetLabel: string;
+    targetKind: TimelineTargetKind;
+    propertyLabel: string;
+    sortedKeyframes: Keyframe[];
+    spans: KeyframeSpan[];
+    currentValue: string;
+    keyframeCount: number;
+  };
+
+  type TargetTimelineRow = {
+    targetId: string;
+    targetLabel: string;
+    targetKind: TimelineTargetKind;
+    expanded: boolean;
+    trackCount: number;
+    keyframeCount: number;
+    mutedTrackCount: number;
+    warningCount: number;
+    propertyRows: PropertyTimelineRow[];
+    summaryKeyframes: TargetSummaryKeyframe[];
+  };
+
   type SvgLoadOptions = {
     label: string;
     revision?: number;
@@ -664,6 +707,8 @@
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let selectedTargetTracks: TimelineTrack[] = [];
+  let collapsedTimelineTargetIds = new Set<string>();
+  let timelineTargetRows: TargetTimelineRow[] = [];
   let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
   let isPlaying = false;
@@ -1041,6 +1086,103 @@
 
   const sortKeyframes = (items: Keyframe[]): Keyframe[] =>
     [...items].sort((first, second) => first.time - second.time);
+
+  const keyframeSpansFor = (items: Keyframe[]): KeyframeSpan[] => {
+    const sorted = sortKeyframes(items);
+    const spans: KeyframeSpan[] = [];
+    for (let index = 1; index < sorted.length; index += 1) {
+      const previous = sorted[index - 1];
+      const next = sorted[index];
+      if (!previous || !next || next.time <= previous.time) {
+        continue;
+      }
+      spans.push({
+        id: `${previous.id}-to-${next.id}`,
+        startTime: previous.time,
+        endTime: next.time,
+      });
+    }
+    return spans;
+  };
+
+  const spanWidthPercent = (startTime: number, endTime: number): number =>
+    Math.max(0, trackPercent(endTime) - trackPercent(startTime));
+
+  const buildTimelineTargetRows = (
+    trackItems: TimelineTrack[],
+    targets: AnimationTarget[],
+    collapsedTargetIds: Set<string>,
+    time: number,
+  ): TargetTimelineRow[] => {
+    const targetById = new Map(targets.map((target) => [target.id, target] as const));
+    const rowsByTargetId = new Map<string, TargetTimelineRow>();
+    const rows: TargetTimelineRow[] = [];
+
+    trackItems.forEach((track) => {
+      const target = targetById.get(track.targetId);
+      const targetLabel = target?.name ?? track.targetId;
+      const targetKind = target?.kind ?? "missing";
+      let targetRow = rowsByTargetId.get(track.targetId);
+      if (!targetRow) {
+        targetRow = {
+          targetId: track.targetId,
+          targetLabel,
+          targetKind,
+          expanded: !collapsedTargetIds.has(track.targetId),
+          trackCount: 0,
+          keyframeCount: 0,
+          mutedTrackCount: 0,
+          warningCount: target ? 0 : 1,
+          propertyRows: [],
+          summaryKeyframes: [],
+        };
+        rowsByTargetId.set(track.targetId, targetRow);
+        rows.push(targetRow);
+      }
+
+      const sortedKeyframes = sortKeyframes(track.keyframes);
+      const propertyLabel = propertySpec(track.property).label;
+      const propertyRow: PropertyTimelineRow = {
+        id: `${track.targetId}:${track.property}:${track.id}`,
+        track,
+        targetId: track.targetId,
+        targetLabel,
+        targetKind,
+        propertyLabel,
+        sortedKeyframes,
+        spans: keyframeSpansFor(sortedKeyframes),
+        currentValue: toCssValue(getCurrentValue(track, time), track.property),
+        keyframeCount: sortedKeyframes.length,
+      };
+
+      targetRow.propertyRows.push(propertyRow);
+      targetRow.trackCount += 1;
+      targetRow.keyframeCount += propertyRow.keyframeCount;
+      targetRow.mutedTrackCount += track.muted ? 1 : 0;
+      targetRow.summaryKeyframes.push(
+        ...sortedKeyframes.map((keyframe): TargetSummaryKeyframe => ({
+          id: `${track.id}:${keyframe.id}`,
+          trackId: track.id,
+          keyframeId: keyframe.id,
+          property: track.property,
+          time: keyframe.time,
+          value: keyframe.value,
+        })),
+      );
+    });
+
+    rows.forEach((row) => {
+      row.summaryKeyframes = row.summaryKeyframes.sort(
+        (first, second) =>
+          first.time - second.time ||
+          first.property.localeCompare(second.property) ||
+          first.trackId.localeCompare(second.trackId) ||
+          first.keyframeId.localeCompare(second.keyframeId),
+      );
+    });
+
+    return rows;
+  };
 
   const normalizeTrackList = (items: TimelineTrack[], duration = timelineDurationMs): TimelineTrack[] =>
     items.map((track) => ({
@@ -1624,6 +1766,7 @@ ${runnableRuntimeScript}
 
     return matchingFilter;
   })();
+  $: timelineTargetRows = buildTimelineTargetRows(visibleTracks, availableTargets, collapsedTimelineTargetIds, currentTime);
   $: totalTrackKeyframes = tracks.reduce((total, track) => total + track.keyframes.length, 0);
   $: playheadLabel = isPlaying ? "Playing" : currentTime === 0 ? "Idle" : "Paused";
   $: documentWarningCount =
@@ -1747,6 +1890,21 @@ ${runnableRuntimeScript}
   const clearTrackFilters = (): void => {
     trackFilterTerm = "";
     showOnlySelected = false;
+  };
+  const toggleTimelineTargetStack = (targetId: string): void => {
+    const nextCollapsedTargetIds = new Set(collapsedTimelineTargetIds);
+    if (nextCollapsedTargetIds.has(targetId)) {
+      nextCollapsedTargetIds.delete(targetId);
+    } else {
+      nextCollapsedTargetIds.add(targetId);
+    }
+    collapsedTimelineTargetIds = nextCollapsedTargetIds;
+  };
+  const expandAllTimelineStacks = (): void => {
+    collapsedTimelineTargetIds = new Set<string>();
+  };
+  const collapseAllTimelineStacks = (): void => {
+    collapsedTimelineTargetIds = new Set(timelineTargetRows.map((row) => row.targetId));
   };
 
   const jumpToUsingRef = (ref: HTMLElement | null, event: MouseEvent): void => {
@@ -4734,6 +4892,17 @@ ${runnableRuntimeScript}
           </div>
         </div>
 
+        <div class="timeline-stack-controls" data-tadpole-timeline-stack-controls>
+          <span class="status-chip">Stacks: {timelineTargetRows.length}</span>
+          <span class="status-chip">Visible tracks: {visibleTracks.length}</span>
+          <button type="button" on:click={expandAllTimelineStacks} disabled={timelineTargetRows.length === 0}>
+            Show timeline tracks
+          </button>
+          <button type="button" on:click={collapseAllTimelineStacks} disabled={timelineTargetRows.length === 0}>
+            Hide timeline tracks
+          </button>
+        </div>
+
         <button
           type="button"
           class="timeline-ruler"
@@ -4765,167 +4934,277 @@ ${runnableRuntimeScript}
                 <p class="muted tiny">No timeline tracks match the current filter or selected-track view.</p>
               {/if}
             {/if}
-            {#each visibleTracks as track (track.id)}
-              <div
-                class="track-card"
-                class:track-selected={track.id === selectedTrackId}
-                aria-label={`Track for ${targetNameById.get(track.targetId) ?? track.targetId} ${track.property}`}
+            {#each timelineTargetRows as targetRow (targetRow.targetId)}
+              <section
+                class="target-stack"
+                class:collapsed={!targetRow.expanded}
+                data-tadpole-target-row={targetRow.targetId}
+                data-tadpole-target-row-expanded={targetRow.expanded ? "true" : "false"}
+                data-tadpole-target-row-track-count={targetRow.trackCount}
+                data-tadpole-target-row-key-count={targetRow.keyframeCount}
+                aria-label={`${targetRow.targetLabel} target animation stack`}
               >
-                <div class="track-heading">
-                  <label class="inline-label">
-                    <span>Target</span>
-                    <select value={track.targetId} on:change={(event) => setTrackTarget(track.id, event)}>
-                      {#each availableTargets as target}
-                        <option value={target.id}>{target.name}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <label class="inline-label">
-                    <span>Property</span>
-                    <select value={track.property} on:change={(event) => setTrackProperty(track.id, event)}>
-                      {#each propertyCatalog as property}
-                        <option value={property.id}>{property.label}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <div class="track-meta">
-                    <button type="button" class="inline-select" on:click={() => selectTrack(track.id)}>
-                      {track.id === selectedTrackId ? "Selected" : "Select track"}
-                    </button>
-                    <button type="button" on:click={() => moveTrackOrder(track.id, -1)} disabled={!canMoveTrackUp(track.id)}>
-                      ↑
-                    </button>
-                    <button type="button" on:click={() => moveTrackOrder(track.id, 1)} disabled={!canMoveTrackDown(track.id)}>
-                      ↓
-                    </button>
-                    <button type="button" on:click={() => moveTrackToTop(track.id)} disabled={!canMoveTrackUp(track.id)}>
-                      ⤒
-                    </button>
-                    <button type="button" on:click={() => moveTrackToBottom(track.id)} disabled={!canMoveTrackDown(track.id)}>
-                      ⤓
-                    </button>
-                    <span class="chip">
-                      {targetNameById.get(track.targetId)} • {track.property}
-                    </span>
-                    <button type="button" class:active={!track.muted} on:click={() => toggleTrackMute(track.id)}>
-                      {track.muted ? "Unmute" : "Mute"}
-                    </button>
-                    <button type="button" on:click={() => resetTrackValues(track.id)}>
-                      Reset values
-                    </button>
-                    <button type="button" on:click={() => duplicateTrack(track.id)}>Duplicate</button>
-                    <button type="button" on:click={() => removeTrack(track.id)}>Delete</button>
-                  </div>
-                </div>
-
-                <p class="muted tiny">
-                  Live value at playhead: <code>{toCssValue(getCurrentValue(track, currentTime), track.property)}</code>
-                  <span class="muted-divider">|</span>
-                  Keyframes: {track.keyframes.length}
-                </p>
-
-                <div class="track-lane-shell">
-                  <div
-                    class="track-lane"
-                    role="button"
-                    tabindex="0"
-                    aria-label={`Add keyframe for ${targetNameById.get(track.targetId)} ${track.property}`}
-                    on:click={(event) => addKeyframeFromLane(track.id, event)}
-                    on:keydown={(event) => {
-                      if (event.key === " " || event.key === "Enter") {
-                        event.preventDefault();
-                        addKeyframeAtTimeForTrack(track.id, currentTime);
-                      }
-                    }}
+                <div class="target-stack-heading">
+                  <button
+                    type="button"
+                    class="target-stack-toggle"
+                    data-tadpole-target-stack-toggle={targetRow.targetId}
+                    aria-expanded={targetRow.expanded}
+                    on:click={() => toggleTimelineTargetStack(targetRow.targetId)}
                   >
-                    <span class={`track-line ${track.muted ? "is-muted" : ""}`}></span>
-                    {#each sortKeyframes(track.keyframes) as keyframe}
-                      <button
-                        type="button"
-                        class={`keyframe-marker ${
-                          keyframe.id === selectedKeyframeId && track.id === selectedTrackId ? "is-selected" : ""
-                        } ${
-                          draggingKeyframe?.trackId === track.id && draggingKeyframe?.keyframeId === keyframe.id
-                            ? "is-dragging"
-                            : ""
-                        }`}
-                        data-keyframe-id={keyframe.id}
-                        style={`left:${trackPercent(keyframe.time)}%;`}
-                        on:mousedown={(event) => startKeyframeDrag(track.id, event)}
-                        on:click|stopPropagation={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
-                        on:keydown={(event) => {
-                          if (event.key === " " || event.key === "Enter") {
-                            event.preventDefault();
-                            selectKeyframe(track.id, keyframe.id, keyframe.time);
-                          }
-                        }}
-                        title={`${keyframe.id} • ${keyframe.time}ms • ${keyframe.value}`}
-                      >
-                        {Math.round(keyframe.time)}
-                      </button>
-                    {/each}
-                    <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
+                    <span class="target-stack-disclosure">{targetRow.expanded ? "▾" : "▸"}</span>
+                    <span class="target-stack-title">{targetRow.targetLabel}</span>
+                    <code>#{targetRow.targetId}</code>
+                  </button>
+                  <div class="target-stack-facts">
+                    <span class="status-chip">{targetRow.targetKind}</span>
+                    <span class="status-chip">{targetRow.trackCount} tracks</span>
+                    <span class="status-chip">{targetRow.keyframeCount} keys</span>
+                    {#if targetRow.warningCount > 0}
+                      <span class="status-chip warning">{targetRow.warningCount} warnings</span>
+                    {/if}
                   </div>
                 </div>
 
-                <div class="track-keys">
-                  <div class="keyframe-header">
-                    <h3>Keyframes</h3>
-                    <button type="button" on:click={() => addKeyframeAtTimeForTrack(track.id, currentTime)}>
-                      + Drop keyframe at {currentTime}ms
+                <div
+                  class="target-summary-lane"
+                  data-tadpole-target-summary-lane={targetRow.targetId}
+                  data-tadpole-summary-key-count={targetRow.summaryKeyframes.length}
+                  aria-label={`${targetRow.targetLabel} collapsed keyframe summary`}
+                >
+                  <span class={`track-line ${targetRow.mutedTrackCount === targetRow.trackCount ? "is-muted" : ""}`}></span>
+                  {#each targetRow.summaryKeyframes as summaryKeyframe (summaryKeyframe.id)}
+                    <button
+                      type="button"
+                      class="summary-key-dot"
+                      data-tadpole-summary-keyframe={summaryKeyframe.keyframeId}
+                      data-tadpole-summary-track={summaryKeyframe.trackId}
+                      data-tadpole-summary-property={summaryKeyframe.property}
+                      data-tadpole-summary-time={summaryKeyframe.time}
+                      style={`left:${trackPercent(summaryKeyframe.time)}%;`}
+                      on:click={() => selectKeyframe(summaryKeyframe.trackId, summaryKeyframe.keyframeId, summaryKeyframe.time)}
+                      title={`${summaryKeyframe.property} • ${summaryKeyframe.time}ms • ${summaryKeyframe.value}`}
+                    >
+                      {summaryKeyframe.property}
                     </button>
-                  </div>
-                  <ul>
-                    {#each sortKeyframes(track.keyframes) as keyframe}
-                      <li class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === track.id}>
-                        <button
-                          type="button"
-                          class="key-id-button"
-                          on:click={() => selectKeyframe(track.id, keyframe.id, keyframe.time)}
-                          on:keydown={(event) => {
-                            if (event.key === " " || event.key === "Enter") {
-                              event.preventDefault();
-                              selectKeyframe(track.id, keyframe.id, keyframe.time);
-                            }
-                          }}
-                        >
-                          <span class="key-id">{keyframe.id}</span>
-                        </button>
-                        <label class="inline-label">
-                          <span>time</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max={timelineDurationMs}
-                            value={keyframe.time}
-                            on:input={(event) => updateKeyframeTime(track.id, keyframe.id, event)}
-                          />
-                        </label>
-                        <label class="inline-label">
-                          <span>value</span>
-                          <input
-                            type={isNumericProperty(track.property) ? "number" : "text"}
-                            min={isNumericProperty(track.property) ? `${propertySpec(track.property).min ?? 0}` : undefined}
-                            max={isNumericProperty(track.property) ? `${propertySpec(track.property).max ?? 0}` : undefined}
-                            step={isNumericProperty(track.property) ? `${propertySpec(track.property).step ?? 1}` : undefined}
-                            value={keyframe.value}
-                            on:input={(event) => updateKeyframeValue(track.id, keyframe.id, event)}
-                          />
-                        </label>
-                        <label class="inline-label">
-                          <span>ease</span>
-                          <select value={keyframe.easing} on:change={(event) => updateKeyframeEasing(track.id, keyframe.id, event)}>
-                            {#each easingModes as easing}
-                              <option value={easing}>{easing}</option>
-                            {/each}
-                          </select>
-                        </label>
-                        <button type="button" on:click={() => removeKeyframe(track.id, keyframe.id)}>Delete</button>
-                      </li>
-                    {/each}
-                  </ul>
+                  {/each}
+                  <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
                 </div>
-              </div>
+
+                {#if targetRow.expanded}
+                  <div class="property-row-list">
+                    {#each targetRow.propertyRows as propertyRow (propertyRow.id)}
+                      <div
+                        class="track-card property-row-card"
+                        class:track-selected={propertyRow.track.id === selectedTrackId}
+                        data-tadpole-property-row={propertyRow.track.id}
+                        data-tadpole-target-id={propertyRow.targetId}
+                        data-tadpole-property={propertyRow.track.property}
+                        data-tadpole-key-count={propertyRow.keyframeCount}
+                        aria-label={`Track for ${propertyRow.targetLabel} ${propertyRow.track.property}`}
+                      >
+                        <div class="track-heading">
+                          <label class="inline-label">
+                            <span>Target</span>
+                            <select value={propertyRow.track.targetId} on:change={(event) => setTrackTarget(propertyRow.track.id, event)}>
+                              {#each availableTargets as target}
+                                <option value={target.id}>{target.name}</option>
+                              {/each}
+                            </select>
+                          </label>
+                          <label class="inline-label">
+                            <span>Property</span>
+                            <select
+                              value={propertyRow.track.property}
+                              on:change={(event) => setTrackProperty(propertyRow.track.id, event)}
+                            >
+                              {#each propertyCatalog as property}
+                                <option value={property.id}>{property.label}</option>
+                              {/each}
+                            </select>
+                          </label>
+                          <div class="track-meta">
+                            <button type="button" class="inline-select" on:click={() => selectTrack(propertyRow.track.id)}>
+                              {propertyRow.track.id === selectedTrackId ? "Selected" : "Select track"}
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackOrder(propertyRow.track.id, -1)}
+                              disabled={!canMoveTrackUp(propertyRow.track.id)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackOrder(propertyRow.track.id, 1)}
+                              disabled={!canMoveTrackDown(propertyRow.track.id)}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackToTop(propertyRow.track.id)}
+                              disabled={!canMoveTrackUp(propertyRow.track.id)}
+                            >
+                              ⤒
+                            </button>
+                            <button
+                              type="button"
+                              on:click={() => moveTrackToBottom(propertyRow.track.id)}
+                              disabled={!canMoveTrackDown(propertyRow.track.id)}
+                            >
+                              ⤓
+                            </button>
+                            <span class="chip">
+                              {propertyRow.targetLabel} • {propertyRow.track.property} • {propertyRow.propertyLabel}
+                            </span>
+                            <button
+                              type="button"
+                              class:active={!propertyRow.track.muted}
+                              on:click={() => toggleTrackMute(propertyRow.track.id)}
+                            >
+                              {propertyRow.track.muted ? "Unmute" : "Mute"}
+                            </button>
+                            <button type="button" on:click={() => resetTrackValues(propertyRow.track.id)}>
+                              Reset values
+                            </button>
+                            <button type="button" on:click={() => duplicateTrack(propertyRow.track.id)}>Duplicate</button>
+                            <button type="button" on:click={() => removeTrack(propertyRow.track.id)}>Delete</button>
+                          </div>
+                        </div>
+
+                        <p class="muted tiny">
+                          Live value at playhead: <code>{propertyRow.currentValue}</code>
+                          <span class="muted-divider">|</span>
+                          Keyframes: {propertyRow.keyframeCount}
+                        </p>
+
+                        <div class="track-lane-shell">
+                          <div
+                            class="track-lane"
+                            role="button"
+                            tabindex="0"
+                            aria-label={`Add keyframe for ${propertyRow.targetLabel} ${propertyRow.track.property}`}
+                            on:click={(event) => addKeyframeFromLane(propertyRow.track.id, event)}
+                            on:keydown={(event) => {
+                              if (event.key === " " || event.key === "Enter") {
+                                event.preventDefault();
+                                addKeyframeAtTimeForTrack(propertyRow.track.id, currentTime);
+                              }
+                            }}
+                          >
+                            <span class={`track-line ${propertyRow.track.muted ? "is-muted" : ""}`}></span>
+                            {#each propertyRow.spans as span (span.id)}
+                              <span
+                                class="animation-span"
+                                data-tadpole-animation-span={span.id}
+                                data-tadpole-span-start={span.startTime}
+                                data-tadpole-span-end={span.endTime}
+                                style={`left:${trackPercent(span.startTime)}%; width:${spanWidthPercent(span.startTime, span.endTime)}%;`}
+                              ></span>
+                            {/each}
+                            {#each propertyRow.sortedKeyframes as keyframe}
+                              <button
+                                type="button"
+                                class={`keyframe-marker ${
+                                  keyframe.id === selectedKeyframeId && propertyRow.track.id === selectedTrackId ? "is-selected" : ""
+                                } ${
+                                  draggingKeyframe?.trackId === propertyRow.track.id && draggingKeyframe?.keyframeId === keyframe.id
+                                    ? "is-dragging"
+                                    : ""
+                                }`}
+                                data-keyframe-id={keyframe.id}
+                                style={`left:${trackPercent(keyframe.time)}%;`}
+                                on:mousedown={(event) => startKeyframeDrag(propertyRow.track.id, event)}
+                                on:click|stopPropagation={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
+                                on:keydown={(event) => {
+                                  if (event.key === " " || event.key === "Enter") {
+                                    event.preventDefault();
+                                    selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
+                                  }
+                                }}
+                                title={`${keyframe.id} • ${keyframe.time}ms • ${keyframe.value}`}
+                              >
+                                {Math.round(keyframe.time)}
+                              </button>
+                            {/each}
+                            <span class="playhead-mini" style={`left:${trackPercent(currentTime)}%;`}></span>
+                          </div>
+                        </div>
+
+                        <div class="track-keys">
+                          <div class="keyframe-header">
+                            <h3>Keyframes</h3>
+                            <button type="button" on:click={() => addKeyframeAtTimeForTrack(propertyRow.track.id, currentTime)}>
+                              + Drop keyframe at {currentTime}ms
+                            </button>
+                          </div>
+                          <ul>
+                            {#each propertyRow.sortedKeyframes as keyframe}
+                              <li class:selected={selectedKeyframeId === keyframe.id && selectedTrackId === propertyRow.track.id}>
+                                <button
+                                  type="button"
+                                  class="key-id-button"
+                                  on:click={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
+                                  on:keydown={(event) => {
+                                    if (event.key === " " || event.key === "Enter") {
+                                      event.preventDefault();
+                                      selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
+                                    }
+                                  }}
+                                >
+                                  <span class="key-id">{keyframe.id}</span>
+                                </button>
+                                <label class="inline-label">
+                                  <span>time</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={timelineDurationMs}
+                                    value={keyframe.time}
+                                    on:input={(event) => updateKeyframeTime(propertyRow.track.id, keyframe.id, event)}
+                                  />
+                                </label>
+                                <label class="inline-label">
+                                  <span>value</span>
+                                  <input
+                                    type={isNumericProperty(propertyRow.track.property) ? "number" : "text"}
+                                    min={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).min ?? 0}`
+                                      : undefined}
+                                    max={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).max ?? 0}`
+                                      : undefined}
+                                    step={isNumericProperty(propertyRow.track.property)
+                                      ? `${propertySpec(propertyRow.track.property).step ?? 1}`
+                                      : undefined}
+                                    value={keyframe.value}
+                                    on:input={(event) => updateKeyframeValue(propertyRow.track.id, keyframe.id, event)}
+                                  />
+                                </label>
+                                <label class="inline-label">
+                                  <span>ease</span>
+                                  <select
+                                    value={keyframe.easing}
+                                    on:change={(event) => updateKeyframeEasing(propertyRow.track.id, keyframe.id, event)}
+                                  >
+                                    {#each easingModes as easing}
+                                      <option value={easing}>{easing}</option>
+                                    {/each}
+                                  </select>
+                                </label>
+                                <button type="button" on:click={() => removeKeyframe(propertyRow.track.id, keyframe.id)}>
+                                  Delete
+                                </button>
+                              </li>
+                            {/each}
+                          </ul>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </section>
             {/each}
           </div>
         </div>
@@ -5598,6 +5877,11 @@ ${runnableRuntimeScript}
     background: color-mix(in oklab, var(--color-13) 72%, transparent);
   }
 
+  .status-chip.warning {
+    color: var(--yellow-3);
+    border-color: color-mix(in oklab, var(--yellow-3) 58%, var(--tadpole-border));
+  }
+
   .status-button {
     cursor: pointer;
     font: inherit;
@@ -5763,6 +6047,7 @@ ${runnableRuntimeScript}
 
   .toolbar button,
   .timeline-playback-compact button,
+  .timeline-stack-controls button,
   .palette-actions button,
   .track-meta button {
     border-radius: var(--radius-2);
@@ -5777,6 +6062,7 @@ ${runnableRuntimeScript}
 
   .toolbar button:hover,
   .timeline-playback-compact button:hover,
+  .timeline-stack-controls button:hover,
   .palette-actions button:hover,
   .track-meta button:hover {
     background: color-mix(in oklab, var(--color-10) 88%, white);
@@ -5796,6 +6082,7 @@ ${runnableRuntimeScript}
 
   .toolbar button:disabled,
   .timeline-playback-compact button:disabled,
+  .timeline-stack-controls button:disabled,
   .track-meta button:disabled,
   .inline-label select:disabled {
     opacity: 0.5;
@@ -6030,6 +6317,122 @@ ${runnableRuntimeScript}
     border-radius: var(--radius-2);
   }
 
+  .timeline-stack-controls {
+    margin-top: var(--size-3);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .target-stack {
+    display: grid;
+    gap: var(--size-2);
+    padding-top: var(--size-3);
+    border-top: 1px solid color-mix(in oklab, var(--tadpole-border) 82%, transparent);
+  }
+
+  .target-stack:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .target-stack-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--size-3);
+    align-items: center;
+  }
+
+  .target-stack-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    max-width: 100%;
+    gap: var(--size-2);
+    min-height: 2rem;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-2);
+    color: var(--tadpole-text);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .target-stack-toggle:hover,
+  .target-stack-toggle:focus-visible {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 36%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 12%, transparent);
+  }
+
+  .target-stack-disclosure {
+    display: grid;
+    width: 1rem;
+    place-items: center;
+    color: var(--tadpole-text-muted);
+  }
+
+  .target-stack-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--font-weight-6);
+  }
+
+  .target-stack-facts {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .target-summary-lane {
+    position: relative;
+    min-height: 2rem;
+    border: 1px solid color-mix(in oklab, var(--tadpole-border) 78%, transparent);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-12) 66%, transparent);
+  }
+
+  .target-stack.collapsed .target-summary-lane {
+    background: color-mix(in oklab, var(--color-9) 9%, var(--color-13));
+  }
+
+  .summary-key-dot {
+    position: absolute;
+    top: 50%;
+    z-index: 3;
+    width: 0.85rem;
+    aspect-ratio: 1;
+    overflow: hidden;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--color-0);
+    border-radius: 999px;
+    color: transparent;
+    background: var(--color-8);
+    cursor: pointer;
+  }
+
+  .summary-key-dot:hover,
+  .summary-key-dot:focus-visible {
+    background: var(--color-6);
+    outline: 2px solid color-mix(in oklab, var(--tadpole-accent) 52%, transparent);
+    outline-offset: 2px;
+  }
+
+  .property-row-list {
+    display: grid;
+    gap: var(--size-2);
+    padding-left: var(--size-5);
+    border-left: 1px solid color-mix(in oklab, var(--tadpole-border) 72%, transparent);
+  }
+
+  .property-row-card {
+    background: color-mix(in oklab, var(--color-12) 78%, transparent);
+  }
+
   .track-card {
     border: 1px solid var(--tadpole-border);
     border-radius: var(--radius-2);
@@ -6099,6 +6502,7 @@ ${runnableRuntimeScript}
     top: 50%;
     left: 0;
     right: 0;
+    z-index: 0;
     height: 2px;
     background: var(--color-9);
     transform: translateY(-50%);
@@ -6106,6 +6510,18 @@ ${runnableRuntimeScript}
 
   .track-line.is-muted {
     opacity: 0.2;
+  }
+
+  .animation-span {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    height: 0.54rem;
+    transform: translateY(-50%);
+    border: 1px solid color-mix(in oklab, var(--color-8) 68%, var(--color-0));
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--color-8) 48%, transparent);
+    pointer-events: none;
   }
 
   .keyframe-marker {
