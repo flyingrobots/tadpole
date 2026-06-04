@@ -3,7 +3,7 @@ title: "G10-001 - Canvas-First Editor Shell"
 lane: "design"
 goal: "Goal 10"
 issue: "https://github.com/flyingrobots/tadpole/issues/32"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
+pr: "https://github.com/flyingrobots/tadpole/pull/42"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
