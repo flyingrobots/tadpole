@@ -18,6 +18,12 @@ const fixtureSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg"
   <circle id="dot" data-tadpole-name="Signal Dot" cx="96" cy="36" r="12" fill="#f97316" />
 </svg>`;
 
+const warningSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Goal 10 Warning Fixture">
+  <rect id="warning-badge" data-tadpole-name="Warning Badge" x="12" y="18" width="72" height="36" fill="#2563eb">
+    <animateMotion dur="900ms" path="M0 0 L10 10" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser, viewport) => {
   const page = await browser.newPage({ viewport });
   const consoleErrors = [];
@@ -40,6 +46,26 @@ const boundingBoxFor = async (page, selector) => {
   const box = await page.locator(selector).boundingBox();
   assert(box !== null, `${selector} bounding box missing`);
   return box;
+};
+
+const assertPlaybackControlsReachable = async (page, label) => {
+  const visibleControlCount = await page.locator("[data-tadpole-playback-controls]").evaluateAll((nodes) =>
+    nodes.filter((node) => {
+      const text = node.textContent ?? "";
+      const rect = node.getBoundingClientRect();
+      const style = window.getComputedStyle(node);
+      return (
+        text.includes("Play") &&
+        text.includes("Stop") &&
+        text.includes("Loop") &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    }).length,
+  );
+  assert(visibleControlCount > 0, `${label}: playback controls are not visibly reachable`);
 };
 
 const assertShellLayout = async (browser, label, viewport) => {
@@ -78,8 +104,11 @@ const assertShellLayout = async (browser, label, viewport) => {
   );
   assert(panelHostBox.width <= Math.max(72, viewport.width * 0.22), `${label}: panel host crowds the canvas`);
   assert(statusText.includes("Document") && statusText.includes("Tracks"), `${label}: document status lacks badges`);
+  assert(statusText.includes("Import: Sample Logo"), `${label}: import status badge missing`);
+  assert(statusText.includes("Dirty: no"), `${label}: clean dirty-state badge missing`);
   assert((await page.locator(".panel-svg-source textarea").isVisible()) === false, `${label}: SVG source is visible by default`);
   assert((await page.locator(".export-block pre").first().isVisible()) === false, `${label}: export payload is visible by default`);
+  await assertPlaybackControlsReachable(page, label);
 
   assertCleanBrowser(label, consoleErrors, pageErrors);
   await page.close();
@@ -94,6 +123,9 @@ const assertWorkflowReachable = async (browser) => {
   await page.getByLabel("Raw SVG").fill(fixtureSvg);
   await page.getByRole("button", { name: "Import Paste" }).click();
   await page.waitForSelector("[data-tadpole-canvas-stage] #badge");
+  let statusText = await textOf(page.locator("[data-tadpole-document-status]"));
+  assert(statusText.includes("Import: Pasted SVG"), "import status did not update after paste import");
+  assert(statusText.includes("Dirty: yes"), "dirty status did not update after paste import");
 
   await page.locator("[data-tadpole-canvas-stage] #badge").click({ force: true });
   await page.getByRole("button", { name: "Create Opacity track for Badge Rect" }).click();
@@ -104,6 +136,14 @@ const assertWorkflowReachable = async (browser) => {
 
   await page.getByRole("button", { name: "Open export panel" }).click();
   assert((await page.locator("[data-tadpole-panel-host] .export-block pre").first().isVisible()) === true, "export panel did not open");
+
+  await page.getByRole("button", { name: "Open SVG source panel" }).click();
+  await page.getByLabel("Raw SVG").fill(warningSvg);
+  await page.getByRole("button", { name: "Import Paste" }).click();
+  await page.waitForSelector("[data-tadpole-canvas-stage] #warning-badge");
+  statusText = await textOf(page.locator("[data-tadpole-document-status]"));
+  assert(statusText.includes("Import: Pasted SVG"), "import status did not persist for warning import");
+  assert(statusText.includes("Warnings: 1"), "warning status did not expose unsupported animation count");
 
   assertCleanBrowser("workflow", consoleErrors, pageErrors);
   await page.close();

@@ -525,6 +525,7 @@
   let svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   let availableTargets: AnimationTarget[] = discoverSvgTargets(svgMarkup);
   let svgSourceLabel = sampleSvgLabel;
+  let documentDirty = false;
   let svgDraftSource = svgMarkup;
   let svgImportStatus = `${sampleSvgLabel} loaded with ${availableTargets.length} targets.`;
   let svgImportError = "";
@@ -627,6 +628,8 @@
   let activeTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedTrackHasKeyframes = tracks[0]?.keyframes.length ? tracks[0].keyframes.length > 0 : false;
   let selectedTrackNeighborhood: PlayheadNeighborhood = { at: null, previous: null, next: null };
+  let documentWarningCount = 0;
+  let documentImportStatusLabel = sampleSvgLabel;
   let clampedGridCount = defaultGridDivisions;
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
@@ -1345,6 +1348,12 @@ ${runnableRuntimeScript}
   })();
   $: totalTrackKeyframes = tracks.reduce((total, track) => total + track.keyframes.length, 0);
   $: playheadLabel = isPlaying ? "Playing" : currentTime === 0 ? "Idle" : "Paused";
+  $: documentWarningCount =
+    animationImportWarnings.length +
+    projectMissingTargetIds.length +
+    (svgImportError ? 1 : 0) +
+    (projectImportError ? 1 : 0);
+  $: documentImportStatusLabel = svgImportError ? "error" : svgSourceLabel;
   $: selectedTrackName =
     activeTrack === null
       ? "No track selected"
@@ -1433,11 +1442,13 @@ ${runnableRuntimeScript}
     timelineDurationMs = clamp(Math.max(250, Number(input.value)), 250, 30000);
     currentTime = clampMs(currentTime);
     normalizeTracks();
+    markDocumentDirty();
   };
   const setTimelineDurationPreset = (value: number): void => {
     timelineDurationMs = clamp(value, 250, 30000);
     currentTime = clampMs(currentTime);
     normalizeTracks();
+    markDocumentDirty();
   };
   const setCurrentTime = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
@@ -1446,6 +1457,7 @@ ${runnableRuntimeScript}
   const setTimelineGridDensity = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     timelineGridDensity = clamp(Number(input.value), minGridDivisions, maxGridDivisions);
+    markDocumentDirty();
   };
   const setTrackFilterTerm = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
@@ -1514,6 +1526,14 @@ ${runnableRuntimeScript}
     projectImportStatus = defaultProjectImportStatus;
     projectImportError = "";
     projectMissingTargetIds = [];
+  };
+
+  const markDocumentDirty = (): void => {
+    documentDirty = true;
+  };
+
+  const markDocumentClean = (): void => {
+    documentDirty = false;
   };
 
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
@@ -1605,6 +1625,11 @@ ${runnableRuntimeScript}
     svgSourceLabel = options.label;
     svgImportError = "";
     animationImportWarnings = importWarnings;
+    if (options.restoreSampleTracks && options.label === sampleSvgLabel) {
+      markDocumentClean();
+    } else {
+      markDocumentDirty();
+    }
     clearProjectImportStatus();
     if (importedTrackCount > 0 || restoredSampleTracks) {
       timelineDurationMs = nextDuration;
@@ -2428,6 +2453,7 @@ ${runnableRuntimeScript}
     projectMissingTargetIds = missingTargetIds;
     projectImportStatus = `Project restored: ${label} with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
     svgImportStatus = `${label} restored from project with ${parsed.parsedSvg.targets.length} targets and ${restoredTracks.length} tracks.${skippedSummary}`;
+    markDocumentClean();
   };
 
   const addKeyframeAtCurrentForSelected = (): void => {
@@ -2879,20 +2905,24 @@ ${runnableRuntimeScript}
 
   const toggleLoop = (): void => {
     isLooping = !isLooping;
+    markDocumentDirty();
   };
 
   const setPlayRate = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     frameRate = clamp(Number(input.value), 12, 144);
+    markDocumentDirty();
   };
 
   const setSnapSetting = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     snapMs = Number(input.value);
+    markDocumentDirty();
   };
 
   const setTimelineSnap = (): void => {
     snapToFrames = !snapToFrames;
+    markDocumentDirty();
   };
 
   const resolvePreviewTargetId = (eventTarget: EventTarget | null): string | null => {
@@ -2955,6 +2985,7 @@ ${runnableRuntimeScript}
       keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(property), easing: "linear" }],
     };
     tracks = [...tracks, newTrack];
+    markDocumentDirty();
     syncSelectedTrack(newTrack.id);
     return newTrack;
   };
@@ -2985,6 +3016,7 @@ ${runnableRuntimeScript}
     }
     nextTracks.splice(destination, 0, track);
     tracks = nextTracks;
+    markDocumentDirty();
   };
 
   const canMoveTrackUp = (trackId: string): boolean => tracks.findIndex((track) => track.id === trackId) > 0;
@@ -3001,6 +3033,7 @@ ${runnableRuntimeScript}
       return;
     }
     tracks = [track, ...nextTracks];
+    markDocumentDirty();
   };
 
   const moveTrackToBottom = (trackId: string): void => {
@@ -3014,6 +3047,7 @@ ${runnableRuntimeScript}
       return;
     }
     tracks = [...nextTracks, track];
+    markDocumentDirty();
   };
 
   const duplicateTrack = (trackId: string): void => {
@@ -3032,11 +3066,13 @@ ${runnableRuntimeScript}
       })),
     };
     tracks = [...tracks, copy];
+    markDocumentDirty();
     syncSelectedTrack(copy.id);
   };
 
   const removeTrack = (trackId: string): void => {
     tracks = tracks.filter((track) => track.id !== trackId);
+    markDocumentDirty();
     if (selectedTrackId === trackId) {
       syncSelectedTrack(tracks[0]?.id ?? "");
     }
@@ -3049,6 +3085,7 @@ ${runnableRuntimeScript}
     }
 
     tracks = [];
+    markDocumentDirty();
     syncSelectedTrack("");
     const suffix = clearedTrackCount === 1 ? "track" : "tracks";
     svgImportStatus = `Cleared ${clearedTrackCount} timeline ${suffix} from ${svgSourceLabel}.`;
@@ -3058,6 +3095,7 @@ ${runnableRuntimeScript}
     const input = event.currentTarget as HTMLSelectElement;
     const targetId = input.value;
     tracks = tracks.map((track) => (track.id === trackId ? { ...track, targetId } : track));
+    markDocumentDirty();
     if (selectedTrackId === trackId) {
       selectTarget(targetId);
     }
@@ -3071,6 +3109,7 @@ ${runnableRuntimeScript}
         ? { ...track, property, keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, value: defaultValueFor(property) })) }
         : track,
     );
+    markDocumentDirty();
   };
 
   const resetTrackValues = (trackId: string): void => {
@@ -3079,10 +3118,12 @@ ${runnableRuntimeScript}
         ? { ...track, keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, value: defaultValueFor(track.property) })) }
         : track,
     );
+    markDocumentDirty();
   };
 
   const toggleTrackMute = (trackId: string): void => {
     tracks = tracks.map((track) => (track.id === trackId ? { ...track, muted: !track.muted } : track));
+    markDocumentDirty();
   };
 
   const addKeyframeAtCurrent = (trackId: string): string | null => {
@@ -3124,6 +3165,9 @@ ${runnableRuntimeScript}
       }
       return { ...track, keyframes: sortKeyframes([...track.keyframes, newFrame]) };
     });
+    if (createdId !== null) {
+      markDocumentDirty();
+    }
     return createdId;
   };
 
@@ -3169,6 +3213,7 @@ ${runnableRuntimeScript}
     tracks = tracks.map((track) =>
       track.id === trackId ? { ...track, keyframes: track.keyframes.filter((keyframe) => keyframe.id !== keyframeId) } : track,
     );
+    markDocumentDirty();
     if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
       selectedKeyframeId = "";
     }
@@ -3224,6 +3269,7 @@ ${runnableRuntimeScript}
     if (selectedTrackId === trackId && selectedKeyframeId === keyframeId) {
       currentTime = snapped;
     }
+    markDocumentDirty();
   };
 
   const startKeyframeDrag = (trackId: string, event: MouseEvent): void => {
@@ -3289,6 +3335,7 @@ ${runnableRuntimeScript}
           }
         : track,
     );
+    markDocumentDirty();
   };
 
   const updateKeyframeEasing = (trackId: string, keyframeId: string, event: Event): void => {
@@ -3303,6 +3350,7 @@ ${runnableRuntimeScript}
           }
         : track,
     );
+    markDocumentDirty();
   };
 
   const dropKeyframeAtPlayhead = (): void => {
@@ -3378,9 +3426,11 @@ ${runnableRuntimeScript}
 
     <div class="document-status" data-tadpole-document-status aria-live="polite">
       <span class="status-chip status-strong">Document: {svgSourceLabel}</span>
+      <span class="status-chip" title={svgImportError || svgImportStatus}>Import: {documentImportStatusLabel}</span>
+      <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
       <span class="status-chip">Targets: {availableTargets.length}</span>
       <span class="status-chip">Tracks: {tracks.length}</span>
-      <span class="status-chip">Warnings: {animationImportWarnings.length + projectMissingTargetIds.length}</span>
+      <span class="status-chip">Warnings: {documentWarningCount}</span>
       <span class="status-chip">Playhead: {playheadLabel}</span>
     </div>
   </header>
@@ -3689,7 +3739,7 @@ ${runnableRuntimeScript}
             <span class="status-chip">Keyframe: {selectedKeyframe?.id ?? "none"}</span>
           </div>
         </div>
-          <div class="toolbar">
+          <div class="toolbar" data-tadpole-playback-controls aria-label="Playback controls">
             <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
             <button type="button" on:click={stopTimeline}>Stop</button>
             <button type="button" on:click={toggleLoop} class:is-active={isLooping}>
@@ -3735,6 +3785,12 @@ ${runnableRuntimeScript}
             <h2>Animation Timeline</h2>
             <p class="muted">Create and edit GSAP-like tracks. Click the ruler to scrub, click track lanes to add keyframes.</p>
           </div>
+        </div>
+
+        <div class="timeline-playback-compact" data-tadpole-playback-controls aria-label="Timeline playback controls">
+          <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
+          <button type="button" on:click={stopTimeline}>Stop</button>
+          <button type="button" on:click={toggleLoop} class:is-active={isLooping}>Loop {isLooping ? "ON" : "OFF"}</button>
         </div>
 
         <div class="timeline-controls">
@@ -4650,6 +4706,7 @@ ${runnableRuntimeScript}
   }
 
   .toolbar button,
+  .timeline-playback-compact button,
   .palette-actions button,
   .track-meta button {
     border-radius: var(--radius-2);
@@ -4663,6 +4720,7 @@ ${runnableRuntimeScript}
   }
 
   .toolbar button:hover,
+  .timeline-playback-compact button:hover,
   .palette-actions button:hover,
   .track-meta button:hover {
     background: color-mix(in oklab, var(--color-10) 88%, white);
@@ -4674,12 +4732,14 @@ ${runnableRuntimeScript}
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
   }
 
-  .toolbar button.is-active {
+  .toolbar button.is-active,
+  .timeline-playback-compact button.is-active {
     border-color: color-mix(in oklab, var(--tadpole-accent) 45%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
   }
 
   .toolbar button:disabled,
+  .timeline-playback-compact button:disabled,
   .track-meta button:disabled,
   .inline-label select:disabled {
     opacity: 0.5;
@@ -4823,6 +4883,13 @@ ${runnableRuntimeScript}
     margin: var(--size-4) 0 var(--size-3);
     display: grid;
     gap: var(--size-2);
+  }
+
+  .timeline-playback-compact {
+    display: none;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+    margin: var(--size-2) 0 var(--size-3);
   }
 
   .control-row {
@@ -5409,6 +5476,10 @@ ${runnableRuntimeScript}
 
     .workbench-toolbar {
       display: none;
+    }
+
+    .timeline-playback-compact {
+      display: flex;
     }
 
     .editor-menubar {
