@@ -1,16 +1,18 @@
 import cors from "cors";
 import express from "express";
-import { promises as fs } from "node:fs";
+import type { NextFunction, Request, Response } from "express";
+import { promises } from "node:fs";
 import path from "node:path";
 
 const app = express();
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env["PORT"] ?? 4000);
 const fontDirectory = path.resolve(process.cwd(), "fonts");
 
 app.use(cors());
 app.use(express.json());
 
 const supportedFontExtensions = new Set([".woff2", ".woff", ".ttf", ".otf", ".eot"]);
+const fileNotFoundCode = "ENOENT";
 
 type FontRecord = {
   file: string;
@@ -18,6 +20,14 @@ type FontRecord = {
   format: string;
   url: string;
 };
+
+type AsyncRouteHandler = (req: Request, res: Response) => Promise<void>;
+
+function asyncRoute(handler: AsyncRouteHandler): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    void handler(req, res).catch(next);
+  };
+}
 
 function getFontFormat(fileName: string): string {
   return path.extname(fileName).toLowerCase().replace(".", "");
@@ -32,20 +42,26 @@ function safeFontPath(filename: string): string {
   return path.resolve(fontDirectory, path.basename(filename));
 }
 
+function hasErrorCode(error: object, code: string): boolean {
+  return "code" in error && error.code === code;
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "tadpole-backend", fontDirectory });
 });
 
-app.get("/api/fonts", async (_req, res) => {
+app.get("/api/fonts", asyncRoute(async (_req, res) => {
   let files: string[] = [];
 
   try {
-    files = await fs.readdir(fontDirectory);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return res.json([]);
+    files = await promises.readdir(fontDirectory);
+  } catch (error) {
+    if (typeof error === "object" && error !== null && hasErrorCode(error, fileNotFoundCode)) {
+      res.json([]);
+      return;
     }
-    return res.status(500).json({ error: "Unable to read font directory" });
+    res.status(500).json({ error: "Unable to read font directory" });
+    return;
   }
 
   const list: FontRecord[] = files
@@ -58,41 +74,45 @@ app.get("/api/fonts", async (_req, res) => {
     }));
 
   res.json(list);
-});
+}));
 
-app.get("/api/fonts/:filename", async (req, res) => {
-  const requested = req.params.filename;
+app.get("/api/fonts/:filename", asyncRoute(async (req, res) => {
+  const requested = req.params["filename"] ?? "";
   const targetPath = safeFontPath(requested);
 
   if (!targetPath.startsWith(fontDirectory + path.sep)) {
-    return res.status(400).json({ error: "Invalid font path" });
+    res.status(400).json({ error: "Invalid font path" });
+    return;
   }
 
   try {
-    const stat = await fs.stat(targetPath);
+    const stat = await promises.stat(targetPath);
     if (!stat.isFile()) {
-      return res.status(404).json({ error: "Font not found" });
+      res.status(404).json({ error: "Font not found" });
+      return;
     }
 
     res.sendFile(targetPath);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return res.status(404).json({ error: "Font not found" });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && hasErrorCode(error, fileNotFoundCode)) {
+      res.status(404).json({ error: "Font not found" });
+      return;
     }
-    return res.status(500).json({ error: "Failed to fetch font" });
+    res.status(500).json({ error: "Failed to fetch font" });
   }
-});
+}));
 
-app.get("/api/fonts/:filename/stylesheet", async (req, res) => {
-  const requested = req.params.filename;
+app.get("/api/fonts/:filename/stylesheet", asyncRoute(async (req, res) => {
+  const requested = req.params["filename"] ?? "";
   const targetPath = safeFontPath(requested);
 
   if (!targetPath.startsWith(fontDirectory + path.sep)) {
-    return res.status(400).json({ error: "Invalid font path" });
+    res.status(400).json({ error: "Invalid font path" });
+    return;
   }
 
   try {
-    await fs.access(targetPath);
+    await promises.access(targetPath);
     const format = getFontFormat(requested);
     const family = fileNameToFamily(requested);
     const href = `/api/fonts/${encodeURIComponent(requested)}`;
@@ -101,9 +121,9 @@ app.get("/api/fonts/:filename/stylesheet", async (req, res) => {
 
     res.type("text/css").send(css);
   } catch {
-    return res.status(404).json({ error: "Font not found" });
+    res.status(404).json({ error: "Font not found" });
   }
-});
+}));
 
 app.listen(port, () => {
   console.log(`Tadpole backend running at http://localhost:${port}`);

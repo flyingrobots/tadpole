@@ -22,6 +22,9 @@ deterministic keyframe-based motion for logo/diagram targets.
   non-muted tracks, and a compact playback runtime for downstream use.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
+- New TypeScript infrastructure must follow
+  `docs/engineering/SYSTEMS_STYLE_TYPESCRIPT.md`; `npm run check` now includes
+  the systems-style lint, audit, and typecheck gates.
 
 ## Priority
 
@@ -53,6 +56,9 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
 - A layer tree, undo/redo, and multi-select target editing remain deferred.
+- The current `frontend/src/App.svelte` monolith predates the systems-style
+  standard and remains explicit migration debt while new infrastructure code is
+  held to the stricter gate.
 
 ## Risks
 

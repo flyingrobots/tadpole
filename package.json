@@ -12,11 +12,16 @@
     "dev:backend": "npm run dev --workspace backend",
     "dev:frontend": "npm run dev --workspace frontend",
     "build": "npm run build --workspace backend && npm run build --workspace frontend",
-    "check": "npm run check --workspace frontend",
+    "check": "npm run check --workspace frontend && npm run lint:systems && npm run typecheck:systems",
+    "lint:systems": "eslint \"backend/src/**/*.ts\" \"frontend/src/**/*.ts\" frontend/vite.config.ts && node scripts/systems-style-audit.mjs",
+    "typecheck:systems": "tsc -p backend/tsconfig.json --noEmit && tsc -p frontend/tsconfig.systems.json",
     "start": "npm run start --workspace backend"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "concurrently": "^9.0.0",
-    "playwright": "^1.60.0"
+    "eslint": "^9.39.4",
+    "playwright": "^1.60.0",
+    "typescript-eslint": "^8.60.1"
   }
 }
