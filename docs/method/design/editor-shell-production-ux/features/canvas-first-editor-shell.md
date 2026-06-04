@@ -4,11 +4,11 @@ lane: "design"
 goal: "Goal 10"
 issue: "https://github.com/flyingrobots/tadpole/issues/32"
 pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -28,7 +28,7 @@ updated: "2026-06-03"
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -190,17 +190,17 @@ existing behavior.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add shell landmarks and test selectors around existing regions.
-- [ ] Slice 2: Center the SVG preview inside a dedicated canvas stage.
-- [ ] Slice 3: Pin the current timeline region to the bottom of the viewport.
-- [ ] Slice 4: Add compact document status badges.
-- [ ] Slice 5: Add wide and narrow browser layout witness.
+- [x] Slice 1: Add shell landmarks and test selectors around existing regions.
+- [x] Slice 2: Center the SVG preview inside a dedicated canvas stage.
+- [x] Slice 3: Pin the current timeline region to the bottom of the viewport.
+- [x] Slice 4: Add compact document status badges.
+- [x] Slice 5: Add wide and narrow browser layout witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: default route exposes shell/stage/timeline landmarks.
-- [ ] Browser witness: secondary panels are not first-viewport defaults.
-- [ ] Browser witness: existing SVG import/edit path still works.
+- [x] Browser witness: default route exposes shell/stage/timeline landmarks.
+- [x] Browser witness: secondary panels are not first-viewport defaults.
+- [x] Browser witness: existing SVG import/edit path still works.
 
 ## Proof Matrix
 
@@ -212,11 +212,11 @@ existing behavior.
 
 ## Acceptance Criteria
 
-- [ ] SVG stage is the primary visual element in the first viewport.
-- [ ] Timeline is pinned to the bottom.
-- [ ] Status badges expose warning and dirty state.
-- [ ] Existing import/edit/preview workflows still pass.
-- [ ] Local validation is green.
+- [x] SVG stage is the primary visual element in the first viewport.
+- [x] Timeline is pinned to the bottom.
+- [x] Status badges expose warning and dirty state.
+- [x] Existing import/edit/preview workflows still pass.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -246,12 +246,26 @@ viewport.
 
 What changed from the design:
 
-- TBD
+- The shell was implemented as a stacked cycle on the editor-shell design branch
+  because the Goal 10-19 roadmap was not yet merged to `main`.
+- Secondary source, target, export, palette, workspace, and font surfaces moved
+  behind top menu commands.
+- The current preview and timeline behavior was preserved inside the new shell
+  instead of splitting the Svelte monolith during this cycle.
+- Narrow view hides the legacy playback toolbar so the SVG stage remains
+  visible in the first viewport.
 
 What the tests proved:
 
-- TBD
+- `editor-shell-smoke.mjs` proves shell landmarks, hidden default panels,
+  centered stage dominance, bottom timeline placement, and import/edit/export
+  reachability.
+- Existing SVG import, project export, runnable export, rough UX, and animation
+  import witnesses were updated to open hidden panels through menu commands.
 
 What remains open:
 
-- TBD
+- Goal 11 should convert the temporary top command bar into a fuller menu and
+  dialog model.
+- Goal 13 should rebuild timeline rows as target/property stacks instead of
+  polishing the current track-card list further.

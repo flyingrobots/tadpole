@@ -55,10 +55,27 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join("\n")}`);
 };
 
+const openPanel = async (page, buttonName, selector) => {
+  const panel = page.locator(selector);
+  if (await panel.isVisible()) {
+    return;
+  }
+  await page.getByRole("button", { name: buttonName }).click();
+  await panel.waitFor({ state: "visible" });
+};
+
+const openSourcePanel = async (page) => openPanel(page, "Open SVG source panel", ".panel-svg-source");
+const openTargetsPanel = async (page) => openPanel(page, "Open targets panel", ".panel-target-library");
+const openExportPanel = async (page) => openPanel(page, "Open export panel", ".export-block");
+const projectImportSource = (page) => page.locator(".export-block textarea").last();
+const projectImportFile = (page) => page.locator(".export-block input[type=file]");
+const projectImportButton = (page, name) => page.locator(".export-block button", { hasText: name });
+
 const runProjectExportSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
+  await openExportPanel(page);
 
   const payloadText = await page.locator(".export-block pre code").textContent();
   const payload = JSON.parse(payloadText);
@@ -74,20 +91,20 @@ const runProjectExportSmoke = async (browser) => {
   assert(payload.timeline.snapMs === 16, `unexpected snap step: ${payload.timeline.snapMs}`);
   assert(payload.timeline.tracks.length === 3, `expected sample tracks, got ${payload.timeline.tracks.length}`);
 
-  await page.getByLabel("Project JSON").fill("{ nope");
-  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  await projectImportSource(page).fill("{ nope");
+  await projectImportButton(page, "Validate Project JSON").click();
   assert(
     (await textOf(page.locator(".export-block"))).includes("Project import failed: enter valid JSON."),
     "invalid project JSON did not surface a validation error",
   );
 
-  await page.getByRole("button", { name: "Use Current Export" }).click();
+  await projectImportButton(page, "Use Current Export").click();
   assert(
     (await textOf(page.locator(".export-block"))).includes("Project JSON validated: Sample Logo with 6 targets and 3 tracks."),
     "current export did not validate as an importable project",
   );
 
-  await page.getByLabel("Upload Project").setInputFiles({
+  await projectImportFile(page).setInputFiles({
     name: "sample.tadpole.json",
     mimeType: "application/json",
     buffer: Buffer.from(payloadText),
@@ -134,8 +151,8 @@ const runProjectExportSmoke = async (browser) => {
     },
   };
 
-  await page.getByLabel("Project JSON").fill(JSON.stringify(restoreProject, null, 2));
-  await page.getByRole("button", { name: "Restore Project" }).click();
+  await projectImportSource(page).fill(JSON.stringify(restoreProject, null, 2));
+  await projectImportButton(page, "Restore Project").click();
   await page.waitForSelector(".preview-svg-host #box");
 
   const restorePanelText = await textOf(page.locator(".export-block"));
@@ -144,12 +161,14 @@ const runProjectExportSmoke = async (browser) => {
     "project restore status did not report restored tracks",
   );
   assert(restorePanelText.includes("Missing target IDs: ghost"), "missing target IDs were not visibly reported");
+  await openTargetsPanel(page);
   assert((await page.locator(".target-chip", { hasText: "Restored Box" }).count()) === 1, "restored target chip missing");
   assert((await page.locator(".track-card", { hasText: "Restored Box" }).locator("text=Translate X").count()) > 0, "restored box track missing");
 
   const boxTransform = await page.locator(".preview-svg-host #box").evaluate((element) => element.style.transform);
   assert(boxTransform.includes("translate(30px"), `restored track did not apply at restored current time: ${boxTransform}`);
 
+  await openExportPanel(page);
   await page.waitForFunction(() => document.querySelector(".export-block pre code")?.textContent?.includes("Restored Project"));
   const restoredPayloadText = await page.locator(".export-block pre code").textContent();
   const restoredPayload = JSON.parse(restoredPayloadText);
@@ -161,7 +180,9 @@ const runProjectExportSmoke = async (browser) => {
   assert(restoredPayload.timeline.tracks.length === 1, `expected missing-target track to be skipped, got ${restoredPayload.timeline.tracks.length}`);
   assert(restoredPayload.timeline.tracks[0].targetId === "box", `restored track target mismatch: ${restoredPayload.timeline.tracks[0].targetId}`);
 
+  await openSourcePanel(page);
   await page.getByRole("button", { name: "Reset Sample" }).click();
+  await openExportPanel(page);
   const resetPanelText = await textOf(page.locator(".export-block"));
   assert(!resetPanelText.includes("Missing target IDs: ghost"), "missing-target warning persisted after sample SVG reset");
 
@@ -173,6 +194,7 @@ const runProjectTrustBoundarySmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
+  await openExportPanel(page);
 
   const unsafeProject = projectFrom({
     timeline: {
@@ -189,8 +211,8 @@ const runProjectTrustBoundarySmoke = async (browser) => {
     },
   });
 
-  await page.getByLabel("Project JSON").fill(JSON.stringify(unsafeProject, null, 2));
-  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  await projectImportSource(page).fill(JSON.stringify(unsafeProject, null, 2));
+  await projectImportButton(page, "Validate Project JSON").click();
   assert(
     (await textOf(page.locator(".export-block"))).includes("Project import failed: timeline tracks are invalid."),
     "unsafe imported project keyframe value was not rejected",
@@ -204,6 +226,7 @@ const runProjectTrackIdValidationSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
+  await openExportPanel(page);
 
   const duplicateTrackProject = projectFrom({
     timeline: {
@@ -227,8 +250,8 @@ const runProjectTrackIdValidationSmoke = async (browser) => {
     },
   });
 
-  await page.getByLabel("Project JSON").fill(JSON.stringify(duplicateTrackProject, null, 2));
-  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  await projectImportSource(page).fill(JSON.stringify(duplicateTrackProject, null, 2));
+  await projectImportButton(page, "Validate Project JSON").click();
   assert(
     (await textOf(page.locator(".export-block"))).includes("Project import failed: timeline tracks are invalid."),
     "duplicate imported project track IDs were not rejected",
@@ -242,6 +265,7 @@ const runProjectTargetMetadataValidationSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
+  await openExportPanel(page);
 
   const mismatchedTargetProject = projectFrom({
     svg: {
@@ -251,8 +275,8 @@ const runProjectTargetMetadataValidationSmoke = async (browser) => {
     },
   });
 
-  await page.getByLabel("Project JSON").fill(JSON.stringify(mismatchedTargetProject, null, 2));
-  await page.getByRole("button", { name: "Validate Project JSON" }).click();
+  await projectImportSource(page).fill(JSON.stringify(mismatchedTargetProject, null, 2));
+  await projectImportButton(page, "Validate Project JSON").click();
   assert(
     (await textOf(page.locator(".export-block"))).includes(
       "Project import failed: target metadata does not match SVG source.",

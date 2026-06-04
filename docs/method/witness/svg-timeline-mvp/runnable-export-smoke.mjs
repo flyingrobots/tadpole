@@ -30,10 +30,20 @@ const assertCleanBrowser = (label, consoleErrors, pageErrors) => {
   assert(consoleErrors.length === 0, `${label} console errors: ${consoleErrors.join("\n")}`);
 };
 
+const openExportPanel = async (page) => {
+  const panel = page.locator(".export-block");
+  if (await panel.isVisible()) {
+    return;
+  }
+  await page.getByRole("button", { name: "Open export panel" }).click();
+  await panel.waitFor({ state: "visible" });
+};
+
 const runRunnableExportSmoke = async (browser) => {
   const editor = await createPage(browser);
   await editor.page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await editor.page.waitForSelector(".preview-svg-host svg");
+  await openExportPanel(editor.page);
 
   const runnableHtml = await editor.page.locator("[data-tadpole-runnable-output]").textContent();
   assert(runnableHtml?.includes("tadpole-runnable-html-1"), "runnable export version missing");
@@ -115,6 +125,7 @@ const runRunnableExportTrustBoundarySmoke = async (browser) => {
   const firstKeyframe = coFillTrack.locator("li", { hasText: "track-co-fill-1" });
   await firstKeyframe.locator(".inline-label", { hasText: "value" }).locator("input").fill(unsafePaintValue);
   await page.waitForTimeout(50);
+  await openExportPanel(page);
 
   const runnableHtml = await page.locator("[data-tadpole-runnable-output]").textContent();
   assert(runnableHtml && !runnableHtml.includes(unsafePaintValue), "unsafe CSS URL leaked into runnable export");

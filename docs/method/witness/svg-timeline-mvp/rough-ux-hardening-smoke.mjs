@@ -45,7 +45,20 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join("\n")}`);
 };
 
+const openPanel = async (page, buttonName, selector) => {
+  const panel = page.locator(selector);
+  if (await panel.isVisible()) {
+    return;
+  }
+  await page.getByRole("button", { name: buttonName }).click();
+  await panel.waitFor({ state: "visible" });
+};
+
+const openSourcePanel = async (page) => openPanel(page, "Open SVG source panel", ".panel-svg-source");
+const openTargetsPanel = async (page) => openPanel(page, "Open targets panel", ".panel-target-library");
+
 const importRawSvg = async (page, svg) => {
+  await openSourcePanel(page);
   await page.getByLabel("Raw SVG").fill(svg);
   await page.getByRole("button", { name: "Import Paste" }).click();
   await page.waitForSelector(".preview-svg-host svg");
@@ -56,6 +69,7 @@ const runEmptyStateSmoke = async (browser) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
 
+  await openSourcePanel(page);
   await page.getByLabel("Raw SVG").fill("");
   assert(
     (await textOf(page.locator(".panel-svg-source"))).includes(
@@ -65,6 +79,7 @@ const runEmptyStateSmoke = async (browser) => {
   );
 
   await importRawSvg(page, noTargetSvg);
+  await openTargetsPanel(page);
   const targetLibraryText = await textOf(page.locator(".panel-target-library"));
   assert(
     targetLibraryText.includes("No editable SVG targets found. Add id attributes to SVG elements before animating them."),
@@ -127,6 +142,7 @@ const runTargetLabelSmoke = async (browser) => {
 
   await importRawSvg(page, titledTargetSvg);
   await page.waitForSelector(".preview-svg-host #shape-01");
+  await openTargetsPanel(page);
   assert(
     (await page.locator(".target-chip", { hasText: "Primary Badge" }).count()) === 1,
     "target label did not use SVG title metadata",
