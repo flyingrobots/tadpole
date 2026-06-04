@@ -108,6 +108,12 @@ const accumulatedAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.o
   </rect>
 </svg>`;
 
+const oneShotAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="One Shot Animation Fixture">
+  <rect id="oneshot" data-tadpole-name="One Shot" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -178,6 +184,7 @@ const runAnimationImportSmoke = async (browser) => {
   await opacityTrack.locator(".track-keys li").nth(1).locator("input").nth(1).fill("0.4");
   const payload = await projectPayload(page);
   assert(payload.timeline.duration === 900, `timeline duration was not imported from SMIL dur: ${payload.timeline.duration}`);
+  assert(payload.timeline.isLooping === true, "indefinite SMIL import did not preserve looping");
   assert(!payload.svg.source.includes("<animate"), "project export retained SMIL animate nodes");
   assert(!payload.svg.source.includes("<style"), "project export retained style node");
   assert(!payload.svg.source.includes("<script"), "project export retained script node");
@@ -388,6 +395,19 @@ const runCompositionWarningSmoke = async (browser) => {
   await accumulatedPage.page.close();
 };
 
+const runOneShotLoopingSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, oneShotAnimationSvg);
+  await page.waitForSelector(".preview-svg-host #oneshot");
+
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 1, `one-shot animation track was not imported: ${payload.timeline.tracks.length}`);
+  assert(payload.timeline.isLooping === false, "one-shot SMIL import should not loop by default");
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -403,6 +423,7 @@ try {
   await runRgbaColorWarningSmoke(browser);
   await runExtraTransformComponentWarningSmoke(browser);
   await runCompositionWarningSmoke(browser);
+  await runOneShotLoopingSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

@@ -70,6 +70,7 @@
     tracks: ImportedAnimationTrack[];
     warnings: string[];
     duration: number;
+    hasIndefiniteRepeat: boolean;
   };
 
   type SvgImportResult = {
@@ -1587,6 +1588,7 @@ ${runnableRuntimeScript}
     if (importedTrackCount > 0) {
       timelineDurationMs = nextDuration;
       currentTime = 0;
+      isLooping = parsed.animation.hasIndefiniteRepeat;
     }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
@@ -1868,6 +1870,9 @@ ${runnableRuntimeScript}
     return "";
   };
 
+  const hasIndefiniteRepeat = (element: Element): boolean =>
+    element.getAttribute("repeatCount")?.trim().toLowerCase() === "indefinite";
+
   const unsupportedCompositionAttribute = (element: Element): string => {
     const additive = element.getAttribute("additive")?.trim().toLowerCase();
     if (additive && additive !== "replace") {
@@ -1994,7 +1999,7 @@ ${runnableRuntimeScript}
   };
 
   const extractSvgAnimationIntent = (source: string): SvgAnimationImportResult => {
-    const emptyResult: SvgAnimationImportResult = { tracks: [], warnings: [], duration: 0 };
+    const emptyResult: SvgAnimationImportResult = { tracks: [], warnings: [], duration: 0, hasIndefiniteRepeat: false };
     if (typeof DOMParser === "undefined") {
       return emptyResult;
     }
@@ -2006,6 +2011,7 @@ ${runnableRuntimeScript}
 
     const warnings: string[] = [];
     const tracks: ImportedAnimationTrack[] = [];
+    let importedIndefiniteRepeat = false;
     const animationElements = Array.from(doc.querySelectorAll("*")).filter((element) => {
       const tag = element.tagName.toLowerCase();
       return tag === "animate" || tag === "animatetransform" || unsupportedAnimationTags.has(tag);
@@ -2072,11 +2078,18 @@ ${runnableRuntimeScript}
         const track = extractAnimateElementTrack(element, targetId, duration, warnings);
         if (track) {
           tracks.push(track);
+          if (hasIndefiniteRepeat(element)) {
+            importedIndefiniteRepeat = true;
+          }
         }
         return;
       }
 
-      tracks.push(...extractAnimateTransformTracks(element, targetId, duration, warnings));
+      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, warnings);
+      tracks.push(...transformTracks);
+      if (transformTracks.length > 0 && hasIndefiniteRepeat(element)) {
+        importedIndefiniteRepeat = true;
+      }
     });
 
     const duration = tracks.reduce((maxDuration, track) => {
@@ -2084,7 +2097,7 @@ ${runnableRuntimeScript}
       return Math.max(maxDuration, trackDuration);
     }, 0);
 
-    return { tracks, warnings: Array.from(new Set(warnings)), duration };
+    return { tracks, warnings: Array.from(new Set(warnings)), duration, hasIndefiniteRepeat: importedIndefiniteRepeat };
   };
 
   const createTimelineTrackFromImported = (track: ImportedAnimationTrack): TimelineTrack => ({
