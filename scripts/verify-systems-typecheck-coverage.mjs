@@ -5,6 +5,7 @@ const root = process.cwd();
 const requiredFiles = [
   "frontend/src/EditorCommands.ts",
   "frontend/src/SvgNativeSave.ts",
+  "frontend/src/SvgLayerTree.ts",
 ];
 
 const output = execFileSync(

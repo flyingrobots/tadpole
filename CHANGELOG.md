@@ -61,6 +61,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 16 editor command model and history with runtime-backed command
   intents, reversible keyframe and track operations, Edit menu undo/redo,
   keyboard shortcuts, inspectable history facts, and command-history witnesses.
+- Added Goal 17 layers panel navigation with a runtime SVG hierarchy model,
+  searchable layer rows, target/parent/depth facts, track/keyframe/warning
+  badges, keyboard target selection, and a layers-panel browser witness.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

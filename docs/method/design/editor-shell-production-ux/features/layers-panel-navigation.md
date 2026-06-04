@@ -56,8 +56,9 @@ row, and see canvas/timeline selection synchronize, proven by a browser witness.
 ## Current Truth
 
 - Tadpole discovers SVG targets and supports canvas selection.
-- Existing issue [#22](https://github.com/flyingrobots/tadpole/issues/22)
-  tracks layer tree navigation as a cool idea.
+- Goal 17 implements existing issue
+  [#22](https://github.com/flyingrobots/tadpole/issues/22), which tracked layer
+  tree navigation as a cool idea.
 - Parent design: [Layers Panel Model](../design.md#layers-panel-model).
 
 ## Problem
@@ -175,17 +176,17 @@ Choose Option B. Hierarchy is necessary for real SVG inspection.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Build SVG hierarchy model.
-- [ ] Slice 2: Render Layers panel rows.
-- [ ] Slice 3: Sync selection to stage and timeline.
-- [ ] Slice 4: Add search/filter and badges.
-- [ ] Slice 5: Add keyboard/browser witness.
+- [x] Slice 1: Build SVG hierarchy model.
+- [x] Slice 2: Render Layers panel rows.
+- [x] Slice 3: Sync selection to stage and timeline.
+- [x] Slice 4: Add search/filter and badges.
+- [x] Slice 5: Add keyboard/browser witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: layer row selection selects canvas target.
-- [ ] Browser witness: search filters by ID/name/kind.
-- [ ] Browser witness: warning/track counts are exposed.
+- [x] Browser witness: layer row selection selects canvas target.
+- [x] Browser witness: search filters by ID/name/kind.
+- [x] Browser witness: warning/track counts are exposed.
 
 ## Proof Matrix
 
@@ -197,11 +198,11 @@ Choose Option B. Hierarchy is necessary for real SVG inspection.
 
 ## Acceptance Criteria
 
-- [ ] Layers panel shows SVG hierarchy.
-- [ ] Layer selection syncs with stage and timeline.
-- [ ] Search works by ID/name/kind.
-- [ ] Keyboard navigation works.
-- [ ] Local validation is green.
+- [x] Layers panel shows SVG hierarchy.
+- [x] Layer selection syncs with stage and timeline.
+- [x] Search works by ID/name/kind.
+- [x] Keyboard navigation works.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -222,19 +223,27 @@ Run `layers-panel-smoke.mjs` against a nested SVG fixture.
 
 ## Follow-On Issues
 
-- [#22 Layer tree navigation](https://github.com/flyingrobots/tadpole/issues/22)
 - [#25 Multi-select SVG targets](https://github.com/flyingrobots/tadpole/issues/25)
 
 ## Retrospective
 
 What changed from the design:
 
-- TBD
+- The runtime hierarchy model landed as `frontend/src/SvgLayerTree.ts`, while
+  per-row track, keyframe, warning, and selection facts are decorated by the
+  editor shell from current runtime state.
 
 What the tests proved:
 
-- TBD
+- `layers-panel-smoke.mjs` proves a nested imported SVG renders layer rows with
+  parent/depth facts, search filters by documented fields, track counts are
+  exposed, and keyboard row activation synchronizes selection with the canvas
+  and timeline.
 
 What remains open:
 
-- TBD
+- Multi-select and saved layer visibility remain follow-on work.
+
+PR:
+
+- [#49](https://github.com/flyingrobots/tadpole/pull/49)

@@ -38,6 +38,10 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Timeline keyframe and track edits now dispatch through runtime-backed editor
   command objects, with Edit menu undo/redo, platform keyboard shortcuts, and
   inspectable command-history facts.
+- The Layers panel now derives a hierarchy-aware SVG layer tree from the
+  sanitized document, supports search by ID/name/parent/kind, exposes
+  target/parent/depth/track/keyframe/warning facts, and lets keyboard users
+  synchronize layer, canvas, and timeline selection.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -80,6 +84,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   playback work-area branch.
 - Completed Goal 16 editor command model and history as a stacked cycle on the
   SVG-native save branch.
+- Completed Goal 17 layers panel navigation with hierarchy-aware layer rows,
+  search, selection synchronization, and browser witness coverage.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
@@ -87,8 +93,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
-- Layer tree, import/revert undo, work-area SVG metadata persistence, dense
-  timeline summary sampling, and multi-select target editing remain deferred.
+- Import/revert undo, work-area SVG metadata persistence, dense timeline
+  summary sampling, and multi-select target editing remain deferred.
 - SVG-native save currently supports the safe importer subset only; non-linear
   easing, partial-duration tracks, unaligned translate components, and broader
   SMIL parity remain deliberate follow-on work.
