@@ -52,6 +52,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 13 target/property timeline stacks with expandable SVG target
   rows, property-row keyframe editing, animation spans, collapsed summary dots,
   and browser stack witnesses.
+- Added Goal 14 playback work-area controls with in/out markers, work-area
+  loop playback, seconds/frames display switching, keyboard commands, and a
+  browser work-area witness.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

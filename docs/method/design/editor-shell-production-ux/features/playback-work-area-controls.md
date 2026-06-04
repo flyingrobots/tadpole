@@ -3,12 +3,12 @@ title: "G14-001 - Playback Work Area Controls"
 lane: "design"
 goal: "Goal 14"
 issue: "https://github.com/flyingrobots/tadpole/issues/36"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "TBD"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -25,10 +25,10 @@ updated: "2026-06-03"
 ## Cycle Start
 
 - [x] `git fetch origin` completed.
-- [x] Local merge target branch synced to `origin/main` by regular merge.
+- [x] Local merge target branch synced to `origin/cycles/UIUX_timeline-stacks`.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -113,6 +113,7 @@ Command IDs:
 - `timeline.setOutPoint`
 - `timeline.clearWorkArea`
 - `timeline.toggleLoop`
+- `timeline.toggleWorkAreaLoop`
 - `timeline.toggleFramesSeconds`
 
 ## Data / State / Schema Model
@@ -180,17 +181,17 @@ this goal.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add work area state and command handlers.
-- [ ] Slice 2: Render in/out markers on the ruler.
-- [ ] Slice 3: Constrain loop playback to work area.
-- [ ] Slice 4: Add seconds/frames display toggle.
-- [ ] Slice 5: Add keyboard and browser witness coverage.
+- [x] Slice 1: Add work area state and command handlers.
+- [x] Slice 2: Render in/out markers on the ruler.
+- [x] Slice 3: Constrain loop playback to work area.
+- [x] Slice 4: Add seconds/frames display toggle.
+- [x] Slice 5: Add keyboard and browser witness coverage.
 
 ## Tests To Write First
 
-- [ ] Browser witness: set in/out points and assert loop clamps to range.
-- [ ] Browser witness: seconds/frames toggle changes visible time units.
-- [ ] Browser witness: keyboard shortcuts dispatch commands.
+- [x] Browser witness: set in/out points and assert loop clamps to range.
+- [x] Browser witness: seconds/frames toggle changes visible time units.
+- [x] Browser witness: keyboard shortcuts dispatch commands.
 
 ## Proof Matrix
 
@@ -202,11 +203,11 @@ this goal.
 
 ## Acceptance Criteria
 
-- [ ] In/out markers can be set, moved, and cleared.
-- [ ] Loop respects work area.
-- [ ] Time display toggles seconds/frames.
-- [ ] Playback controls stay bottom-visible.
-- [ ] Local validation is green.
+- [x] In/out markers can be set, moved, and cleared.
+- [x] Loop respects work area.
+- [x] Time display toggles seconds/frames.
+- [x] Playback controls stay bottom-visible.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -218,12 +219,14 @@ node docs/method/witness/editor-shell-production-ux/work-area-smoke.mjs
 
 ## Playback / Witness
 
-Run `work-area-smoke.mjs` with a deterministic two-second fixture.
+Run `work-area-smoke.mjs` against the local editor. The witness sets work-area
+in/out markers, toggles frames display, uses keyboard shortcuts for in/out and
+work-area loop, proves playback stays inside the active review range, and
+clears the range.
 
 ## Open Questions
 
-- @flyingrobots: Should work area markers snap to frames by default? Default to
-  the current snap setting.
+- Work area markers snap through the existing timeline snap setting.
 
 ## Follow-On Issues
 
@@ -233,12 +236,17 @@ Run `work-area-smoke.mjs` with a deterministic two-second fixture.
 
 What changed from the design:
 
-- TBD
+- Work-area loop is a runtime review mode layered on top of the existing full
+  loop behavior. It constrains playback when work-area loop is enabled and both
+  in/out points form a valid range; full-timeline loop remains a separate
+  command.
 
 What the tests proved:
 
-- TBD
+- The browser witness proves visible work-area facts, snapped in/out markers,
+  seconds/frames display switching, keyboard in/out/loop commands, bounded loop
+  playback independent of full-timeline loop state, and clear behavior.
 
 What remains open:
 
-- TBD
+- Persisting work-area metadata to SVG remains deferred to Goal 15 or later.

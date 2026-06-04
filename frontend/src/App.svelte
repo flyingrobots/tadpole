@@ -16,6 +16,7 @@
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
   type TrackSortMode = "manual" | "target" | "property";
+  type TimeDisplayMode = "seconds" | "frames";
   type EditorPanel =
     | "none"
     | "workspace"
@@ -657,6 +658,21 @@
 
   const formatMs = (value: number): string => `${value}ms`;
   const formatSec = (value: number): string => `${(value / 1000).toFixed(2)}s`;
+  const frameDurationMsFor = (rate: number): number => 1000 / clamp(rate, 12, 144);
+  const frameForMs = (value: number, rate: number): number => Math.round(clampMs(value) / frameDurationMsFor(rate));
+  const formatFrame = (value: number, rate: number): string => `${frameForMs(value, rate)}f`;
+  const formatTimeDisplay = (value: number, mode: TimeDisplayMode, rate: number): string =>
+    mode === "frames" ? formatFrame(value, rate) : formatSec(value);
+  const formatWorkAreaPoint = (value: number | null, mode: TimeDisplayMode, rate: number): string =>
+    value === null ? "none" : `${formatMs(value)} / ${formatTimeDisplay(value, mode, rate)}`;
+  const normalizeWorkAreaToDuration = (): void => {
+    if (workAreaInMs !== null) {
+      workAreaInMs = clampMs(workAreaInMs);
+    }
+    if (workAreaOutMs !== null) {
+      workAreaOutMs = clampMs(workAreaOutMs);
+    }
+  };
 
   const createSampleTracks = (): TimelineTrack[] => [
     {
@@ -713,6 +729,16 @@
   let currentTime = 0;
   let isPlaying = false;
   let isLooping = true;
+  let loopWorkArea = false;
+  let workAreaInMs: number | null = null;
+  let workAreaOutMs: number | null = null;
+  let workAreaActive = false;
+  let workAreaStartMs = 0;
+  let workAreaEndMs = 0;
+  let workAreaLabel = "none";
+  let currentTimeDisplay = "";
+  let durationTimeDisplay = "";
+  let timeDisplayMode: TimeDisplayMode = "seconds";
   let frameRate = 60;
   let snapToFrames = true;
   let snapMs = 16;
@@ -1722,6 +1748,14 @@ ${runnableRuntimeScript}
   $: timelineTicks = Array.from({ length: clampedGridCount + 1 }, (_, index) =>
     Math.round((index / clampedGridCount) * timelineDurationMs),
   );
+  $: workAreaActive = workAreaInMs !== null && workAreaOutMs !== null && workAreaOutMs > workAreaInMs;
+  $: workAreaStartMs = workAreaActive && workAreaInMs !== null ? workAreaInMs : 0;
+  $: workAreaEndMs = workAreaActive && workAreaOutMs !== null ? workAreaOutMs : 0;
+  $: workAreaLabel = workAreaActive
+    ? `${formatWorkAreaPoint(workAreaInMs, timeDisplayMode, frameRate)} to ${formatWorkAreaPoint(workAreaOutMs, timeDisplayMode, frameRate)}`
+    : "none";
+  $: currentTimeDisplay = formatTimeDisplay(currentTime, timeDisplayMode, frameRate);
+  $: durationTimeDisplay = formatTimeDisplay(timelineDurationMs, timeDisplayMode, frameRate);
   $: visibleTracks = (() => {
     const selectedOnlyTracks =
       showOnlySelected && selectedTrackId !== "" ? tracks.filter((track) => track.id === selectedTrackId) : tracks;
@@ -1862,18 +1896,37 @@ ${runnableRuntimeScript}
     const input = event.currentTarget as HTMLInputElement;
     timelineDurationMs = clamp(Math.max(250, Number(input.value)), 250, 30000);
     currentTime = clampMs(currentTime);
+    normalizeWorkAreaToDuration();
     normalizeTracks();
     markDocumentDirty();
   };
   const setTimelineDurationPreset = (value: number): void => {
     timelineDurationMs = clamp(value, 250, 30000);
     currentTime = clampMs(currentTime);
+    normalizeWorkAreaToDuration();
     normalizeTracks();
     markDocumentDirty();
   };
   const setCurrentTime = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     currentTime = applySnap(clampMs(Number(input.value)));
+  };
+  const setWorkAreaInPoint = (): void => {
+    workAreaInMs = applySnap(clampMs(currentTime));
+  };
+  const setWorkAreaOutPoint = (): void => {
+    workAreaOutMs = applySnap(clampMs(currentTime));
+  };
+  const clearWorkArea = (): void => {
+    workAreaInMs = null;
+    workAreaOutMs = null;
+    loopWorkArea = false;
+  };
+  const toggleLoopWorkArea = (): void => {
+    loopWorkArea = !loopWorkArea;
+  };
+  const toggleTimeDisplayMode = (): void => {
+    timeDisplayMode = timeDisplayMode === "seconds" ? "frames" : "seconds";
   };
   const setTimelineGridDensity = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
@@ -2071,6 +2124,7 @@ ${runnableRuntimeScript}
       timelineDurationMs = nextDuration;
       currentTime = 0;
       isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : true;
+      normalizeWorkAreaToDuration();
     }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
@@ -2892,6 +2946,7 @@ ${runnableRuntimeScript}
     snapToFrames = parsed.project.timeline.snapToFrames;
     snapMs = clamp(Math.round(parsed.project.timeline.snapMs), 1, 250);
     timelineGridDensity = clamp(Math.round(parsed.project.timeline.gridDensity), minGridDivisions, maxGridDivisions);
+    normalizeWorkAreaToDuration();
     tracks = restoredTracks;
     syncIdCursorsFromTracks(restoredTracks);
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
@@ -3114,6 +3169,30 @@ ${runnableRuntimeScript}
       return;
     }
 
+    if (key === "i") {
+      event.preventDefault();
+      setWorkAreaInPoint();
+      return;
+    }
+
+    if (key === "o") {
+      event.preventDefault();
+      setWorkAreaOutPoint();
+      return;
+    }
+
+    if (key === "l") {
+      event.preventDefault();
+      toggleLoopWorkArea();
+      return;
+    }
+
+    if (key === "u") {
+      event.preventDefault();
+      toggleTimeDisplayMode();
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && (event.key === "d" || event.key === "D")) {
       event.preventDefault();
       duplicateTrack(selectedTrackId);
@@ -3296,6 +3375,13 @@ ${runnableRuntimeScript}
     currentTime = clampMs(time);
   };
 
+  const activeWorkAreaLoopBounds = (): { start: number; end: number } | null => {
+    if (!loopWorkArea || !workAreaActive) {
+      return null;
+    }
+    return { start: workAreaStartMs, end: workAreaEndMs };
+  };
+
   const tick = (timestamp: number): void => {
     if (!isPlaying) {
       return;
@@ -3309,7 +3395,12 @@ ${runnableRuntimeScript}
 
     const duration = Math.max(0.001, timelineDurationMs);
     const elapsed = timestamp - playbackStartTime;
+    const workAreaLoop = activeWorkAreaLoopBounds();
     let next = isLooping ? elapsed % duration : clamp(elapsed, 0, duration);
+    if (workAreaLoop) {
+      const workAreaDuration = Math.max(1, workAreaLoop.end - workAreaLoop.start);
+      next = workAreaLoop.start + (elapsed % workAreaDuration);
+    }
     next = applySnap(clampMs(next));
     currentTime = next;
 
@@ -3330,11 +3421,14 @@ ${runnableRuntimeScript}
     if (isPlaying) {
       return;
     }
-    if (currentTime >= timelineDurationMs && !isLooping) {
+    const workAreaLoop = activeWorkAreaLoopBounds();
+    if (workAreaLoop && (currentTime < workAreaLoop.start || currentTime >= workAreaLoop.end)) {
+      currentTime = workAreaLoop.start;
+    } else if (currentTime >= timelineDurationMs && !isLooping) {
       currentTime = 0;
     }
     isPlaying = true;
-    playbackStartTime = performance.now() - currentTime;
+    playbackStartTime = performance.now() - (workAreaLoop ? currentTime - workAreaLoop.start : currentTime);
     lastFrameTimestamp = performance.now();
     rafHandle = requestAnimationFrame((timestamp) => tick(timestamp));
   };
@@ -4116,6 +4210,18 @@ ${runnableRuntimeScript}
             <button
               type="button"
               role="menuitem"
+              data-tadpole-command="timeline.toggleLoop"
+              on:click={() => {
+                toggleLoop();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Toggle Full Loop
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               data-tadpole-command="timeline.dropKeyframe"
               disabled={selectedTrackId === ""}
               on:click={() => {
@@ -4125,6 +4231,67 @@ ${runnableRuntimeScript}
               on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
             >
               Drop Keyframe at Playhead
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.setInPoint"
+              on:click={() => {
+                setWorkAreaInPoint();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Set Work Area In
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.setOutPoint"
+              on:click={() => {
+                setWorkAreaOutPoint();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Set Work Area Out
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.clearWorkArea"
+              on:click={() => {
+                clearWorkArea();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Clear Work Area
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              data-tadpole-command="timeline.toggleWorkAreaLoop"
+              aria-checked={loopWorkArea}
+              on:click={() => {
+                toggleLoopWorkArea();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Loop Work Area
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-tadpole-command="timeline.toggleFramesSeconds"
+              on:click={() => {
+                toggleTimeDisplayMode();
+                closeMenus();
+              }}
+              on:keydown={(event) => handleMenuItemKeydown(event, "timeline")}
+            >
+              Toggle Seconds/Frames
             </button>
           </div>
         {/if}
@@ -4813,12 +4980,27 @@ ${runnableRuntimeScript}
           <span>.: Next keyframe</span>
           <span>Delete: remove selected keyframe</span>
           <span>[ / ]: previous/next track</span>
+          <span>I / O: set work area in/out</span>
+          <span>L: toggle work-area loop</span>
+          <span>U: toggle seconds/frames</span>
           <span>M: Mute selected track</span>
           <span>Ctrl/Cmd + D: duplicate selected track</span>
           <span>H: toggle this panel</span>
         </div>
       {/if}
-      <section class="panel panel-timeline" data-tadpole-bottom-timeline aria-label="Animation timeline">
+      <section
+        class="panel panel-timeline"
+        data-tadpole-bottom-timeline
+        data-tadpole-work-area-active={workAreaActive ? "true" : "false"}
+        data-tadpole-work-area-in={workAreaInMs ?? ""}
+        data-tadpole-work-area-out={workAreaOutMs ?? ""}
+        data-tadpole-loop-work-area={loopWorkArea ? "true" : "false"}
+        data-tadpole-time-display-mode={timeDisplayMode}
+        data-tadpole-current-time-ms={currentTime}
+        data-tadpole-duration-ms={timelineDurationMs}
+        data-tadpole-current-time-display={currentTimeDisplay}
+        aria-label="Animation timeline"
+      >
         <div class="panel-heading">
           <div>
             <h2>Animation Timeline</h2>
@@ -4830,6 +5012,9 @@ ${runnableRuntimeScript}
           <button type="button" on:click={togglePlay}>{isPlaying ? "Pause" : "Play"}</button>
           <button type="button" on:click={stopTimeline}>Stop</button>
           <button type="button" on:click={toggleLoop} class:is-active={isLooping}>Loop {isLooping ? "ON" : "OFF"}</button>
+          <button type="button" on:click={toggleLoopWorkArea} class:is-active={loopWorkArea}>
+            Work Area {loopWorkArea ? "ON" : "OFF"}
+          </button>
         </div>
 
         <div class="timeline-controls">
@@ -4844,7 +5029,7 @@ ${runnableRuntimeScript}
                 value={timelineDurationMs}
                 on:input={setTimelineDuration}
               />
-              <span>{formatMs(timelineDurationMs)} ({formatSec(timelineDurationMs)})</span>
+              <span>{formatMs(timelineDurationMs)} ({durationTimeDisplay})</span>
             </label>
             <label class="inline-label compact">
               <span>Preset</span>
@@ -4857,7 +5042,7 @@ ${runnableRuntimeScript}
             <label class="inline-label compact">
               <span>Time</span>
               <input type="range" min="0" max={timelineDurationMs} step="1" value={currentTime} on:input={setCurrentTime} />
-              <span>{formatMs(currentTime)} | {formatSec(currentTime)}</span>
+              <span>{formatMs(currentTime)} | {currentTimeDisplay}</span>
             </label>
           </div>
           <div class="control-row">
@@ -4876,6 +5061,7 @@ ${runnableRuntimeScript}
             <label class="inline-label compact">
               <span>Current</span>
               <input type="number" min="0" max={timelineDurationMs} value={currentTime} on:input={setCurrentTime} />
+              <span data-tadpole-current-time-label>{currentTimeDisplay}</span>
             </label>
             <label class="inline-label compact">
               <span>Grid density (ticks)</span>
@@ -4889,6 +5075,40 @@ ${runnableRuntimeScript}
               />
               <span>{timelineGridDensity} marks</span>
             </label>
+          </div>
+          <div class="control-row work-area-controls" data-tadpole-work-area-controls aria-label="Work area controls">
+            <div class="work-area-summary">
+              <span class="status-chip" data-tadpole-work-area-label>Work Area: {workAreaLabel}</span>
+              <span class="status-chip" data-tadpole-work-area-in-label>
+                In: {formatWorkAreaPoint(workAreaInMs, timeDisplayMode, frameRate)}
+              </span>
+              <span class="status-chip" data-tadpole-work-area-out-label>
+                Out: {formatWorkAreaPoint(workAreaOutMs, timeDisplayMode, frameRate)}
+              </span>
+            </div>
+            <div class="preset-row">
+              <button type="button" data-tadpole-command="timeline.setInPoint" on:click={setWorkAreaInPoint}>
+                Set In @ {formatMs(currentTime)}
+              </button>
+              <button type="button" data-tadpole-command="timeline.setOutPoint" on:click={setWorkAreaOutPoint}>
+                Set Out @ {formatMs(currentTime)}
+              </button>
+              <button type="button" data-tadpole-command="timeline.clearWorkArea" on:click={clearWorkArea}>
+                Clear Work Area
+              </button>
+              <button
+                type="button"
+                data-tadpole-command="timeline.toggleWorkAreaLoop"
+                class:is-active={loopWorkArea}
+                aria-pressed={loopWorkArea}
+                on:click={toggleLoopWorkArea}
+              >
+                Loop Work Area {loopWorkArea ? "ON" : "OFF"}
+              </button>
+              <button type="button" data-tadpole-command="timeline.toggleFramesSeconds" on:click={toggleTimeDisplayMode}>
+                Time: {timeDisplayMode === "seconds" ? "Seconds" : "Frames"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -4918,8 +5138,33 @@ ${runnableRuntimeScript}
                 <span>{tick}ms</span>
               </div>
             {/each}
+            {#if workAreaActive}
+              <span
+                class="work-area-range"
+                data-tadpole-work-area-range
+                style={`left:${trackPercent(workAreaStartMs)}%; width:${spanWidthPercent(workAreaStartMs, workAreaEndMs)}%;`}
+              ></span>
+            {/if}
+            {#if workAreaInMs !== null}
+              <span
+                class="work-area-marker work-area-marker-in"
+                data-tadpole-work-area-marker="in"
+                style={`left:${trackPercent(workAreaInMs)}%;`}
+              >
+                In {formatTimeDisplay(workAreaInMs, timeDisplayMode, frameRate)}
+              </span>
+            {/if}
+            {#if workAreaOutMs !== null}
+              <span
+                class="work-area-marker work-area-marker-out"
+                data-tadpole-work-area-marker="out"
+                style={`left:${trackPercent(workAreaOutMs)}%;`}
+              >
+                Out {formatTimeDisplay(workAreaOutMs, timeDisplayMode, frameRate)}
+              </span>
+            {/if}
             <span class="scrubber" style={`left:${trackPercent(currentTime)}%;`}></span>
-            <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{formatMs(currentTime)}</span>
+            <span class="scrubber-time" style={`left:${trackPercent(currentTime)}%;`}>{currentTimeDisplay}</span>
           </div>
         </button>
 
@@ -6073,6 +6318,7 @@ ${runnableRuntimeScript}
   }
 
   .preset-row button.active,
+  .preset-row button.is-active,
   .inline-label button.is-active {
     border-color: color-mix(in oklab, var(--tadpole-accent) 45%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 22%, var(--color-10));
@@ -6232,6 +6478,17 @@ ${runnableRuntimeScript}
     gap: var(--size-2);
   }
 
+  .work-area-controls {
+    align-items: center;
+  }
+
+  .work-area-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
   .timeline-playback-compact {
     display: none;
     flex-wrap: wrap;
@@ -6297,6 +6554,38 @@ ${runnableRuntimeScript}
     font-size: var(--font-size-0);
     color: var(--tadpole-text-muted);
     pointer-events: none;
+  }
+
+  .work-area-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    border-inline: 1px solid color-mix(in oklab, var(--color-8) 72%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, transparent);
+    pointer-events: none;
+  }
+
+  .work-area-marker {
+    position: absolute;
+    top: 0.2rem;
+    z-index: 4;
+    min-width: 3.2rem;
+    transform: translateX(-50%);
+    border: 1px solid color-mix(in oklab, var(--color-8) 64%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    padding: 0.1rem 0.32rem;
+    color: var(--color-0);
+    background: var(--color-8);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-6);
+    line-height: 1.2;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .work-area-marker-out {
+    background: color-mix(in oklab, var(--color-8) 78%, var(--color-10));
   }
 
   .track-list {
