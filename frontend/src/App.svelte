@@ -1767,9 +1767,9 @@ ${runnableRuntimeScript}
       const parsed = explicit.map((value) => Number(value));
       const isValid = parsed.every((value, index) => {
         const previous = index === 0 ? 0 : parsed[index - 1]!;
-        return Number.isFinite(value) && value >= 0 && value <= 1 && value >= previous;
+        return Number.isFinite(value) && value >= 0 && value <= 1 && (index === 0 ? value === 0 : value > previous);
       });
-      return isValid ? parsed : null;
+      return isValid && parsed[parsed.length - 1] === 1 ? parsed : null;
     }
 
     return Array.from({ length: count }, (_, index) => (count === 1 ? 0 : index / (count - 1)));

@@ -120,6 +120,12 @@ const oneShotAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2
   </rect>
 </svg>`;
 
+const repeatedKeyTimesSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Repeated KeyTimes Fixture">
+  <rect id="keydupe" data-tadpole-name="Key Dupe" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;0.5;1" keyTimes="0;0.5;0.5" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -445,6 +451,20 @@ const runOneShotLoopingSmoke = async (browser) => {
   await page.close();
 };
 
+const runRepeatedKeyTimesWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, repeatedKeyTimesSvg);
+  await page.waitForSelector(".preview-svg-host #keydupe");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Unsupported keyTimes or value count for opacity on #keydupe."), "repeated keyTimes warning missing");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.tracks.length === 0, `repeated keyTimes imported zero-length segment: ${payload.timeline.tracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -463,6 +483,7 @@ try {
   await runExtraTransformComponentWarningSmoke(browser);
   await runCompositionWarningSmoke(browser);
   await runOneShotLoopingSmoke(browser);
+  await runRepeatedKeyTimesWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

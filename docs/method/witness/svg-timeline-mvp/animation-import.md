@@ -17,6 +17,7 @@ turn the motion into editable timeline tracks.
   style, or script nodes.
 - Editing an imported keyframe updates project JSON export.
 - Unitless SVG clock values import as seconds.
+- Repeated `keyTimes` warn instead of importing zero-length segments.
 - Reset Sample restores the sample timeline duration after a longer SVG import.
 - Unsupported discrete timing is warned and not imported as linear motion.
 - Failed file imports clear stale animation warning UI.
