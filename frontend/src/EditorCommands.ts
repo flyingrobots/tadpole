@@ -28,22 +28,25 @@ export type EditorCommandTrack = {
   readonly muted: boolean;
 };
 
-const cloneKeyframe = (keyframe: EditorCommandKeyframe): EditorCommandKeyframe => ({
-  id: keyframe.id,
-  time: keyframe.time,
-  value: keyframe.value,
-  easing: keyframe.easing,
-});
+const cloneKeyframe = (keyframe: EditorCommandKeyframe): EditorCommandKeyframe =>
+  Object.freeze({
+    id: keyframe.id,
+    time: keyframe.time,
+    value: keyframe.value,
+    easing: keyframe.easing,
+  });
 
-const cloneTrack = (track: EditorCommandTrack): EditorCommandTrack => ({
-  id: track.id,
-  targetId: track.targetId,
-  property: track.property,
-  muted: track.muted,
-  keyframes: track.keyframes.map(cloneKeyframe),
-});
+const cloneTrack = (track: EditorCommandTrack): EditorCommandTrack =>
+  Object.freeze({
+    id: track.id,
+    targetId: track.targetId,
+    property: track.property,
+    muted: track.muted,
+    keyframes: Object.freeze(track.keyframes.map(cloneKeyframe)),
+  });
 
-const cloneTracks = (tracks: readonly EditorCommandTrack[]): readonly EditorCommandTrack[] => tracks.map(cloneTrack);
+const cloneTracks = (tracks: readonly EditorCommandTrack[]): readonly EditorCommandTrack[] =>
+  Object.freeze(tracks.map(cloneTrack));
 
 const sortKeyframes = (keyframes: readonly EditorCommandKeyframe[]): readonly EditorCommandKeyframe[] =>
   [...keyframes].sort((left, right) => left.time - right.time);
@@ -374,8 +377,8 @@ export class EditorCommandHistory {
   readonly redoStack: readonly EditorHistoryEntry[];
 
   constructor(undoStack: readonly EditorHistoryEntry[], redoStack: readonly EditorHistoryEntry[]) {
-    this.undoStack = [...undoStack];
-    this.redoStack = [...redoStack];
+    this.undoStack = Object.freeze([...undoStack]);
+    this.redoStack = Object.freeze([...redoStack]);
     Object.freeze(this);
   }
 

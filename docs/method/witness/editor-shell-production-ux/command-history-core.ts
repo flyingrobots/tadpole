@@ -33,11 +33,45 @@ const track: EditorCommandTrack = {
 let state = new EditorCommandStateSnapshot([track], "box", track.id, "key-0", 0);
 let history = EditorCommandHistory.empty();
 
+const assertFrozenSnapshot = (snapshot: EditorCommandStateSnapshot, label: string): void => {
+  assert(Object.isFrozen(snapshot), `${label} snapshot wrapper was not frozen`);
+  assert(Object.isFrozen(snapshot.tracks), `${label} track list was not frozen`);
+  const firstTrack = snapshot.tracks.at(0);
+  if (firstTrack === undefined) {
+    return;
+  }
+  assert(Object.isFrozen(firstTrack), `${label} first track was not frozen`);
+  assert(
+    Object.isFrozen(firstTrack.keyframes),
+    `${label} first track keyframes were not frozen`,
+  );
+  const firstKeyframe = firstTrack.keyframes.at(0);
+  assert(firstKeyframe !== undefined, `${label} first track missing first keyframe`);
+  assert(Object.isFrozen(firstKeyframe), `${label} first keyframe was not frozen`);
+};
+
+const assertFrozenHistory = (candidate: EditorCommandHistory, label: string): void => {
+  assert(Object.isFrozen(candidate), `${label} history wrapper was not frozen`);
+  assert(Object.isFrozen(candidate.undoStack), `${label} undo stack was not frozen`);
+  assert(Object.isFrozen(candidate.redoStack), `${label} redo stack was not frozen`);
+  const firstEntry = candidate.undoStack.at(0);
+  if (firstEntry) {
+    assert(Object.isFrozen(firstEntry), `${label} first undo entry was not frozen`);
+    assertFrozenSnapshot(firstEntry.before, `${label} first undo entry before`);
+    assertFrozenSnapshot(firstEntry.after, `${label} first undo entry after`);
+  }
+};
+
+assertFrozenSnapshot(state, "initial");
+assertFrozenHistory(history, "initial");
+
 const record = (command: EditorCommandIntent): void => {
   const dispatch = dispatchEditorCommand(state, history, command, true);
   assert(dispatch.changed, `${command.id} did not change state`);
   state = dispatch.state;
   history = dispatch.history;
+  assertFrozenSnapshot(state, command.id);
+  assertFrozenHistory(history, command.id);
 };
 
 const applyWithoutHistory = (command: EditorCommandIntent): void => {
