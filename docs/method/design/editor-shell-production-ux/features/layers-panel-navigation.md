@@ -4,11 +4,11 @@ lane: "design"
 goal: "Goal 17"
 issue: "https://github.com/flyingrobots/tadpole/issues/39"
 pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -28,7 +28,7 @@ updated: "2026-06-03"
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
