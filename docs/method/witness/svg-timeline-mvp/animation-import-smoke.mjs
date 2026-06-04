@@ -96,6 +96,18 @@ const extraTransformComponentSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w
   </rect>
 </svg>`;
 
+const additiveAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Additive Animation Fixture">
+  <rect id="adder" data-tadpole-name="Adder" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animateTransform attributeName="transform" type="translate" values="0;24" dur="800ms" additive="sum" />
+  </rect>
+</svg>`;
+
+const accumulatedAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Accumulated Animation Fixture">
+  <rect id="accumulator" data-tadpole-name="Accumulator" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="800ms" accumulate="sum" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -349,6 +361,33 @@ const runExtraTransformComponentWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runCompositionWarningSmoke = async (browser) => {
+  const additivePage = await createPage(browser);
+  await importSvgMarkup(additivePage.page, additiveAnimationSvg);
+  await additivePage.page.waitForSelector(".preview-svg-host #adder");
+
+  const additiveWarnings = await textOf(additivePage.page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(additiveWarnings.includes('Unsupported additive "sum" on #adder.'), "additive warning missing");
+  const additivePayload = await projectPayload(additivePage.page);
+  assert(additivePayload.timeline.tracks.length === 0, `additive animation imported as absolute motion: ${additivePayload.timeline.tracks.length}`);
+  assertCleanBrowser(additivePage.consoleErrors, additivePage.pageErrors);
+  await additivePage.page.close();
+
+  const accumulatedPage = await createPage(browser);
+  await importSvgMarkup(accumulatedPage.page, accumulatedAnimationSvg);
+  await accumulatedPage.page.waitForSelector(".preview-svg-host #accumulator");
+
+  const accumulatedWarnings = await textOf(accumulatedPage.page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(accumulatedWarnings.includes('Unsupported accumulate "sum" on #accumulator.'), "accumulate warning missing");
+  const accumulatedPayload = await projectPayload(accumulatedPage.page);
+  assert(
+    accumulatedPayload.timeline.tracks.length === 0,
+    `accumulated animation imported without repeat accumulation semantics: ${accumulatedPayload.timeline.tracks.length}`,
+  );
+  assertCleanBrowser(accumulatedPage.consoleErrors, accumulatedPage.pageErrors);
+  await accumulatedPage.page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -363,6 +402,7 @@ try {
   await runMalformedTransformWarningSmoke(browser);
   await runRgbaColorWarningSmoke(browser);
   await runExtraTransformComponentWarningSmoke(browser);
+  await runCompositionWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

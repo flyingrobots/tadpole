@@ -1868,6 +1868,20 @@ ${runnableRuntimeScript}
     return "";
   };
 
+  const unsupportedCompositionAttribute = (element: Element): string => {
+    const additive = element.getAttribute("additive")?.trim().toLowerCase();
+    if (additive && additive !== "replace") {
+      return `additive "${additive}"`;
+    }
+
+    const accumulate = element.getAttribute("accumulate")?.trim().toLowerCase();
+    if (accumulate && accumulate !== "none") {
+      return `accumulate "${accumulate}"`;
+    }
+
+    return "";
+  };
+
   const extractAnimateElementTrack = (
     element: Element,
     targetId: string,
@@ -2039,6 +2053,12 @@ ${runnableRuntimeScript}
       const unsupportedRepeat = unsupportedRepeatAttributeName(element);
       if (unsupportedRepeat) {
         warnings.push(`Unsupported ${unsupportedRepeat} on #${targetId}.`);
+        return;
+      }
+
+      const unsupportedComposition = unsupportedCompositionAttribute(element);
+      if (unsupportedComposition) {
+        warnings.push(`Unsupported ${unsupportedComposition} on #${targetId}.`);
         return;
       }
 
