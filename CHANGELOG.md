@@ -32,7 +32,8 @@ All notable changes for Tadpole are documented here.
 - Added SVG animation timeline import for a safe SMIL subset, converting
   supported `<animate>` and `<animateTransform>` nodes into editable Tadpole
   tracks while reporting unsupported CSS/Web Animations features and rejecting
-  unsupported transform, timing, repeat, reference, and color semantics.
+  unsupported transform, timing, repeat, composition, reference, and color
+  semantics while preserving one-shot versus indefinite loop intent.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

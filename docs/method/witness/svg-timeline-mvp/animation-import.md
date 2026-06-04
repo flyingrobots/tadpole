@@ -28,6 +28,11 @@ turn the motion into editable timeline tracks.
   unsupported transform semantics.
 - Finite repeats and malformed transform values warn instead of shortening or
   inventing motion.
+- RGBA color values warn instead of importing without alpha interpolation.
+- Overlong transform value arity warns instead of dropping extra components.
+- Additive and accumulated SMIL animations warn instead of importing as absolute
+  motion.
+- One-shot SVG imports clear looping, while indefinite imports preserve looping.
 
 ## Command
 
