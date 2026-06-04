@@ -167,6 +167,10 @@ const assertExportDialog = async (page) => {
   assert(dialogText.includes("Export Runnable HTML"), "runnable export dialog title missing");
   assert(dialogText.includes("tadpole-runnable-html-1"), "runnable export dialog does not expose payload version");
   assert((await dialog.locator("[data-tadpole-runnable-dialog-output]").count()) === 1, "runnable export output missing");
+  await dialog.focus();
+  await page.keyboard.press(" ");
+  const statusText = await textOf(page.locator("[data-tadpole-document-status]"));
+  assert(statusText.includes("Playhead: Idle"), "dialog Space key leaked to global playback shortcut");
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
 };

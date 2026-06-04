@@ -831,6 +831,7 @@
     items[nextIndex]?.focus();
   };
   const handleDialogKeydown = (event: KeyboardEvent): void => {
+    event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
       closeEditorDialog();
