@@ -36,12 +36,11 @@ turn the motion into editable timeline tracks.
 
 ## Command
 
-Run the app, then execute:
+After `npm install`, run the app, then execute from the repository root:
 
 ```bash
-cd /tmp/tadpole-playwright
 TADPOLE_APP_URL=http://localhost:5174/ \
-  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
+  node docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
 ```
 
 The URL may be `http://localhost:5173/` when Vite does not need to choose a

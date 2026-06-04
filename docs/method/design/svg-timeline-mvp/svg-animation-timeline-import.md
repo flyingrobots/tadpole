@@ -341,8 +341,8 @@ Run the browser witness against a local dev server:
 
 ```bash
 npm run dev
-(cd /tmp/tadpole-playwright && \
-  node /Users/james/git/tadpole/docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs)
+TADPOLE_APP_URL="${TADPOLE_APP_URL:-http://localhost:5173/}" \
+  node docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
 ```
 
 ## Risks
