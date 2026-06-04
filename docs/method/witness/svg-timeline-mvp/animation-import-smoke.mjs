@@ -151,14 +151,28 @@ const assertCleanBrowser = (consoleErrors, pageErrors) => {
   assert(pageErrors.length === 0, `browser page errors: ${pageErrors.join(" | ")}`);
 };
 
+const openPanel = async (page, buttonName, selector) => {
+  const panel = page.locator(selector);
+  if (await panel.isVisible()) {
+    return;
+  }
+  await page.getByRole("button", { name: buttonName }).click();
+  await panel.waitFor({ state: "visible" });
+};
+
+const openSourcePanel = async (page) => openPanel(page, "Open SVG source panel", ".panel-svg-source");
+const openExportPanel = async (page) => openPanel(page, "Open export panel", ".export-block");
+
 const importSvgMarkup = async (page, svgMarkup) => {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".preview-svg-host svg");
+  await openSourcePanel(page);
   await page.locator(".panel-svg-source textarea").fill(svgMarkup);
   await page.locator(".panel-svg-source button", { hasText: "Import Paste" }).click();
 };
 
 const projectPayload = async (page) => {
+  await openExportPanel(page);
   const payloadText = await page.locator(".export-block pre code").textContent();
   assert(payloadText, "project export payload missing");
   return JSON.parse(payloadText);
@@ -249,6 +263,7 @@ const runResetSampleDurationSmoke = async (browser) => {
   let payload = await projectPayload(page);
   assert(payload.timeline.duration === 2000, `setup import did not use the long duration: ${payload.timeline.duration}`);
 
+  await openSourcePanel(page);
   await page.getByRole("button", { name: "Reset Sample" }).click();
   const sourcePanelText = await textOf(page.locator(".panel-svg-source"));
   assert(sourcePanelText.includes("Restored 3 sample tracks."), "reset sample status missing");

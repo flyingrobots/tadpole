@@ -20,6 +20,9 @@ deterministic keyframe-based motion for logo/diagram targets.
   metadata, timeline settings, tracks, and visible missing-target warnings.
 - Runnable animation export emits self-contained HTML with the sanitized SVG,
   non-muted tracks, and a compact playback runtime for downstream use.
+- The default editor route now opens into a canvas-first shell with top menu
+  panel commands, document-status badges, centered SVG stage, and bottom-pinned
+  timeline.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -48,6 +51,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   artifact and browser witness.
 - Completed Goal 9 SVG animation timeline import for supported SMIL
   `<animate>`/`<animateTransform>` input with unsupported-feature warnings.
+- Completed Goal 10 canvas-first editor shell as a stacked cycle on the
+  editor-shell production UX design branch.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
@@ -55,7 +60,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
-- A layer tree, undo/redo, and multi-select target editing remain deferred.
+- Full menu/dialog commands, contextual panels, timeline stacks, layer tree,
+  undo/redo, and multi-select target editing remain deferred.
 - The current `frontend/src/App.svelte` monolith predates the systems-style
   standard and remains explicit migration debt while new infrastructure code is
   held to the stricter gate.
