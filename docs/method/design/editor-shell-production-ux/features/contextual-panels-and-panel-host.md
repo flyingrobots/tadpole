@@ -4,11 +4,11 @@ lane: "design"
 goal: "Goal 12"
 issue: "https://github.com/flyingrobots/tadpole/issues/34"
 pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -28,7 +28,7 @@ updated: "2026-06-03"
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -108,9 +108,15 @@ Panel IDs:
 - `export`
 - `layers`
 - `inspector`
-- `documentSettings`
+- `workspace`
+- `targets`
+- `palette`
+- `fonts`
+- `debug`
 
-Panel state exposes `openPanelIds`, `activePanelId`, and warning counts.
+Panel state exposes `data-tadpole-active-panel`,
+`data-tadpole-open-panel-ids`, per-panel `data-tadpole-panel-open` facts,
+warning counts, and dirty-state facts.
 
 ## Data / State / Schema Model
 
@@ -178,17 +184,17 @@ first-viewport content.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add panel state and host.
-- [ ] Slice 2: Move Source into panel host.
-- [ ] Slice 3: Move Warnings into panel host with badge.
-- [ ] Slice 4: Move Export/debug surfaces into panels.
-- [ ] Slice 5: Add responsive and focus browser witness.
+- [x] Slice 1: Add panel state and host.
+- [x] Slice 2: Move Source into panel host.
+- [x] Slice 3: Move Warnings into panel host with badge.
+- [x] Slice 4: Move Export/debug surfaces into panels.
+- [x] Slice 5: Add responsive and focus browser witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: default load hides Source/Warnings/Export panels.
-- [ ] Browser witness: warning badge opens Warnings panel.
-- [ ] Browser witness: closing panel returns focus.
+- [x] Browser witness: default load hides Source/Warnings/Export panels.
+- [x] Browser witness: warning badge opens Warnings panel.
+- [x] Browser witness: closing panel returns focus.
 
 ## Proof Matrix
 
@@ -200,11 +206,11 @@ first-viewport content.
 
 ## Acceptance Criteria
 
-- [ ] Default shell remains canvas-first.
-- [ ] All moved workflows remain reachable.
-- [ ] Warning state remains visible.
-- [ ] Closed panels are not focusable.
-- [ ] Local validation is green.
+- [x] Default shell remains canvas-first.
+- [x] All moved workflows remain reachable.
+- [x] Warning state remains visible.
+- [x] Closed panels are not focusable.
+- [x] Local validation is green.
 
 ## Validation Plan
 
@@ -232,12 +238,19 @@ Run `panel-host-smoke.mjs` against wide and narrow viewports.
 
 What changed from the design:
 
-- TBD
+- Existing Goal 10/11 panel shells already carried most secondary surfaces. Goal
+  12 hardened them into an inspectable panel host with active/open state facts,
+  warning and dirty badges, deterministic close focus, and narrow viewport sheet
+  behavior.
 
 What the tests proved:
 
-- TBD
+- `panel-host-smoke.mjs` proves Source, Warnings, and Export detail panels are
+  hidden by default, panel state is inspectable through ledger facts, warning
+  imports stay discoverable through the badge, badge-triggered panels open, and
+  close returns focus on wide and narrow viewports.
 
 What remains open:
 
-- TBD
+- Goal 17 still owns full Layers navigation.
+- Goal 18 still owns the full Inspector editing surface.

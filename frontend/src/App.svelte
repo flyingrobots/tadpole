@@ -28,6 +28,7 @@
     | "layers"
     | "inspector"
     | "debug";
+  type ContextPanel = Exclude<EditorPanel, "none">;
   type EditorMenu = "file" | "edit" | "view" | "timeline" | "export" | "help";
   type EditorDialog = "open-svg" | "paste-svg" | "save-svg" | "export-runnable";
 
@@ -165,6 +166,19 @@
   const projectExportVersion = "tadpole-project-1";
   const runnableExportVersion = "tadpole-runnable-html-1";
   const defaultProjectImportStatus = "Paste a Tadpole project JSON payload to validate it.";
+  const defaultPanelReturnFocusSelector = "[data-tadpole-panel-toggle]";
+  const panelIds: ContextPanel[] = [
+    "workspace",
+    "source",
+    "palette",
+    "targets",
+    "fonts",
+    "export",
+    "warnings",
+    "layers",
+    "inspector",
+    "debug",
+  ];
 
   // Animation timeline state.
   const easingModes: KeyframeEasing[] = ["linear", "power1.inOut", "power2.out", "power3.inOut", "expo.out", "back.inOut"];
@@ -666,6 +680,7 @@
   let openMenu: EditorMenu | null = null;
   let activeDialog: EditorDialog | null = null;
   let dialogReturnMenu: EditorMenu | null = null;
+  let panelReturnFocusSelector = defaultPanelReturnFocusSelector;
   let drawerWidth = 300;
   let drawerResizeStartX = 0;
   let drawerResizeStartWidth = 300;
@@ -703,23 +718,69 @@
     setDrawerWidth(value);
     drawerOpen = true;
   };
+  const panelLabelFor = (panel: EditorPanel): string => {
+    switch (panel) {
+      case "workspace":
+        return "Workspace";
+      case "source":
+        return "SVG Source";
+      case "palette":
+        return "Palette";
+      case "targets":
+        return "Target Library";
+      case "fonts":
+        return "Fonts";
+      case "export":
+        return "Project Export";
+      case "warnings":
+        return "Warnings";
+      case "layers":
+        return "Layers";
+      case "inspector":
+        return "Inspector";
+      case "debug":
+        return "Debug";
+      case "none":
+        return "Panels";
+    }
+  };
+  const focusElementBySelector = (selector: string): void => {
+    const target = document.querySelector(selector);
+    if (target instanceof HTMLElement) {
+      target.focus();
+    }
+  };
+  const focusActivePanelClose = (): void => {
+    void nextDomUpdate().then(() => focusElementBySelector("[data-tadpole-panel-close]"));
+  };
+  const closePanel = (): void => {
+    const returnFocusSelector = panelReturnFocusSelector || defaultPanelReturnFocusSelector;
+    drawerOpen = false;
+    activePanel = "none";
+    panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+    void nextDomUpdate().then(() => focusElementBySelector(returnFocusSelector));
+  };
   const toggleDrawer = (): void => {
     drawerOpen = !drawerOpen;
     if (!drawerOpen) {
-      activePanel = "none";
+      panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+      closePanel();
     } else if (activePanel === "none") {
       activePanel = "source";
+      panelReturnFocusSelector = defaultPanelReturnFocusSelector;
+      focusActivePanelClose();
     }
   };
 
-  const openPanel = (panel: EditorPanel): void => {
+  const openPanel = (panel: ContextPanel, returnFocusSelector = defaultPanelReturnFocusSelector): void => {
     if (activePanel === panel && drawerOpen) {
-      activePanel = "none";
-      drawerOpen = false;
+      closePanel();
       return;
     }
     activePanel = panel;
     drawerOpen = true;
+    panelReturnFocusSelector = returnFocusSelector;
+    focusActivePanelClose();
   };
   const menuOrder: EditorMenu[] = ["file", "edit", "view", "timeline", "export", "help"];
   const closeMenus = (): void => {
@@ -767,12 +828,20 @@
       void nextDomUpdate().then(() => focusMenuButton(returnMenu));
     }
   };
-  const togglePanelCommand = (panel: EditorPanel): void => {
-    openPanel(panel);
+  const togglePanelCommand = (panel: ContextPanel, returnFocusSelector = '[data-tadpole-menu-button="view"]'): void => {
+    openPanel(panel, returnFocusSelector);
     closeMenus();
   };
-  const runViewCommand = (panel: EditorPanel): void => {
+  const runViewCommand = (panel: ContextPanel): void => {
     togglePanelCommand(panel);
+  };
+  const openWarningsFromBadge = (): void => {
+    openPanel("warnings", "[data-tadpole-warning-badge]");
+    closeMenus();
+  };
+  const openDirtyStateFromBadge = (): void => {
+    openPanel("export", "[data-tadpole-dirty-badge]");
+    closeMenus();
   };
   const runFileRevertCommand = (): void => {
     resetToSampleSvg();
@@ -1427,6 +1496,9 @@ ${runnableRuntimeScript}
     document.documentElement.style.setProperty("--palette-hue-rotate-by", `${paletteRotate}`);
   }
   $: layoutColumnWidth = drawerOpen ? `${drawerWidth}px` : `${collapsedDrawerWidth}px`;
+  $: panelHostActivePanelId = drawerOpen ? activePanel : "none";
+  $: panelHostOpenPanelIds = drawerOpen && activePanel !== "none" ? activePanel : "";
+  $: activePanelLabel = panelLabelFor(panelHostActivePanelId);
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
   $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
@@ -3879,7 +3951,7 @@ ${runnableRuntimeScript}
               type="button"
               role="menuitem"
               data-tadpole-command="export.projectJson"
-              on:click={() => togglePanelCommand("export")}
+              on:click={() => togglePanelCommand("export", '[data-tadpole-menu-button="export"]')}
               on:keydown={(event) => handleMenuItemKeydown(event, "export")}
             >
               Project JSON Panel
@@ -3920,10 +3992,27 @@ ${runnableRuntimeScript}
     <div class="document-status" data-tadpole-document-status aria-live="polite">
       <span class="status-chip status-strong">Document: {svgSourceLabel}</span>
       <span class="status-chip" title={svgImportError || svgImportStatus}>Import: {documentImportStatusLabel}</span>
-      <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
+      <button
+        type="button"
+        class="status-chip status-button"
+        data-tadpole-dirty-badge
+        data-tadpole-dirty={documentDirty ? "true" : "false"}
+        on:click={openDirtyStateFromBadge}
+      >
+        Dirty: {documentDirty ? "yes" : "no"}
+      </button>
       <span class="status-chip">Targets: {availableTargets.length}</span>
       <span class="status-chip">Tracks: {tracks.length}</span>
-      <span class="status-chip">Warnings: {documentWarningCount}</span>
+      <button
+        type="button"
+        class="status-chip status-button"
+        class:status-warning={documentWarningCount > 0}
+        data-tadpole-warning-badge
+        data-tadpole-warning-count={documentWarningCount}
+        on:click={openWarningsFromBadge}
+      >
+        Warnings: {documentWarningCount}
+      </button>
       <span class="status-chip">Playhead: {playheadLabel}</span>
     </div>
   </header>
@@ -4034,13 +4123,18 @@ ${runnableRuntimeScript}
       class="drawer panel-host"
       class:drawer-collapsed={!drawerOpen}
       data-tadpole-panel-host
-      data-tadpole-active-panel={drawerOpen ? activePanel : "none"}
+      data-tadpole-active-panel={panelHostActivePanelId}
+      data-tadpole-panel-open={drawerOpen && activePanel !== "none" ? "true" : "false"}
+      data-tadpole-open-panel-ids={panelHostOpenPanelIds}
+      data-tadpole-warning-count={documentWarningCount}
+      data-tadpole-dirty={documentDirty ? "true" : "false"}
       aria-label="Editor panels"
     >
       <div class="drawer-toggle-wrap">
         <button
           type="button"
           class="drawer-toggle"
+          data-tadpole-panel-toggle
           on:click={toggleDrawer}
           aria-expanded={drawerOpen}
           aria-label={drawerOpen ? "Collapse left drawer" : "Expand left drawer"}
@@ -4049,15 +4143,35 @@ ${runnableRuntimeScript}
         </button>
       </div>
 
+      <div class="panel-state-ledger" data-tadpole-panel-state-ledger aria-hidden="true">
+        {#each panelIds as panelId}
+          <span
+            data-tadpole-panel-id={panelId}
+            data-tadpole-panel-open={drawerOpen && activePanel === panelId ? "true" : "false"}
+            data-tadpole-panel-active={drawerOpen && activePanel === panelId ? "true" : "false"}
+          ></span>
+        {/each}
+      </div>
+
       <div class="drawer-content" aria-hidden={!drawerOpen}>
+        {#if drawerOpen && activePanel !== "none"}
+          <div class="panel-host-heading" data-tadpole-panel-heading>
+            <div>
+              <p class="eyebrow">Panel</p>
+              <h2 id="active-panel-title">{activePanelLabel}</h2>
+            </div>
+            <button type="button" data-tadpole-panel-close on:click={closePanel}>Close Panel</button>
+          </div>
+        {/if}
+
         {#if activePanel === "none"}
-          <section class="panel panel-host-empty">
+          <section class="panel panel-host-empty" data-tadpole-panel-id="none" data-tadpole-panel-open="false">
             <p class="muted tiny">Use View, File, or Export menus to open secondary editor surfaces.</p>
           </section>
         {/if}
 
         {#if activePanel === "workspace"}
-        <section class="panel panel-workspace-controls">
+        <section class="panel panel-workspace-controls" data-tadpole-panel-id="workspace" data-tadpole-panel-open="true">
           <h2>Workspace</h2>
           <p class="muted">Control the editor layout and quick workflow mode.</p>
           <div class="inline-label compact">
@@ -4105,7 +4219,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "source"}
-        <section class="panel panel-svg-source">
+        <section class="panel panel-svg-source" data-tadpole-panel-id="source" data-tadpole-panel-open="true">
           <h2>SVG Source</h2>
           <div class="svg-source-summary">
             <span class="status-chip">{svgSourceLabel}</span>
@@ -4147,7 +4261,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "export"}
-        <section class="panel export-block">
+        <section class="panel export-block" data-tadpole-panel-id="export" data-tadpole-panel-open="true">
           <h2>Project Export</h2>
           <p class="muted">
             Save this JSON payload to preserve the SVG source, discovered targets, and timeline tracks.
@@ -4191,7 +4305,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "warnings"}
-        <section class="panel panel-warning-list" data-tadpole-warnings-panel>
+        <section class="panel panel-warning-list" data-tadpole-warnings-panel data-tadpole-panel-id="warnings" data-tadpole-panel-open="true">
           <h2>Warnings</h2>
           <div class="svg-source-summary">
             <span class="status-chip">Warnings: {documentWarningCount}</span>
@@ -4223,7 +4337,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "layers"}
-        <section class="panel panel-layers" data-tadpole-layers-panel>
+        <section class="panel panel-layers" data-tadpole-layers-panel data-tadpole-panel-id="layers" data-tadpole-panel-open="true">
           <h2>Layers</h2>
           <p class="muted">SVG targets available to animate in the current document.</p>
           {#if availableTargets.length === 0}
@@ -4245,7 +4359,12 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "inspector"}
-        <section class="panel panel-command-inspector" data-tadpole-inspector-panel>
+        <section
+          class="panel panel-command-inspector"
+          data-tadpole-inspector-panel
+          data-tadpole-panel-id="inspector"
+          data-tadpole-panel-open="true"
+        >
           <h2>Inspector</h2>
           {#if selectedTarget}
             <div class="inspector-grid">
@@ -4285,7 +4404,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "debug"}
-        <section class="panel panel-debug" data-tadpole-debug-panel>
+        <section class="panel panel-debug" data-tadpole-debug-panel data-tadpole-panel-id="debug" data-tadpole-panel-open="true">
           <h2>Debug</h2>
           <p class="muted">Machine-readable runtime facts for witnesses and agents.</p>
           <pre><code>{JSON.stringify(
@@ -4305,7 +4424,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "palette"}
-        <section class="panel">
+        <section class="panel" data-tadpole-panel-id="palette" data-tadpole-panel-open="true">
         <h2>Dynamic Palette (Open Props)</h2>
         <p class="muted">Tune hue/chroma/rotation and remix the full 16-color Open Props palette in place.</p>
         <div class="controls">
@@ -4361,7 +4480,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "targets"}
-        <section class="panel panel-target-library">
+        <section class="panel panel-target-library" data-tadpole-panel-id="targets" data-tadpole-panel-open="true">
         <h2>SVG Target Library</h2>
         <p class="muted">Pick a group/element target, then add its properties as tracks.</p>
         {#if availableTargets.length === 0}
@@ -4386,7 +4505,7 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "fonts"}
-        <section class="panel">
+        <section class="panel" data-tadpole-panel-id="fonts" data-tadpole-panel-open="true">
         <h2>Detected Fonts</h2>
         {#if loading}
           <p>Loading font inventory…</p>
@@ -5270,6 +5389,47 @@ ${runnableRuntimeScript}
     min-width: 0;
   }
 
+  .panel-state-ledger {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .panel-host-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--size-2);
+    border: 1px solid color-mix(in oklab, var(--tadpole-border), black 10%);
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-13) 76%, transparent);
+    padding: var(--size-2);
+  }
+
+  .panel-host-heading h2 {
+    margin: 0;
+    font-size: var(--font-size-3);
+  }
+
+  .panel-host-heading button {
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    min-height: 2rem;
+    padding: 0.35rem 0.6rem;
+    color: var(--tadpole-text);
+    background: var(--color-10);
+    cursor: pointer;
+    font-weight: var(--font-weight-5);
+  }
+
+  .panel-host-heading button:hover,
+  .panel-host-heading button:focus-visible {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, var(--color-12));
+  }
+
   .drawer-collapsed .drawer-content {
     display: none;
   }
@@ -5383,6 +5543,24 @@ ${runnableRuntimeScript}
     color: var(--tadpole-text-muted);
     font-size: var(--font-size-0);
     background: color-mix(in oklab, var(--color-13) 72%, transparent);
+  }
+
+  .status-button {
+    cursor: pointer;
+    font: inherit;
+    min-height: 1.65rem;
+  }
+
+  .status-button:hover,
+  .status-button:focus-visible {
+    color: var(--tadpole-text);
+    border-color: color-mix(in oklab, var(--tadpole-accent) 48%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 18%, var(--color-13));
+  }
+
+  .status-warning {
+    color: var(--yellow-3);
+    border-color: color-mix(in oklab, var(--yellow-3) 56%, var(--tadpole-border));
   }
 
   .status-strong {
@@ -6371,6 +6549,33 @@ ${runnableRuntimeScript}
     .preview-tick,
     .ruler-stop span {
       display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .editor-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .drawer {
+      position: fixed;
+      z-index: 50;
+      inset: auto var(--size-2) var(--size-2) var(--size-2);
+      width: auto;
+      min-width: 0;
+      max-width: none;
+      max-height: min(72vh, 40rem);
+      border: 1px solid var(--tadpole-border);
+      border-radius: var(--radius-2);
+      box-shadow: var(--shadow-5);
+    }
+
+    .drawer.drawer-collapsed {
+      display: none;
+    }
+
+    .drawer-toggle-wrap {
+      justify-content: flex-end;
     }
   }
 

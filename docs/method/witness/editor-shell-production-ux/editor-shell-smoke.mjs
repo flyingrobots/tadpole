@@ -95,7 +95,7 @@ const assertShellLayout = async (browser, label, viewport) => {
 
   const stageBox = await boundingBoxFor(page, "[data-tadpole-canvas-stage]");
   const timelineBox = await boundingBoxFor(page, "[data-tadpole-bottom-timeline]");
-  const panelHostBox = await boundingBoxFor(page, "[data-tadpole-panel-host]");
+  const panelHostBox = await panelHost.boundingBox();
   const statusText = await textOf(status);
 
   assert(stageBox.width >= viewport.width * 0.48, `${label}: canvas stage is not visually dominant`);
@@ -108,7 +108,12 @@ const assertShellLayout = async (browser, label, viewport) => {
     timelineBox.y + timelineBox.height > viewport.height * 0.72,
     `${label}: timeline is not bottom-pinned in the first viewport`,
   );
-  assert(panelHostBox.width <= Math.max(72, viewport.width * 0.22), `${label}: panel host crowds the canvas`);
+  if (panelHostBox === null) {
+    assert(viewport.width <= 720, `${label}: panel host bounding box missing on a non-sheet viewport`);
+    assert((await panelHost.getAttribute("data-tadpole-panel-open")) === "false", `${label}: hidden panel host is not closed`);
+  } else {
+    assert(panelHostBox.width <= Math.max(72, viewport.width * 0.22), `${label}: panel host crowds the canvas`);
+  }
   assert(statusText.includes("Document") && statusText.includes("Tracks"), `${label}: document status lacks badges`);
   assert(statusText.includes("Import: Sample Logo"), `${label}: import status badge missing`);
   assert(statusText.includes("Dirty: no"), `${label}: clean dirty-state badge missing`);

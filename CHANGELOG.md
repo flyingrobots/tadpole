@@ -46,6 +46,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 11 menu commands and document dialogs with File/Edit/View/
   Timeline/Export/Help command IDs, Open/Paste/Save/Export dialogs, View panel
   toggles, and browser keyboard/pointer witnesses.
+- Added Goal 12 contextual panel host state with stable panel open facts,
+  warning and dirty status badge actions, panel close focus return, responsive
+  narrow-screen sheets, and browser panel-host witnesses.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
