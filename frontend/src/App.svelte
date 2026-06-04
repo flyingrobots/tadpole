@@ -144,6 +144,7 @@
   ];
   const drawerWidthPresets = [228, 300, 380, 460, 560, 660];
   const timelineDurationPresets = [500, 800, 1200, 1600, 2200, 3000];
+  const sampleTimelineDurationMs = 1200;
   const minGridDivisions = 5;
   const maxGridDivisions = 24;
   const defaultGridDivisions = 12;
@@ -629,7 +630,7 @@
   let selectedTargetId = availableTargets[0]?.id ?? "";
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let selectedTargetTracks: TimelineTrack[] = [];
-  let timelineDurationMs = 1200;
+  let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
   let isPlaying = false;
   let isLooping = true;
@@ -1570,12 +1571,15 @@ ${runnableRuntimeScript}
     ];
     const importedTimelineTracks = importedTracksForTargets.map(createTimelineTrackFromImported);
     const importedTrackCount = importedTimelineTracks.length;
+    const restoredSampleTracks = options.restoreSampleTracks && importedTrackCount === 0 ? createSampleTracks() : null;
     const nextDuration =
       importedTrackCount > 0
         ? clamp(Math.max(250, parsed.animation.duration), 250, 30000)
+        : restoredSampleTracks
+          ? sampleTimelineDurationMs
         : timelineDurationMs;
     const candidateTracks =
-      importedTrackCount > 0 ? importedTimelineTracks : options.restoreSampleTracks ? createSampleTracks() : tracks;
+      importedTrackCount > 0 ? importedTimelineTracks : restoredSampleTracks ? restoredSampleTracks : tracks;
     const reconciledTracks = normalizeTrackList(candidateTracks.filter((track) => targetIds.has(track.targetId)), nextDuration);
     const removedTrackCount = candidateTracks.length - reconciledTracks.length;
 
@@ -1585,10 +1589,10 @@ ${runnableRuntimeScript}
     svgImportError = "";
     animationImportWarnings = importWarnings;
     clearProjectImportStatus();
-    if (importedTrackCount > 0) {
+    if (importedTrackCount > 0 || restoredSampleTracks) {
       timelineDurationMs = nextDuration;
       currentTime = 0;
-      isLooping = parsed.animation.hasIndefiniteRepeat;
+      isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : true;
     }
     tracks = reconciledTracks;
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();

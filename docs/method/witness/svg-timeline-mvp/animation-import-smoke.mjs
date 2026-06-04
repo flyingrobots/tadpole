@@ -229,6 +229,23 @@ const runUnitlessDurationSmoke = async (browser) => {
   await page.close();
 };
 
+const runResetSampleDurationSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, unitlessDurationSvg);
+  await page.waitForSelector(".preview-svg-host #clock");
+  let payload = await projectPayload(page);
+  assert(payload.timeline.duration === 2000, `setup import did not use the long duration: ${payload.timeline.duration}`);
+
+  await page.getByRole("button", { name: "Reset Sample" }).click();
+  const sourcePanelText = await textOf(page.locator(".panel-svg-source"));
+  assert(sourcePanelText.includes("Restored 3 sample tracks."), "reset sample status missing");
+  payload = await projectPayload(page);
+  assert(payload.timeline.duration === 1200, `reset sample did not restore sample duration: ${payload.timeline.duration}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const runDiscreteCalcModeWarningSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await importSvgMarkup(page, discreteCalcModeSvg);
@@ -432,6 +449,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
   await runUnitlessDurationSmoke(browser);
+  await runResetSampleDurationSmoke(browser);
   await runDiscreteCalcModeWarningSmoke(browser);
   await runFailedFileClearsWarningSmoke(browser);
   await runUnsafeHrefWarningSmoke(browser);
