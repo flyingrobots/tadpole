@@ -55,6 +55,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 14 playback work-area controls with in/out markers, work-area
   loop playback, seconds/frames display switching, keyboard commands, and a
   browser work-area witness.
+- Added Goal 15 SVG-native save roundtrip with a deterministic serializer,
+  Save SVG dialog output, unsupported-state blocking warnings, standard SVG
+  animation nodes, and a browser save/reopen witness.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

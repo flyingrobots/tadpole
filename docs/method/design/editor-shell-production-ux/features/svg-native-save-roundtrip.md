@@ -3,7 +3,7 @@ title: "G15-001 - SVG Native Save Roundtrip"
 lane: "design"
 goal: "Goal 15"
 issue: "https://github.com/flyingrobots/tadpole/issues/37"
-pr: "TBD"
+pr: "https://github.com/flyingrobots/tadpole/pull/47"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-04"
 - [x] GitHub issue created.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -112,9 +112,21 @@ sequenceDiagram
 Serializer API shape:
 
 ```ts
-type SvgSaveResult =
-  | { ok: true; svgText: string; warnings: Warning[] }
-  | { ok: false; warnings: Warning[] };
+class SvgNativeSaveRequest {
+  constructor(
+    source: string,
+    tracks: SvgNativeSaveTrack[],
+    durationMs: number,
+    isLooping: boolean,
+  );
+}
+
+class SvgNativeSaveResult {
+  readonly ok: boolean;
+  readonly svgText: string;
+  readonly warnings: SvgNativeSaveWarning[];
+  readonly serializedTrackCount: number;
+}
 ```
 
 Supported output properties:
@@ -199,17 +211,17 @@ editor convenience only.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add serializer fixtures and result type.
-- [ ] Slice 2: Serialize scalar/color property tracks.
-- [ ] Slice 3: Serialize transform tracks with deterministic component policy.
-- [ ] Slice 4: Add Save SVG command/dialog integration.
-- [ ] Slice 5: Add save/reopen roundtrip browser witness.
+- [x] Slice 1: Add serializer fixtures and result type.
+- [x] Slice 2: Serialize scalar/color property tracks.
+- [x] Slice 3: Serialize transform tracks with deterministic component policy.
+- [x] Slice 4: Add Save SVG command/dialog integration.
+- [x] Slice 5: Add save/reopen roundtrip browser witness.
 
 ## Tests To Write First
 
-- [ ] Parser/serializer test: opacity/fill/stroke/stroke-width roundtrip.
-- [ ] Parser/serializer test: transform tracks roundtrip or warn.
-- [ ] Browser witness: Save SVG then reopen yields matching tracks.
+- [x] Browser witness: opacity/fill/stroke/stroke-width roundtrip.
+- [x] Browser witness: transform tracks roundtrip or warn.
+- [x] Browser witness: Save SVG then reopen yields matching tracks.
 
 ## Proof Matrix
 
@@ -221,30 +233,35 @@ editor convenience only.
 
 ## Acceptance Criteria
 
-- [ ] Save emits one SVG text/blob.
-- [ ] Reopen reconstructs matching editable tracks.
-- [ ] Unsupported states warn or block deterministically.
-- [ ] Runnable HTML remains a derived artifact.
-- [ ] Local validation is green.
+- [x] Save emits one SVG text/blob.
+- [x] Reopen reconstructs matching editable tracks.
+- [x] Unsupported states warn or block deterministically.
+- [x] Runnable HTML remains a derived artifact.
+- [x] Local validation is green.
 
 ## Validation Plan
 
 ```bash
 npm run check
 npm run build
+node --check docs/method/witness/editor-shell-production-ux/svg-save-roundtrip-smoke.mjs
 node docs/method/witness/editor-shell-production-ux/svg-save-roundtrip-smoke.mjs
 ```
 
 ## Playback / Witness
 
-Run `svg-save-roundtrip-smoke.mjs` with an imported animated fixture and an
-authored keyframe edit.
+Run `svg-save-roundtrip-smoke.mjs` with an imported animated fixture. The
+witness proves default unsupported sample tracks block save, a supported
+animated SVG emits one SVG root with standard animation nodes, reopening that
+SVG reconstructs matching editable tracks, and a second save does not duplicate
+Tadpole-authored animation nodes.
 
 ## Open Questions
 
-- @flyingrobots: How should independent x/y/scale/rotation tracks combine into
-  SVG transform animation nodes? Decide in Slice 1 before serializer
-  implementation.
+- Transform policy: aligned `x`/`y` tracks serialize into one `translate`
+  `animateTransform`; `scale` and `rotation` serialize as separate
+  `animateTransform` nodes. Unaligned `x`/`y` tracks block native save instead
+  of silently changing keyframe timing.
 
 ## Follow-On Issues
 
@@ -255,12 +272,23 @@ authored keyframe edit.
 
 What changed from the design:
 
-- TBD
+- The serializer landed as a runtime-backed frontend module with
+  `SvgNativeSaveRequest`, `SvgNativeSaveResult`, and `SvgNativeSaveWarning`
+  classes. Unsupported states block Save SVG when the normal importer cannot
+  recover the result faithfully.
 
 What the tests proved:
 
-- TBD
+- The browser witness proves unsupported tracks block save, supported scalar
+  and transform tracks serialize into one SVG text, reopened saved SVG rebuilds
+  matching target/property/time/value tracks, and repeated saves do not
+  duplicate Tadpole-authored nodes.
 
 What remains open:
 
-- TBD
+- Non-linear easing, partial-duration tracks, unaligned transform component
+  keyframes, and broader SMIL parity remain deferred.
+
+PR:
+
+- <https://github.com/flyingrobots/tadpole/pull/47>

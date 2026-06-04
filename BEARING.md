@@ -33,6 +33,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   property-row keyframe controls, animation spans, and collapsed summary dots.
 - Playback now includes runtime work-area in/out markers, work-area loop
   playback, seconds/frames display switching, and keyboard review commands.
+- Save SVG now serializes supported editable tracks back into one SVG file
+  with standard animation nodes and a save/reopen browser witness.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -71,6 +73,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   contextual-panel host branch.
 - Completed Goal 14 playback work-area controls as a stacked cycle on the
   timeline-stacks branch.
+- Completed Goal 15 SVG-native save roundtrip as a stacked cycle on the
+  playback work-area branch.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
@@ -78,9 +82,11 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
-- Layer tree, undo/redo, SVG-native save, work-area SVG metadata persistence,
-  dense timeline summary sampling, and multi-select target editing remain
-  deferred.
+- Layer tree, undo/redo, work-area SVG metadata persistence, dense timeline
+  summary sampling, and multi-select target editing remain deferred.
+- SVG-native save currently supports the safe importer subset only; non-linear
+  easing, partial-duration tracks, unaligned translate components, and broader
+  SMIL parity remain deliberate follow-on work.
 - The current `frontend/src/App.svelte` monolith predates the systems-style
   standard and remains explicit migration debt while new infrastructure code is
   held to the stricter gate.

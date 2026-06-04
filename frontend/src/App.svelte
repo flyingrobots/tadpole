@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick as nextDomUpdate } from "svelte";
+  import { serializeSvgNativeSave, SvgNativeSaveRequest } from "./SvgNativeSave";
 
   type FontRecord = {
     file: string;
@@ -767,6 +768,7 @@
   let originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
   let copiedExport = "";
   let runnableExportStatus = "";
+  let svgNativeSaveStatus = "";
   let projectDraftSource = "";
   let projectImportStatus = defaultProjectImportStatus;
   let projectImportError = "";
@@ -778,6 +780,9 @@
   let selectedKeyframeId = "";
   let timelineGridDensity = defaultGridDivisions;
   let draggingKeyframe: DraggingKeyframe = null;
+  let svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
+  let svgNativeSaveWarnings = svgNativeSaveResult.warnings;
+  let svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
 
   let newTrackTargetId = availableTargets[0]?.id ?? "";
   let newTrackProperty: AnimationProperty = "fill";
@@ -1257,6 +1262,14 @@
       .replace(/^-+|-+$/g, "");
     return `${slug || "tadpole-animation"}.html`;
   };
+  function svgNativeSaveFilename(label: string): string {
+    const slug = label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return `${slug || "tadpole-animation"}.svg`;
+  }
 
   const runnableRuntimeScript = `(() => {
   const dataNode = document.getElementById("tadpole-animation-data");
@@ -1851,6 +1864,9 @@ ${runnableRuntimeScript}
   $: runnableExportHtml = createRunnableAnimationHtml(runnableExportPayload);
   $: runnableExportTrackCount = runnableExportPayload.timeline.tracks.length;
   $: runnableExportFile = runnableExportFilename(svgSourceLabel);
+  $: svgNativeSaveResult = serializeSvgNativeSave(new SvgNativeSaveRequest(svgMarkup, tracks, timelineDurationMs, isLooping));
+  $: svgNativeSaveWarnings = svgNativeSaveResult.warnings;
+  $: svgNativeSaveFile = svgNativeSaveFilename(svgSourceLabel);
   $: selectedTrack = activeTrack;
   $: selectedKeyframe = selectedTrack
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
@@ -3025,12 +3041,35 @@ ${runnableRuntimeScript}
     }, 1600);
   };
 
+  const setSvgNativeSaveStatus = (status: string): void => {
+    svgNativeSaveStatus = status;
+    window.setTimeout(() => {
+      if (svgNativeSaveStatus === status) {
+        svgNativeSaveStatus = "";
+      }
+    }, 1600);
+  };
+
   const copyRunnableExport = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(runnableExportHtml);
       setRunnableExportStatus("Runnable HTML copied");
     } catch {
       setRunnableExportStatus("Runnable HTML copy failed");
+    }
+  };
+
+  const copyNativeSvg = async (): Promise<void> => {
+    if (!svgNativeSaveResult.ok) {
+      setSvgNativeSaveStatus("SVG-native save is blocked by serializer warnings.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(svgNativeSaveResult.svgText);
+      setSvgNativeSaveStatus("SVG copied");
+    } catch {
+      setSvgNativeSaveStatus("SVG copy failed");
     }
   };
 
@@ -3045,6 +3084,24 @@ ${runnableRuntimeScript}
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     setRunnableExportStatus(`Downloaded ${runnableExportFile}`);
+  };
+
+  const downloadNativeSvg = (): void => {
+    if (!svgNativeSaveResult.ok) {
+      setSvgNativeSaveStatus("SVG-native save is blocked by serializer warnings.");
+      return;
+    }
+
+    const blob = new Blob([svgNativeSaveResult.svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = svgNativeSaveFile;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setSvgNativeSaveStatus(`Downloaded ${svgNativeSaveFile}`);
   };
 
   const jumpByTimelineKey = (event: KeyboardEvent): void => {
@@ -4455,22 +4512,56 @@ ${runnableRuntimeScript}
             {/if}
           </div>
         {:else if activeDialog === "save-svg"}
-          <div class="dialog-body">
+          <div
+            class="dialog-body"
+            data-tadpole-svg-save-state={svgNativeSaveResult.ok ? "ready" : "blocked"}
+            data-tadpole-svg-save-warning-count={svgNativeSaveWarnings.length}
+            data-tadpole-svg-save-blocking-count={svgNativeSaveResult.blockingWarningCount()}
+            data-tadpole-svg-save-track-count={svgNativeSaveResult.serializedTrackCount}
+          >
             <p class="muted">
-              SVG-native save is reserved for Goal 15. This dialog exposes the command and disabled serializer state now.
+              Save the current editable timeline back into one SVG file with standard SVG animation nodes.
             </p>
             <div class="svg-source-summary">
               <span class="status-chip">Document: {svgSourceLabel}</span>
               <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
               <span class="status-chip">Tracks: {tracks.length}</span>
+              <span class="status-chip">Serialized: {svgNativeSaveResult.serializedTrackCount}</span>
+              <span class="status-chip">File: {svgNativeSaveFile}</span>
             </div>
             <div class="dialog-actions">
-              <button type="button" data-tadpole-disabled="true" disabled title="Goal 15 implements SVG-native serialization.">
+              <button type="button" data-tadpole-command="file.copySvg" on:click={copyNativeSvg} disabled={!svgNativeSaveResult.ok}>
+                Copy SVG
+              </button>
+              <button type="button" data-tadpole-command="file.downloadSvg" on:click={downloadNativeSvg} disabled={!svgNativeSaveResult.ok}>
                 Download SVG
               </button>
-              <button type="button" on:click={() => void copyExport()}>Copy Project JSON Instead</button>
               <button type="button" on:click={closeEditorDialog}>Close</button>
             </div>
+            <p class={svgNativeSaveResult.ok ? "muted tiny" : "error tiny"} aria-live={svgNativeSaveResult.ok ? "polite" : "assertive"}>
+              {#if svgNativeSaveStatus}
+                {svgNativeSaveStatus}
+              {:else if svgNativeSaveResult.ok}
+                SVG-native save ready with {svgNativeSaveResult.serializedTrackCount} serialized tracks.
+              {:else}
+                SVG-native save blocked by {svgNativeSaveResult.blockingWarningCount()} serializer warnings.
+              {/if}
+            </p>
+            {#if svgNativeSaveWarnings.length > 0}
+              <div class="warning tiny" data-tadpole-svg-save-warnings aria-live="polite">
+                <strong>SVG-native save warnings</strong>
+                <ul>
+                  {#each svgNativeSaveWarnings as warning}
+                    <li data-tadpole-svg-save-warning={warning.code} data-tadpole-svg-save-warning-severity={warning.severity}>
+                      {warning.message}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+            {#if svgNativeSaveResult.ok}
+              <pre class="dialog-code" data-tadpole-svg-save-output>{svgNativeSaveResult.svgText}</pre>
+            {/if}
           </div>
         {:else}
           <div class="dialog-body">
