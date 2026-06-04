@@ -3,12 +3,12 @@ title: "G16-001 - Editor Command Model And History"
 lane: "design"
 goal: "Goal 16"
 issue: "https://github.com/flyingrobots/tadpole/issues/38"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "TBD"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-04"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -25,10 +25,10 @@ updated: "2026-06-03"
 ## Cycle Start
 
 - [x] `git fetch origin` completed.
-- [x] Local merge target branch synced to `origin/main` by regular merge.
+- [x] Local merge target branch synced to `origin/cycles/UIUX_svg-native-save-roundtrip`.
 - [x] Cycle branch checked out.
 - [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
