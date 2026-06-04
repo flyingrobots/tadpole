@@ -157,8 +157,12 @@ Unsupported input behavior:
 - Non-uniform scale, pivoted rotate, finite repeat, malformed or overlong
   transform values, additive/accumulated composition, and non-interpolable color
   values are ignored and warned.
+- Repeated `keyTimes` and duplicate target/property animations are ignored and
+  warned instead of importing ambiguous runtime state.
 - Imported loop state comes from SVG repeat intent: `repeatCount="indefinite"`
   loops, while one-shot animation imports do not.
+- Reset Sample restores the sample timeline duration after imported SVG duration
+  changes.
 - CSS animation and Web Animations script surfaces remain non-executed and are
   warned when detectable.
 - The sanitized SVG source never keeps SMIL animation nodes.
@@ -294,6 +298,9 @@ Behavior tests required:
       composed SMIL animations warn instead of importing lossy motion.
 - [x] Browser witness proves one-shot animation imports clear looping while
       indefinite imports preserve looping.
+- [x] Browser witness proves Reset Sample restores sample timeline duration.
+- [x] Browser witness proves repeated `keyTimes` and duplicate target/property
+      animations warn instead of importing ambiguous tracks.
 
 Documentation/process tests:
 
@@ -317,6 +324,8 @@ The work is done when:
       rejection.
 - [x] Browser witness covers RGBA rejection, transform arity rejection,
       composition rejection, and imported loop intent.
+- [x] Browser witness covers xlink reference rejection, reset duration, repeated
+      `keyTimes`, and duplicate imported track rejection.
 - [x] Local validation is green.
 
 ## Validation Plan
@@ -392,8 +401,9 @@ What the tests proved:
   `translate` as x-only motion. Follow-up review hardening added proof for
   imported color interpolation, non-uniform scale rejection, pivoted rotate
   rejection, finite repeat rejection, malformed transform rejection, RGBA
-  rejection, overlong transform arity rejection, composition rejection, and
-  imported loop intent.
+  rejection, overlong transform arity rejection, composition rejection, imported
+  loop intent, xlink reference rejection, reset duration restoration, repeated
+  `keyTimes` rejection, and duplicate imported track rejection.
 
 What remains open:
 

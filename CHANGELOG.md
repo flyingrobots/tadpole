@@ -33,7 +33,8 @@ All notable changes for Tadpole are documented here.
   supported `<animate>` and `<animateTransform>` nodes into editable Tadpole
   tracks while reporting unsupported CSS/Web Animations features and rejecting
   unsupported transform, timing, repeat, composition, reference, and color
-  semantics while preserving one-shot versus indefinite loop intent.
+  semantics, preserving one-shot versus indefinite loop intent, and restoring
+  sample timeline duration on reset.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
