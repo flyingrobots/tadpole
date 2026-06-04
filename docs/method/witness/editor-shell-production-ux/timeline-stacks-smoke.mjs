@@ -106,6 +106,10 @@ const runTimelineStackSmoke = async (browser) => {
     (await stackBoxRow.locator("[data-tadpole-summary-keyframe]").count()) === 9,
     "collapsed stack-box row does not expose summary key dots",
   );
+  assert(
+    (await stackBoxRow.getByRole("button", { name: "Stack Box opacity keyframe at 450ms value 1" }).count()) === 1,
+    "collapsed opacity summary key dot lacks a deterministic accessible name",
+  );
 
   await page.getByRole("button", { name: "Show timeline tracks" }).click();
   assert((await stackBoxRow.getAttribute("data-tadpole-target-row-expanded")) === "true", "show timeline tracks did not expand");

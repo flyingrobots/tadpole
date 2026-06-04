@@ -4981,6 +4981,10 @@ ${runnableRuntimeScript}
                       data-tadpole-summary-track={summaryKeyframe.trackId}
                       data-tadpole-summary-property={summaryKeyframe.property}
                       data-tadpole-summary-time={summaryKeyframe.time}
+                      data-tadpole-summary-value={summaryKeyframe.value}
+                      aria-label={`${targetRow.targetLabel} ${summaryKeyframe.property} keyframe at ${formatMs(
+                        summaryKeyframe.time,
+                      )} value ${summaryKeyframe.value}`}
                       style={`left:${trackPercent(summaryKeyframe.time)}%;`}
                       on:click={() => selectKeyframe(summaryKeyframe.trackId, summaryKeyframe.keyframeId, summaryKeyframe.time)}
                       title={`${summaryKeyframe.property} • ${summaryKeyframe.time}ms • ${summaryKeyframe.value}`}
