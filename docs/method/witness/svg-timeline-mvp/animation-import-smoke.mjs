@@ -126,6 +126,13 @@ const repeatedKeyTimesSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2
   </rect>
 </svg>`;
 
+const duplicatePropertyAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Duplicate Property Animation Fixture">
+  <rect id="dupe" data-tadpole-name="Duplicate" x="8" y="8" width="28" height="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="800ms" />
+    <animate attributeName="opacity" values="1;0" dur="800ms" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -465,6 +472,21 @@ const runRepeatedKeyTimesWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runDuplicatePropertyWarningSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, duplicatePropertyAnimationSvg);
+  await page.waitForSelector(".preview-svg-host #dupe");
+
+  const warningsText = await textOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText.includes("Skipped duplicate opacity animation on #dupe."), "duplicate property warning missing");
+  const payload = await projectPayload(page);
+  const opacityTracks = payload.timeline.tracks.filter((track) => track.targetId === "dupe" && track.property === "opacity");
+  assert(opacityTracks.length === 1, `duplicate property imported conflicting tracks: ${opacityTracks.length}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -484,6 +506,7 @@ try {
   await runCompositionWarningSmoke(browser);
   await runOneShotLoopingSmoke(browser);
   await runRepeatedKeyTimesWarningSmoke(browser);
+  await runDuplicatePropertyWarningSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

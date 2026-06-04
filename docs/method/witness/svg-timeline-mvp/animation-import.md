@@ -34,6 +34,8 @@ turn the motion into editable timeline tracks.
 - Overlong transform value arity warns instead of dropping extra components.
 - Additive and accumulated SMIL animations warn instead of importing as absolute
   motion.
+- Duplicate target/property animation tracks warn and keep the first imported
+  track.
 - One-shot SVG imports clear looping, while indefinite imports preserve looping.
 
 ## Command

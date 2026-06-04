@@ -2015,7 +2015,19 @@ ${runnableRuntimeScript}
 
     const warnings: string[] = [];
     const tracks: ImportedAnimationTrack[] = [];
+    const importedTrackKeys = new Set<string>();
     let importedIndefiniteRepeat = false;
+    const appendImportedTrack = (track: ImportedAnimationTrack): boolean => {
+      const key = `${track.targetId}:${track.property}`;
+      if (importedTrackKeys.has(key)) {
+        warnings.push(`Skipped duplicate ${track.property} animation on #${track.targetId}.`);
+        return false;
+      }
+
+      importedTrackKeys.add(key);
+      tracks.push(track);
+      return true;
+    };
     const animationElements = Array.from(doc.querySelectorAll("*")).filter((element) => {
       const tag = element.tagName.toLowerCase();
       return tag === "animate" || tag === "animatetransform" || unsupportedAnimationTags.has(tag);
@@ -2080,8 +2092,7 @@ ${runnableRuntimeScript}
 
       if (tag === "animate") {
         const track = extractAnimateElementTrack(element, targetId, duration, warnings);
-        if (track) {
-          tracks.push(track);
+        if (track && appendImportedTrack(track)) {
           if (hasIndefiniteRepeat(element)) {
             importedIndefiniteRepeat = true;
           }
@@ -2090,8 +2101,13 @@ ${runnableRuntimeScript}
       }
 
       const transformTracks = extractAnimateTransformTracks(element, targetId, duration, warnings);
-      tracks.push(...transformTracks);
-      if (transformTracks.length > 0 && hasIndefiniteRepeat(element)) {
+      let appendedTransformTrack = false;
+      transformTracks.forEach((track) => {
+        if (appendImportedTrack(track)) {
+          appendedTransformTrack = true;
+        }
+      });
+      if (appendedTransformTrack && hasIndefiniteRepeat(element)) {
         importedIndefiniteRepeat = true;
       }
     });
