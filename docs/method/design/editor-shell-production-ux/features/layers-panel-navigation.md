@@ -55,11 +55,24 @@ row, and see canvas/timeline selection synchronize, proven by a browser witness.
 
 ## Current Truth
 
-- Tadpole discovers SVG targets and supports canvas selection.
+- Tadpole discovers SVG targets from sanitized SVG markup in
+  [`frontend/src/App.svelte#522:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/frontend/src/App.svelte#L522),
+  then keeps the reactive target registry current in
+  [`frontend/src/App.svelte#1759:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/frontend/src/App.svelte#L1759).
+- Tadpole already supports canvas target selection: preview application marks
+  the selected SVG node in
+  [`frontend/src/App.svelte#3528:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/frontend/src/App.svelte#L3528),
+  pointer selection is handled in
+  [`frontend/src/App.svelte#3703:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/frontend/src/App.svelte#L3703),
+  and the rendered canvas surface is exposed by
+  [`frontend/src/App.svelte#5837:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/frontend/src/App.svelte#L5837).
+- Existing browser coverage proves selected-target feedback in
+  [`docs/method/witness/svg-timeline-mvp/rough-ux-hardening-smoke.mjs#109:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/docs/method/witness/svg-timeline-mvp/rough-ux-hardening-smoke.mjs#L109).
 - Goal 17 implements existing issue
   [#22](https://github.com/flyingrobots/tadpole/issues/22), which tracked layer
   tree navigation as a cool idea.
-- Parent design: [Layers Panel Model](../design.md#layers-panel-model).
+- Parent design: the Layers Panel Model starts in
+  [`docs/method/design/editor-shell-production-ux/design.md#1059:6b7123c395af5505dbeb6ba90d05d80c4f23e348`](https://github.com/flyingrobots/tadpole/blob/6b7123c395af5505dbeb6ba90d05d80c4f23e348/docs/method/design/editor-shell-production-ux/design.md#L1059).
 
 ## Problem
 
@@ -187,6 +200,7 @@ Choose Option B. Hierarchy is necessary for real SVG inspection.
 - [x] Browser witness: layer row selection selects canvas target.
 - [x] Browser witness: search filters by ID/name/kind.
 - [x] Browser witness: warning/track counts are exposed.
+- [x] Core witness: layer rows reject invalid runtime values.
 
 ## Proof Matrix
 
@@ -195,6 +209,8 @@ Choose Option B. Hierarchy is necessary for real SVG inspection.
 | Layer tree reflects SVG | Row fact assertions |
 | Selection syncs | Browser selection assertion |
 | Keyboard path works | Browser keyboard flow |
+| Warning counts are exact | Prefix-ID browser regression |
+| Layer rows are trusted runtime values | Core constructor invariant witness |
 
 ## Acceptance Criteria
 
@@ -209,6 +225,7 @@ Choose Option B. Hierarchy is necessary for real SVG inspection.
 ```bash
 npm run check
 npm run build
+npx tsx docs/method/witness/editor-shell-production-ux/svg-layer-tree-core.ts
 node docs/method/witness/editor-shell-production-ux/layers-panel-smoke.mjs
 ```
 
@@ -237,8 +254,10 @@ What the tests proved:
 
 - `layers-panel-smoke.mjs` proves a nested imported SVG renders layer rows with
   parent/depth facts, search filters by documented fields, track counts are
-  exposed, and keyboard row activation synchronizes selection with the canvas
-  and timeline.
+  exposed, warning counts do not bleed across prefix target IDs, and keyboard
+  row activation synchronizes selection with the selected SVG node and timeline.
+- `svg-layer-tree-core.ts` proves layer rows reject invalid runtime values and
+  preserve frozen trusted row/tree state.
 
 What remains open:
 

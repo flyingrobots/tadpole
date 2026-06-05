@@ -4,8 +4,11 @@ import path from "node:path";
 const root = process.cwd();
 const requiredFiles = [
   "frontend/src/EditorCommands.ts",
+  "frontend/src/InvalidSvgLayerRow.ts",
+  "frontend/src/SvgLayerRow.ts",
   "frontend/src/SvgNativeSave.ts",
   "frontend/src/SvgLayerTree.ts",
+  "frontend/src/SvgTargetMetadata.ts",
 ];
 
 const output = execFileSync(

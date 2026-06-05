@@ -67,6 +67,12 @@ All notable changes for Tadpole are documented here.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
+### Fixed
+
+- Tightened Goal 17 layer rows so warning counts resolve exact SVG target IDs,
+  layer-row values are runtime validated, and the layers witness proves canvas
+  selection on the SVG node itself.
+
 ## [0.1.0] - 2026-05-31
 
 ### Initial Features

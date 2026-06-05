@@ -1,35 +1,14 @@
-export type SvgLayerKind = "group" | "path" | "text" | "shape";
+import { SvgLayerRow } from "./SvgLayerRow";
+import {
+  isSelectableSvgTargetElement,
+  svgTargetKindFromTag,
+  svgTargetNameFromElement,
+  type SvgTargetKind,
+} from "./SvgTargetMetadata";
 
-export class SvgLayerRow {
-  readonly targetId: string;
-  readonly parentTargetId: string;
-  readonly label: string;
-  readonly kind: SvgLayerKind;
-  readonly depth: number;
-
-  constructor(targetId: string, parentTargetId: string, label: string, kind: SvgLayerKind, depth: number) {
-    this.targetId = targetId;
-    this.parentTargetId = parentTargetId;
-    this.label = label;
-    this.kind = kind;
-    this.depth = depth;
-    Object.freeze(this);
-  }
-
-  matches(query: string): boolean {
-    const normalized = query.trim().toLowerCase();
-    if (normalized === "") {
-      return true;
-    }
-
-    return (
-      this.targetId.toLowerCase().includes(normalized) ||
-      this.parentTargetId.toLowerCase().includes(normalized) ||
-      this.label.toLowerCase().includes(normalized) ||
-      this.kind.toLowerCase().includes(normalized)
-    );
-  }
-}
+export { InvalidSvgLayerRow } from "./InvalidSvgLayerRow";
+export { SvgLayerRow } from "./SvgLayerRow";
+export type SvgLayerKind = SvgTargetKind;
 
 export class SvgLayerTree {
   readonly rows: readonly SvgLayerRow[];
@@ -44,84 +23,6 @@ export class SvgLayerTree {
   }
 }
 
-const selectableTags = new Set(["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"]);
-
-const svgKindFromTag = (tagName: string): SvgLayerKind => {
-  const tag = tagName.toLowerCase();
-  if (tag === "g" || tag === "svg") {
-    return "group";
-  }
-  if (tag === "path") {
-    return "path";
-  }
-  if (tag === "text") {
-    return "text";
-  }
-  return "shape";
-};
-
-const nameFromId = (id: string): string =>
-  id
-    .replace(/[-_]+/gu, " ")
-    .replace(/([a-z])([A-Z])/gu, "$1 $2")
-    .trim()
-    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
-
-const directChildText = (element: Element, tagName: string): string => {
-  const child = Array.from(element.children).find((candidate) => candidate.tagName.toLowerCase() === tagName);
-  if (!child) {
-    return "";
-  }
-  return child.textContent.trim();
-};
-
-const referencedLabelText = (element: Element): string => {
-  const labelIds = element.getAttribute("aria-labelledby")?.trim();
-  if (!labelIds) {
-    return "";
-  }
-
-  return labelIds
-    .split(/\s+/u)
-    .map((id) => {
-      const labelElement = element.ownerDocument.getElementById(id);
-      return labelElement ? labelElement.textContent.trim() : "";
-    })
-    .filter(Boolean)
-    .join(" ");
-};
-
-const nameFromSvgElement = (element: Element, id: string): string => {
-  const explicitName = element.getAttribute("data-tadpole-name") ?? element.getAttribute("aria-label");
-  if (explicitName?.trim()) {
-    return explicitName.trim();
-  }
-
-  const referencedLabel = referencedLabelText(element);
-  if (referencedLabel) {
-    return referencedLabel;
-  }
-
-  const titleLabel = directChildText(element, "title");
-  if (titleLabel) {
-    return titleLabel;
-  }
-
-  const descriptionLabel = directChildText(element, "desc");
-  if (descriptionLabel) {
-    return descriptionLabel;
-  }
-
-  if (element.tagName.toLowerCase() === "text") {
-    const textLabel = element.textContent.trim();
-    if (textLabel) {
-      return `${textLabel} Text`;
-    }
-  }
-
-  return nameFromId(id) || id;
-};
-
 const visitLayerElement = (
   element: Element,
   parentTargetId: string,
@@ -129,15 +30,22 @@ const visitLayerElement = (
   rows: SvgLayerRow[],
   seenTargetIds: Set<string>,
 ): void => {
-  const tagName = element.tagName.toLowerCase();
   const targetId = element.getAttribute("id")?.trim() ?? "";
-  const isSelectableTarget = targetId !== "" && selectableTags.has(tagName) && !seenTargetIds.has(targetId);
+  const isSelectableTarget = isSelectableSvgTargetElement(element) && !seenTargetIds.has(targetId);
   const nextParentTargetId = isSelectableTarget ? targetId : parentTargetId;
   const nextDepth = isSelectableTarget ? depth + 1 : depth;
 
   if (isSelectableTarget) {
     seenTargetIds.add(targetId);
-    rows.push(new SvgLayerRow(targetId, parentTargetId, nameFromSvgElement(element, targetId), svgKindFromTag(tagName), depth));
+    rows.push(
+      new SvgLayerRow(
+        targetId,
+        parentTargetId,
+        svgTargetNameFromElement(element, targetId),
+        svgTargetKindFromTag(element.tagName),
+        depth,
+      ),
+    );
   }
 
   Array.from(element.children).forEach((child) => {

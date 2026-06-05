@@ -17,6 +17,12 @@
   } from "./EditorCommands";
   import { serializeSvgNativeSave, SvgNativeSaveRequest } from "./SvgNativeSave";
   import { buildSvgLayerTree, type SvgLayerRow } from "./SvgLayerTree";
+  import {
+    selectableSvgTargetSelector,
+    svgTargetKindFromTag,
+    svgTargetNameFromElement,
+    type SvgTargetKind,
+  } from "./SvgTargetMetadata";
 
   type FontRecord = {
     file: string;
@@ -28,7 +34,7 @@
   type AnimationTarget = {
     id: string;
     name: string;
-    kind: "group" | "path" | "text" | "shape";
+    kind: SvgTargetKind;
   };
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
@@ -344,7 +350,6 @@
     />
   </g>
 </svg>`;
-  const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
   const blockedSvgElements = new Set([
     "animate",
     "animatecolor",
@@ -420,76 +425,6 @@
   ]);
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
-  const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
-    const tag = tagName.toLowerCase();
-    if (tag === "g" || tag === "svg") {
-      return "group";
-    }
-    if (tag === "path") {
-      return "path";
-    }
-    if (tag === "text") {
-      return "text";
-    }
-    return "shape";
-  };
-
-  const nameFromId = (id: string): string =>
-    id
-      .replace(/[-_]+/g, " ")
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .trim()
-      .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-  const directChildText = (element: Element, tagName: string): string => {
-    const child = Array.from(element.children).find((candidate) => candidate.tagName.toLowerCase() === tagName);
-    return child?.textContent?.trim() ?? "";
-  };
-
-  const referencedLabelText = (element: Element): string => {
-    const labelIds = element.getAttribute("aria-labelledby")?.trim();
-    if (!labelIds) {
-      return "";
-    }
-
-    return labelIds
-      .split(/\s+/)
-      .map((id) => element.ownerDocument.getElementById(id)?.textContent?.trim() ?? "")
-      .filter(Boolean)
-      .join(" ");
-  };
-
-  const nameFromSvgElement = (element: Element, id: string): string => {
-    const explicitName = element.getAttribute("data-tadpole-name") ?? element.getAttribute("aria-label");
-    if (explicitName?.trim()) {
-      return explicitName.trim();
-    }
-
-    const referencedLabel = referencedLabelText(element);
-    if (referencedLabel) {
-      return referencedLabel;
-    }
-
-    const titleLabel = directChildText(element, "title");
-    if (titleLabel) {
-      return titleLabel;
-    }
-
-    const descriptionLabel = directChildText(element, "desc");
-    if (descriptionLabel) {
-      return descriptionLabel;
-    }
-
-    if (element.tagName.toLowerCase() === "text") {
-      const textLabel = element.textContent?.trim();
-      if (textLabel) {
-        return `${textLabel} Text`;
-      }
-    }
-
-    return nameFromId(id) || id;
-  };
-
   const isSafeSvgReference = (value: string): boolean => {
     if (value === "") {
       return true;
@@ -539,7 +474,7 @@
     }
 
     const seen = new Set<string>();
-    return Array.from(doc.querySelectorAll(selectableSvgSelector)).reduce<AnimationTarget[]>((targets, element) => {
+    return Array.from(doc.querySelectorAll(selectableSvgTargetSelector)).reduce<AnimationTarget[]>((targets, element) => {
       const id = element.getAttribute("id")?.trim();
       if (!id || seen.has(id)) {
         return targets;
@@ -548,8 +483,8 @@
       seen.add(id);
       targets.push({
         id,
-        name: nameFromSvgElement(element, id),
-        kind: svgKindFromTag(element.tagName),
+        name: svgTargetNameFromElement(element, id),
+        kind: svgTargetKindFromTag(element.tagName),
       });
       return targets;
     }, []);
@@ -1253,6 +1188,28 @@
     return rows;
   };
 
+  const warningReferencedTargetIds = (warning: string, sortedTargetIds: readonly string[]): string[] => {
+    const referencedTargetIds: string[] = [];
+    sortedTargetIds.forEach((targetId) => {
+      const marker = `#${targetId}`;
+      let markerIndex = warning.indexOf(marker);
+      while (markerIndex !== -1) {
+        const targetIdStart = markerIndex + 1;
+        const hasLongerKnownTargetMatch = referencedTargetIds.some(
+          (referencedTargetId) =>
+            referencedTargetId.startsWith(targetId) &&
+            warning.slice(targetIdStart, targetIdStart + referencedTargetId.length) === referencedTargetId,
+        );
+        if (!hasLongerKnownTargetMatch) {
+          referencedTargetIds.push(targetId);
+          return;
+        }
+        markerIndex = warning.indexOf(marker, markerIndex + marker.length);
+      }
+    });
+    return referencedTargetIds;
+  };
+
   const buildLayerPanelRows = (
     layerRows: readonly SvgLayerRow[],
     trackItems: TimelineTrack[],
@@ -1262,9 +1219,18 @@
   ): LayerPanelRow[] => {
     const trackCountByTargetId = new Map<string, number>();
     const keyframeCountByTargetId = new Map<string, number>();
+    const warningCountByTargetId = new Map<string, number>();
     trackItems.forEach((track) => {
       trackCountByTargetId.set(track.targetId, (trackCountByTargetId.get(track.targetId) ?? 0) + 1);
       keyframeCountByTargetId.set(track.targetId, (keyframeCountByTargetId.get(track.targetId) ?? 0) + track.keyframes.length);
+    });
+    const sortedTargetIds = Array.from(new Set(layerRows.map((row) => row.targetId))).sort(
+      (first, second) => second.length - first.length || first.localeCompare(second),
+    );
+    warnings.forEach((warning) => {
+      warningReferencedTargetIds(warning, sortedTargetIds).forEach((targetId) => {
+        warningCountByTargetId.set(targetId, (warningCountByTargetId.get(targetId) ?? 0) + 1);
+      });
     });
 
     return layerRows
@@ -1273,7 +1239,7 @@
         row,
         trackCount: trackCountByTargetId.get(row.targetId) ?? 0,
         keyframeCount: keyframeCountByTargetId.get(row.targetId) ?? 0,
-        warningCount: warnings.filter((warning) => warning.includes(`#${row.targetId}`)).length,
+        warningCount: warningCountByTargetId.get(row.targetId) ?? 0,
         selected: row.targetId === selectedId,
       }));
   };
