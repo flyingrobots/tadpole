@@ -1,3 +1,4 @@
+/* global process, document, HTMLElement, console */
 import { createRequire } from "node:module";
 
 const requireFromCwd = createRequire(`${process.cwd()}/`);
