@@ -84,7 +84,8 @@ All notable changes for Tadpole are documented here.
 - Fixed SVG animation import for staggered safe SMIL timelines by importing
   non-zero `begin` offsets into keyframe times and supporting
   `stroke-dashoffset` as an editable, previewable, runnable, and saveable
-  numeric property.
+  numeric property, including SVG-native save/reopen for partial-duration
+  scalar tracks.
 
 ## [0.1.0] - 2026-05-31
 

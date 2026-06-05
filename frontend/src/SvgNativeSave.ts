@@ -161,7 +161,7 @@ const formatNumber = (value: number): string => {
   return fixed.replace(/\.?0+$/u, "");
 };
 
-const formatKeyTime = (time: number, durationMs: number): string => formatNumber(time / durationMs);
+const formatKeyTime = (time: number, beginMs: number, durationMs: number): string => formatNumber((time - beginMs) / durationMs);
 
 const propertyRank = (property: SvgNativeSaveProperty): number => {
   const index = propertyOrder.indexOf(property);
@@ -324,12 +324,21 @@ const normalizeTrack = (track: SvgNativeSaveTrack, durationMs: number, warnings:
     normalizedKeyframes.push({ time, value });
   }
 
-  if (normalizedKeyframes[0]?.time !== 0 || normalizedKeyframes[normalizedKeyframes.length - 1]?.time !== Math.round(durationMs)) {
+  const firstKeyframe = normalizedKeyframes.at(0);
+  const lastKeyframe = normalizedKeyframes.at(-1);
+  if (firstKeyframe === undefined || lastKeyframe === undefined) {
+    addWarning(warnings, "invalid-keyframe-time", "error", `Track ${track.id} has no normalized keyframe times.`, track.id);
+    return null;
+  }
+
+  const firstTime = firstKeyframe.time;
+  const lastTime = lastKeyframe.time;
+  if (firstTime < 0 || lastTime > Math.round(durationMs)) {
     addWarning(
       warnings,
       "partial-track-duration",
       "error",
-      `Track ${track.id} must start at 0ms and end at ${Math.round(durationMs)}ms for SVG roundtrip save.`,
+      `Track ${track.id} must stay within the 0ms to ${Math.round(durationMs)}ms timeline for SVG roundtrip save.`,
       track.id,
     );
     return null;
@@ -366,15 +375,17 @@ const applyAnimationAttributes = (
   element: Element,
   track: NormalizedTrack,
   values: readonly string[],
-  durationMs: number,
   isLooping: boolean,
 ): void => {
-  element.setAttribute("begin", "0s");
+  const beginMs = track.keyframes[0]?.time ?? 0;
+  const endMs = track.keyframes[track.keyframes.length - 1]?.time ?? beginMs;
+  const durationMs = Math.max(1, endMs - beginMs);
+  element.setAttribute("begin", `${Math.round(beginMs)}ms`);
   element.setAttribute("dur", `${Math.round(durationMs)}ms`);
   element.setAttribute("calcMode", "linear");
   element.setAttribute("fill", "freeze");
   element.setAttribute("values", values.join(";"));
-  element.setAttribute("keyTimes", track.keyframes.map((keyframe) => formatKeyTime(keyframe.time, durationMs)).join(";"));
+  element.setAttribute("keyTimes", track.keyframes.map((keyframe) => formatKeyTime(keyframe.time, beginMs, durationMs)).join(";"));
   element.setAttribute(authoredAttributeName, "true");
   element.setAttribute("data-tadpole-track-id", track.id);
   element.setAttribute("data-tadpole-property", track.property);
@@ -383,14 +394,15 @@ const applyAnimationAttributes = (
   }
 };
 
-const appendScalarAnimation = (document: Document, target: Element, track: NormalizedTrack, durationMs: number, isLooping: boolean): void => {
+const appendScalarAnimation = (document: Document, target: Element, track: NormalizedTrack, isLooping: boolean): void => {
   const element = document.createElementNS(svgNamespace, "animate");
-  element.setAttribute("attributeName", attributeNameForProperty(track.property));
+  const attributeName = attributeNameForProperty(track.property);
+  element.setAttribute("attributeName", attributeName);
+  target.setAttribute(attributeName, track.keyframes[0]?.value ?? "");
   applyAnimationAttributes(
     element,
     track,
     track.keyframes.map((keyframe) => keyframe.value),
-    durationMs,
     isLooping,
   );
   target.append(element);
@@ -404,7 +416,6 @@ const appendTranslateAnimation = (
   referenceTrack: NormalizedTrack,
   xTrack: NormalizedTrack | null,
   yTrack: NormalizedTrack | null,
-  durationMs: number,
   isLooping: boolean,
 ): void => {
   const element = document.createElementNS(svgNamespace, "animateTransform");
@@ -414,7 +425,6 @@ const appendTranslateAnimation = (
     element,
     referenceTrack,
     referenceTrack.keyframes.map((_, index) => `${valueAtIndex(xTrack, index, "0")} ${valueAtIndex(yTrack, index, "0")}`),
-    durationMs,
     isLooping,
   );
   target.append(element);
@@ -425,7 +435,6 @@ const appendSingleTransformAnimation = (
   target: Element,
   track: NormalizedTrack,
   transformType: string,
-  durationMs: number,
   isLooping: boolean,
 ): void => {
   const element = document.createElementNS(svgNamespace, "animateTransform");
@@ -435,7 +444,6 @@ const appendSingleTransformAnimation = (
     element,
     track,
     track.keyframes.map((keyframe) => keyframe.value),
-    durationMs,
     isLooping,
   );
   target.append(element);
@@ -504,7 +512,6 @@ const appendAnimations = (
   document: Document,
   root: Element,
   tracks: readonly NormalizedTrack[],
-  durationMs: number,
   isLooping: boolean,
 ): number => {
   const sortedTargets = Array.from(new Set(tracks.map((track) => track.targetId))).sort();
@@ -519,7 +526,7 @@ const appendAnimations = (
     for (const property of scalarProperties) {
       const track = trackFor(tracks, targetId, property);
       if (track) {
-        appendScalarAnimation(document, target, track, durationMs, isLooping);
+        appendScalarAnimation(document, target, track, isLooping);
         serializedTrackCount += 1;
       }
     }
@@ -528,19 +535,19 @@ const appendAnimations = (
     const yTrack = trackFor(tracks, targetId, "y");
     const translateTrack = xTrack ?? yTrack;
     if (translateTrack) {
-      appendTranslateAnimation(document, target, translateTrack, xTrack, yTrack, durationMs, isLooping);
+      appendTranslateAnimation(document, target, translateTrack, xTrack, yTrack, isLooping);
       serializedTrackCount += (xTrack ? 1 : 0) + (yTrack ? 1 : 0);
     }
 
     const scaleTrack = trackFor(tracks, targetId, "scale");
     if (scaleTrack) {
-      appendSingleTransformAnimation(document, target, scaleTrack, "scale", durationMs, isLooping);
+      appendSingleTransformAnimation(document, target, scaleTrack, "scale", isLooping);
       serializedTrackCount += 1;
     }
 
     const rotationTrack = trackFor(tracks, targetId, "rotation");
     if (rotationTrack) {
-      appendSingleTransformAnimation(document, target, rotationTrack, "rotate", durationMs, isLooping);
+      appendSingleTransformAnimation(document, target, rotationTrack, "rotate", isLooping);
       serializedTrackCount += 1;
     }
   }
@@ -597,7 +604,7 @@ export const serializeSvgNativeSave = (request: SvgNativeSaveRequest): SvgNative
 
   removePriorTadpoleNodes(root);
   const sortedTracks = [...normalizedTracks].sort(compareNormalizedTracks);
-  const serializedTrackCount = appendAnimations(document, root, sortedTracks, durationMs, request.isLooping);
+  const serializedTrackCount = appendAnimations(document, root, sortedTracks, request.isLooping);
   root.insertBefore(createMetadataElement(document, durationMs, serializedTrackCount), root.firstChild);
   const svgText = new XMLSerializer().serializeToString(root);
   return SvgNativeSaveResult.success(svgText, warnings, serializedTrackCount);
