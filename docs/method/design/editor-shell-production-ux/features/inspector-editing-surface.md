@@ -3,12 +3,12 @@ title: "G18-001 - Inspector Editing Surface"
 lane: "design"
 goal: "Goal 18"
 issue: "https://github.com/flyingrobots/tadpole/issues/40"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "https://github.com/flyingrobots/tadpole/pull/50"
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-05"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -27,10 +27,10 @@ updated: "2026-06-03"
 - [x] `git fetch origin` completed.
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
-- [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] GitHub issue created or reused.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -50,16 +50,27 @@ verify contextual editing without guessing from panel text.
 
 ## Hill
 
-By the end of this cycle, selecting a target, track, keyframe, or warning opens
-the corresponding Inspector mode and keyframe edits update preview/export
-state, proven by a browser witness.
+By the end of this cycle, opening the Inspector after selecting a target,
+track, keyframe, or warning shows the corresponding Inspector mode, and
+keyframe edits update preview/export state, proven by a browser witness.
 
 ## Current Truth
 
-- Current UI includes track/keyframe controls, but not as contextual Inspector
-  modes.
-- Parent design: [Inspector Model](../design.md#inspector-model).
-- Mockup: [Panels](../mockups/panels-inspector-layers.svg).
+- Current `main` includes a thin drawer Inspector panel with selected target
+  and track facts, but it does not expose a stable mode contract or keyframe
+  editor. Evidence:
+  [`frontend/src/App.svelte#5032:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5032).
+- Current `main` also includes an always-visible timeline-side selection
+  inspector with target, track, and keyframe controls, so precision editing
+  exists but is not the contextual Inspector panel surface. Evidence:
+  [`frontend/src/App.svelte#5754:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5754).
+- Current timeline property rows still own direct keyframe editing, preserving
+  the invariant that timing edits do not require the Inspector. Evidence:
+  [`frontend/src/App.svelte#5677:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5677).
+- Parent design: Inspector Model starts in
+  [`docs/method/design/editor-shell-production-ux/design.md#1046:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/docs/method/design/editor-shell-production-ux/design.md#L1046).
+- Mockup:
+  [`docs/method/design/editor-shell-production-ux/mockups/panels-inspector-layers.svg`](../mockups/panels-inspector-layers.svg).
 
 ## Problem
 
@@ -87,8 +98,9 @@ This cycle does not include:
 
 ## User Experience / Product Shape
 
-Inspector opens contextually when useful. It can be closed; common timing edits
-still happen directly in the timeline.
+Inspector is opened from the View menu and follows the current selection while
+open. It can be closed; common timing edits still happen directly in the
+timeline.
 
 ```mermaid
 stateDiagram-v2
@@ -176,17 +188,17 @@ Choose Option B. Inspector is contextual precision UI, not mandatory timing UI.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add inspector mode derivation.
-- [ ] Slice 2: Render document and target modes.
-- [ ] Slice 3: Render track mode and track actions.
-- [ ] Slice 4: Render keyframe editor with validation.
-- [ ] Slice 5: Add warning mode and browser witness.
+- [x] Slice 1: Add inspector mode derivation.
+- [x] Slice 2: Render document and target modes.
+- [x] Slice 3: Render track mode and track actions.
+- [x] Slice 4: Render keyframe editor with validation.
+- [x] Slice 5: Add warning mode and browser witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: selecting a target opens target mode.
-- [ ] Browser witness: selecting keyframe opens keyframe mode.
-- [ ] Browser witness: keyframe value edit updates preview/export state.
+- [x] Browser witness: selecting a target opens target mode.
+- [x] Browser witness: selecting keyframe opens keyframe mode.
+- [x] Browser witness: keyframe value edit updates preview/export state.
 
 ## Proof Matrix
 
@@ -198,44 +210,77 @@ Choose Option B. Inspector is contextual precision UI, not mandatory timing UI.
 
 ## Acceptance Criteria
 
-- [ ] Inspector modes match selection state.
-- [ ] Keyframe edits update timeline and preview.
-- [ ] Invalid values are rejected or warned.
-- [ ] Timeline remains usable with Inspector closed.
-- [ ] Local validation is green.
+- [x] Inspector modes match selection state.
+- [x] Keyframe edits update timeline and preview.
+- [x] Invalid values are rejected or warned.
+- [x] Timeline remains usable with Inspector closed.
+- [x] Local validation is green.
 
 ## Validation Plan
 
 ```bash
 npm run check
 npm run build
+npm audit --audit-level=moderate
 node docs/method/witness/editor-shell-production-ux/inspector-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/menu-dialogs-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/panel-host-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/timeline-stacks-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/work-area-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/layers-panel-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/command-history-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/svg-save-roundtrip-smoke.mjs
+node docs/method/witness/svg-timeline-mvp/import-gate-smoke.mjs
+node docs/method/witness/svg-timeline-mvp/project-export-smoke.mjs
+node docs/method/witness/svg-timeline-mvp/animation-import-smoke.mjs
+node docs/method/witness/svg-timeline-mvp/runnable-export-smoke.mjs
+node docs/method/witness/svg-timeline-mvp/rough-ux-hardening-smoke.mjs
+npx tsx docs/method/witness/editor-shell-production-ux/command-history-core.ts
+npx tsx docs/method/witness/editor-shell-production-ux/svg-native-save-core.ts
+npx tsx docs/method/witness/editor-shell-production-ux/svg-layer-tree-core.ts
+npx markdownlint-cli2 CHANGELOG.md BEARING.md docs/method/design/editor-shell-production-ux/features/inspector-editing-surface.md
+git diff --check
 ```
 
 ## Playback / Witness
 
-Run `inspector-smoke.mjs` after importing a fixture with multiple target types.
-
-## Open Questions
-
-- @flyingrobots: Should Inspector auto-open on target selection or only when
-  enabled? Default to contextual open on desktop and a panel sheet on narrow
-  screens.
+Run `docs/method/witness/editor-shell-production-ux/inspector-smoke.mjs`
+against the dev app. It imports an SVG with one supported animation and one
+unsupported animation warning, opens the Inspector, selects a target without a
+track, selects a keyframe, edits a valid and invalid value, closes the
+Inspector, proves timeline selection still works, then reopens the Inspector in
+warning mode.
 
 ## Follow-On Issues
 
 - Curves mode value-shape editing.
+- Optional power-user auto-open behavior for Inspector selection changes,
+  tracked separately from the default View-menu-opened contract.
 
 ## Retrospective
 
 What changed from the design:
 
-- TBD
+- Inspector mode is contextual once the panel is opened through the View menu.
+  Selection does not force-open the panel, preserving the hidden-by-default
+  secondary-panel invariant.
+- Warning mode reuses the Warnings panel row selection, so warnings can be
+  inspected without inventing a second warning list.
 
 What the tests proved:
 
-- TBD
+- The browser witness proves `document`/`target`/`track`/`keyframe`/`warning`
+  mode facts, selected IDs, keyframe value editing, invalid-value rejection,
+  closed-Inspector timeline usability, and warning inspection.
+- Regression witnesses prove the new panel does not break menu/dialogs, panel
+  host focus, timeline stacks, work-area controls, layers navigation, command
+  history, SVG save, import, project restore, runnable export, or rough UX
+  flows.
 
 What remains open:
 
-- TBD
+- Curve/tangent editing and serializer warning repair remain follow-on work.
+
+PR:
+
+- [#50](https://github.com/flyingrobots/tadpole/pull/50)

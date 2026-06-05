@@ -81,6 +81,7 @@ const openPanel = async (page, menu, command, selector) => {
 const openSourcePanel = async (page) => openPanel(page, "view", "view.showSource", ".panel-svg-source");
 const openTargetsPanel = async (page) => openPanel(page, "view", "view.showTargets", ".panel-target-library");
 const openExportPanel = async (page) => openPanel(page, "view", "view.showExport", ".export-block");
+const openInspectorPanel = async (page) => openPanel(page, "view", "view.showInspector", "[data-tadpole-inspector-panel]");
 
 const runImportWorkflowSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
@@ -108,9 +109,11 @@ const runImportWorkflowSmoke = async (browser) => {
   await page.locator(".preview-svg-host #flame").click({ force: true });
   const flameIsSelected = await page.locator(".preview-svg-host #flame").evaluate((element) => element.classList.contains("tadpole-selected-target"));
   assert(flameIsSelected, "preview click did not select imported #flame target");
-  const selectedTargetId = await page.locator(".selected-target-summary input").nth(1).inputValue();
+  await openInspectorPanel(page);
+  const inspectorPanel = page.locator("[data-tadpole-inspector-panel]");
+  const selectedTargetId = await inspectorPanel.getAttribute("data-tadpole-inspector-target-id");
   assert(selectedTargetId === "flame", `selected target inspector expected flame, got ${selectedTargetId}`);
-  await page.getByRole("button", { name: "Create Track" }).click();
+  await inspectorPanel.getByRole("button", { name: "Create Fill track for Flame" }).click();
   assert((await page.locator(".track-card", { hasText: "Flame" }).locator("text=fill").count()) > 0, "new track was not created for imported Flame target");
 
   await openSourcePanel(page);

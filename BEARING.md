@@ -42,6 +42,10 @@ deterministic keyframe-based motion for logo/diagram targets.
   sanitized document, supports search by ID/name/parent/kind, exposes
   target/parent/depth/track/keyframe/warning facts, and lets keyboard users
   synchronize layer, canvas, and timeline selection.
+- The Inspector panel now exposes contextual document, target, track, keyframe,
+  and warning modes with stable selected-state facts and validated keyframe
+  editing, while timeline rows remain directly usable with the Inspector
+  closed.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -86,6 +90,8 @@ deterministic keyframe-based motion for logo/diagram targets.
   SVG-native save branch.
 - Completed Goal 17 layers panel navigation with hierarchy-aware layer rows,
   search, selection synchronization, and browser witness coverage.
+- Completed Goal 18 Inspector editing surface with contextual modes, keyframe
+  validation, warning inspection, and browser witness coverage.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
@@ -94,7 +100,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Static SVG starter timeline suggestions remain deferred after the supported
   SMIL import subset.
 - Import/revert undo, work-area SVG metadata persistence, dense timeline
-  summary sampling, and multi-select target editing remain deferred.
+  summary sampling, multi-select target editing, and curve/tangent editing
+  remain deferred.
 - SVG-native save currently supports the safe importer subset only; non-linear
   easing, partial-duration tracks, unaligned translate components, and broader
   SMIL parity remain deliberate follow-on work.
