@@ -42,6 +42,10 @@ const runMenuCommandByKeyboard = async (page, menu, command) => {
   await page.locator(`[data-tadpole-menu-button="${menu}"]`).focus();
   await page.locator(`[data-tadpole-menu-button="${menu}"]`).press("Enter");
   await page.locator(`[data-tadpole-menu="${menu}"]`).waitFor({ state: "visible" });
+  await page.waitForFunction(
+    (menuId) => document.activeElement instanceof HTMLElement && document.activeElement.closest(`[data-tadpole-menu="${menuId}"]`) !== null,
+    menu,
+  );
   await page.locator(`[data-tadpole-command="${command}"]`).focus();
   await page.locator(`[data-tadpole-command="${command}"]`).press("Enter");
 };
@@ -50,9 +54,13 @@ const importSvgByKeyboard = async (page, source) => {
   await runMenuCommandByKeyboard(page, "file", "file.pasteSvg");
   const dialog = page.locator("[data-tadpole-active-dialog]");
   await dialog.waitFor({ state: "visible" });
+  await waitForFocusedSelector(page, "[data-tadpole-active-dialog] .dialog-close");
+  await page.keyboard.press("Tab");
+  await waitForFocusedSelector(page, "[data-tadpole-active-dialog] textarea");
   await dialog.locator("textarea").fill(source);
   const importButton = dialog.getByRole("button", { name: "Import Pasted SVG" });
-  await importButton.focus();
+  await page.keyboard.press("Tab");
+  await waitForFocusedSelector(page, "[data-tadpole-active-dialog] button:not(.dialog-close)");
   await importButton.press("Enter");
   await dialog.waitFor({ state: "hidden" });
   await page.locator("[data-tadpole-canvas-stage] #keyboard-box").waitFor({ state: "attached" });
@@ -61,6 +69,9 @@ const importSvgByKeyboard = async (page, source) => {
 const openLayersByKeyboard = async (page) => {
   await runMenuCommandByKeyboard(page, "view", "view.showLayers");
   await page.locator("[data-tadpole-layers-panel]").waitFor({ state: "visible" });
+  await waitForFocusedSelector(page, "[data-tadpole-panel-close]");
+  await page.keyboard.press("Tab");
+  await waitForFocusedSelector(page, "[data-tadpole-layer-search]");
 };
 
 const waitForFocusedSelector = async (page, selector) => {
@@ -76,6 +87,31 @@ const blurActiveElement = async (page) => {
       document.activeElement.blur();
     }
   });
+};
+
+const installKeyframeBubbleProbe = async (page) => {
+  await page.evaluate(() => {
+    const lane = document.querySelector("[data-tadpole-track-lane]");
+    if (!(lane instanceof HTMLElement)) {
+      throw new Error("track lane missing for keyframe bubble probe");
+    }
+    lane.removeAttribute("data-tadpole-test-bubbled-keyframe-key");
+    const handler = (event) => {
+      if (event.target !== lane && (event.key === "Enter" || event.key === " ")) {
+        lane.setAttribute("data-tadpole-test-bubbled-keyframe-key", event.key === " " ? "Space" : event.key);
+      }
+      lane.removeEventListener("keydown", handler);
+    };
+    lane.addEventListener("keydown", handler);
+  });
+};
+
+const assertKeyframeActivationStayedLocal = async (page, expectedCount, keyName) => {
+  await page.waitForTimeout(100);
+  const markerCount = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
+  const bubbledKey = await page.locator("[data-tadpole-track-lane]").getAttribute("data-tadpole-test-bubbled-keyframe-key");
+  assert(markerCount === expectedCount, `${keyName} on a focused keyframe created an extra keyframe`);
+  assert(bubbledKey === null, `${keyName} on a focused keyframe bubbled into the parent lane`);
 };
 
 const run = async () => {
@@ -104,6 +140,9 @@ const run = async () => {
 
     const initialKeyframeCount = await page.locator('[data-tadpole-keyframe-track-id][data-keyframe-id]').count();
     await trackLane.focus();
+    await page.keyboard.press("Tab");
+    await waitForFocusedSelector(page, "[data-tadpole-keyframe-track-id][data-keyframe-id]");
+    await trackLane.focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("k");
     await page.waitForFunction((count) => document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length > count, initialKeyframeCount);
@@ -128,6 +167,14 @@ const run = async () => {
       },
       { keyframeId: selectedKeyframeId, time: originalTime },
     );
+
+    const countBeforeFocusedActivation = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
+    await installKeyframeBubbleProbe(page);
+    await selectedMarker.press("Enter");
+    await assertKeyframeActivationStayedLocal(page, countBeforeFocusedActivation, "Enter");
+    await installKeyframeBubbleProbe(page);
+    await selectedMarker.press("Space");
+    await assertKeyframeActivationStayedLocal(page, countBeforeFocusedActivation, "Space");
 
     await page.keyboard.press("Delete");
     await page.waitForFunction(

@@ -4125,16 +4125,20 @@ ${runnableRuntimeScript}
   ): void => {
     if (event.key === " " || event.key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       selectKeyframe(trackId, keyframeId, currentKeyframeTime);
       return;
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
+      event.stopPropagation();
       removeKeyframe(trackId, keyframeId);
       selectedKeyframeId = "";
       return;
     }
-    moveKeyframeByKeyboard(trackId, keyframeId, currentKeyframeTime, event);
+    if (moveKeyframeByKeyboard(trackId, keyframeId, currentKeyframeTime, event)) {
+      event.stopPropagation();
+    }
   };
 
   const startKeyframeDrag = (trackId: string, event: MouseEvent): void => {
