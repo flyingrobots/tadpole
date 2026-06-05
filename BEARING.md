@@ -46,6 +46,10 @@ deterministic keyframe-based motion for logo/diagram targets.
   and warning modes with stable selected-state facts and validated keyframe
   editing, while timeline rows remain directly usable with the Inspector
   closed.
+- The editor now has keyboard accessibility witness coverage for opening an
+  SVG, selecting a target through Layers, adding/moving/deleting timeline
+  keyframes, starting playback, opening warnings, and returning focus from
+  panels.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -92,6 +96,9 @@ deterministic keyframe-based motion for logo/diagram targets.
   search, selection synchronization, and browser witness coverage.
 - Completed Goal 18 Inspector editing surface with contextual modes, keyframe
   validation, warning inspection, and browser witness coverage.
+- Completed Goal 19 keyboard accessibility witnesses for the production editor
+  golden path, focused keyframe controls, menu activation, warning inspection,
+  playback, and panel focus return.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 

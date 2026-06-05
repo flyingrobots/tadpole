@@ -3,12 +3,12 @@ title: "G19-001 - Keyboard Accessibility Witnesses"
 lane: "design"
 goal: "Goal 19"
 issue: "https://github.com/flyingrobots/tadpole/issues/41"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: "https://github.com/flyingrobots/tadpole/pull/51"
+status: "landed"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-05"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -27,10 +27,10 @@ updated: "2026-06-03"
 - [x] `git fetch origin` completed.
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
-- [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] GitHub issue created or reused.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
@@ -57,8 +57,20 @@ preview, and open warnings.
 
 ## Current Truth
 
-- Prior witnesses verify behavior mostly through direct selectors and pointer
-  actions.
+- Current `main` includes menu button and item keyboard handlers, so the top
+  menu is already partly keyboard-operable. Evidence:
+  [`frontend/src/App.svelte#4219:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L4219).
+- Current `main` includes global timeline keyboard shortcuts and shields menu
+  and dialog text entry from shortcut handling. Evidence:
+  [`frontend/src/App.svelte#1092:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L1092).
+- Current `main` makes layer rows keyboard focusable because they are buttons
+  with stable layer facts, but there is no golden-path keyboard-only witness
+  proving layer selection through edit and warning inspection. Evidence:
+  [`frontend/src/App.svelte#5115:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L5115).
+- Current `main` exposes keyframe markers as buttons with keyboard handlers,
+  but the focus path and shortcut outcomes are not covered by a dedicated
+  accessibility witness. Evidence:
+  [`frontend/src/App.svelte#5936:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L5936).
 - Parent design: [Accessibility Contract](../design.md#accessibility-contract)
   and [Keyboard Model](../design.md#keyboard-model).
 
@@ -186,17 +198,17 @@ Choose Option B. Accessibility proof is a goal, not a cleanup note.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add landmarks and accessible names.
-- [ ] Slice 2: Add timeline row/keyframe focus model.
-- [ ] Slice 3: Add keyboard keyframe add/move/delete commands.
-- [ ] Slice 4: Add menu/dialog/panel focus return checks.
-- [ ] Slice 5: Add keyboard-only golden path witness.
+- [x] Slice 1: Add landmarks and accessible names.
+- [x] Slice 2: Add timeline row/keyframe focus model.
+- [x] Slice 3: Add keyboard keyframe add/move/delete commands.
+- [x] Slice 4: Add menu/dialog/panel focus return checks.
+- [x] Slice 5: Add keyboard-only golden path witness.
 
 ## Tests To Write First
 
-- [ ] Browser witness: keyboard-only import/select/edit/play path.
-- [ ] Browser witness: focus does not enter closed panels.
-- [ ] Browser witness: warning badge exposes count and opens list.
+- [x] Browser witness: keyboard-only import/select/edit/play path.
+- [x] Browser witness: focus does not enter closed panels.
+- [x] Browser witness: warning badge exposes count and opens list.
 
 ## Proof Matrix
 
@@ -208,30 +220,32 @@ Choose Option B. Accessibility proof is a goal, not a cleanup note.
 
 ## Acceptance Criteria
 
-- [ ] Keyboard-only golden path passes.
-- [ ] Focus order is deterministic.
-- [ ] Keyframe controls have accessible names.
-- [ ] Warning state has text equivalent.
-- [ ] Local validation is green.
+- [x] Keyboard-only golden path passes.
+- [x] Focus order is deterministic.
+- [x] Keyframe controls have accessible names.
+- [x] Warning state has text equivalent.
+- [x] Local validation is green.
 
 ## Validation Plan
 
 ```bash
 npm run check
 npm run build
+npm audit --audit-level=moderate
+node --check docs/method/witness/editor-shell-production-ux/keyboard-a11y-smoke.mjs
 node docs/method/witness/editor-shell-production-ux/keyboard-a11y-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/menu-dialogs-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/panel-host-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/work-area-smoke.mjs
+node docs/method/witness/editor-shell-production-ux/command-history-smoke.mjs
+npx markdownlint-cli2 CHANGELOG.md BEARING.md docs/method/design/editor-shell-production-ux/features/keyboard-accessibility-witnesses.md
+git diff --check
 ```
 
 ## Playback / Witness
 
 Run `keyboard-a11y-smoke.mjs` against a fixture with at least one warning and
 one editable target.
-
-## Open Questions
-
-- @flyingrobots: Do we need Playwright accessibility snapshots, or are
-  role/name assertions enough? Start with role/name assertions and add
-  snapshots if gaps remain.
 
 ## Follow-On Issues
 
@@ -241,12 +255,28 @@ one editable target.
 
 What changed from the design:
 
-- TBD
+- Menu item keyboard handling now explicitly activates the focused command on
+  Enter or Space, rather than depending on browser-default button activation
+  inside `role="menu"`.
+- Timeline lanes and keyframe buttons now publish stable target/property/time/
+  value facts and accessible names.
+- Focused keyframe buttons now support keyboard move and delete actions.
+- Playback work-area loop guards now require concrete numeric bounds before
+  reading work-area start/end values.
 
 What the tests proved:
 
-- TBD
+- The browser witness proves a keyboard-driven import, Layers target
+  selection, timeline lane keyframe creation, focused keyframe move/delete,
+  Timeline menu playback, warning badge activation, warning list inspection,
+  and panel close focus return.
+- Regression witnesses prove the change does not break menu/dialog activation,
+  panel host focus return, work-area playback, or command history shortcuts.
 
 What remains open:
 
-- TBD
+- A full WCAG audit and localization catalog extraction remain follow-on work.
+
+PR:
+
+- [#51](https://github.com/flyingrobots/tadpole/pull/51)

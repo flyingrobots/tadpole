@@ -949,6 +949,13 @@
       focusMenuButton(menu);
       return;
     }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (event.currentTarget instanceof HTMLButtonElement) {
+        event.currentTarget.click();
+      }
+      return;
+    }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
       return;
     }
@@ -3338,8 +3345,10 @@ ${runnableRuntimeScript}
     }
   };
 
+  const keyboardStepMs = (): number => (snapToFrames && snapMs > 0 ? snapMs : 16);
+
   const jumpByKeyboard = (event: KeyboardEvent): void => {
-    const step = snapToFrames && snapMs > 0 ? snapMs : 16;
+    const step = keyboardStepMs();
     if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
       event.preventDefault();
       currentTime = applySnap(clampMs(currentTime - step));
@@ -3699,15 +3708,18 @@ ${runnableRuntimeScript}
     const duration = Math.max(0.001, timelineDurationMs);
     const elapsed = timestamp - playbackStartTime;
     const workAreaLoop = activeWorkAreaLoopBounds();
+    const workAreaLoopStart = workAreaLoop?.start;
+    const workAreaLoopEnd = workAreaLoop?.end;
+    const hasWorkAreaLoop = typeof workAreaLoopStart === "number" && typeof workAreaLoopEnd === "number";
     let next = isLooping ? elapsed % duration : clamp(elapsed, 0, duration);
-    if (workAreaLoop) {
-      const workAreaDuration = Math.max(1, workAreaLoop.end - workAreaLoop.start);
-      next = workAreaLoop.start + (elapsed % workAreaDuration);
+    if (hasWorkAreaLoop) {
+      const workAreaDuration = Math.max(1, workAreaLoopEnd - workAreaLoopStart);
+      next = workAreaLoopStart + (elapsed % workAreaDuration);
     }
     next = applySnap(clampMs(next));
     currentTime = next;
 
-    if (!isLooping && elapsed >= duration) {
+    if (!isLooping && !hasWorkAreaLoop && elapsed >= duration) {
       currentTime = timelineDurationMs;
       isPlaying = false;
       if (rafHandle !== null) {
@@ -3725,13 +3737,19 @@ ${runnableRuntimeScript}
       return;
     }
     const workAreaLoop = activeWorkAreaLoopBounds();
-    if (workAreaLoop && (currentTime < workAreaLoop.start || currentTime >= workAreaLoop.end)) {
-      currentTime = workAreaLoop.start;
+    const workAreaLoopStart = workAreaLoop?.start;
+    const workAreaLoopEnd = workAreaLoop?.end;
+    if (
+      typeof workAreaLoopStart === "number" &&
+      typeof workAreaLoopEnd === "number" &&
+      (currentTime < workAreaLoopStart || currentTime >= workAreaLoopEnd)
+    ) {
+      currentTime = workAreaLoopStart;
     } else if (currentTime >= timelineDurationMs && !isLooping) {
       currentTime = 0;
     }
     isPlaying = true;
-    playbackStartTime = performance.now() - (workAreaLoop ? currentTime - workAreaLoop.start : currentTime);
+    playbackStartTime = performance.now() - (typeof workAreaLoopStart === "number" ? currentTime - workAreaLoopStart : currentTime);
     lastFrameTimestamp = performance.now();
     rafHandle = requestAnimationFrame((timestamp) => tick(timestamp));
   };
@@ -4079,6 +4097,89 @@ ${runnableRuntimeScript}
   const setKeyframeTime = (trackId: string, keyframeId: string, value: number, recordHistory = true): void => {
     const snapped = applySnap(clampMs(value));
     runEditorCommand(new MoveKeyframeCommand(trackId, keyframeId, snapped), recordHistory, true);
+  };
+
+  const moveKeyframeByKeyboard = (
+    trackId: string,
+    keyframeId: string,
+    currentKeyframeTime: number,
+    event: KeyboardEvent,
+  ): boolean => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return false;
+    }
+    event.preventDefault();
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    const multiplier = event.shiftKey ? 10 : 1;
+    const nextTime = applySnap(clampMs(currentKeyframeTime + direction * keyboardStepMs() * multiplier));
+    setKeyframeTime(trackId, keyframeId, nextTime);
+    syncSelectedTrack(trackId, keyframeId);
+    currentTime = nextTime;
+    return true;
+  };
+
+  const timelineKeyframeButtonsForTrack = (trackId: string): HTMLElement[] => {
+    const nodes = Array.from(document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]"));
+    return nodes.filter(
+      (node): node is HTMLElement =>
+        node instanceof HTMLElement && node.getAttribute("data-tadpole-keyframe-track-id") === trackId,
+    );
+  };
+
+  const timelineTrackLaneFor = (trackId: string): HTMLElement | null => {
+    const lanes = Array.from(document.querySelectorAll("[data-tadpole-track-lane]"));
+    return (
+      lanes.find(
+        (node): node is HTMLElement => node instanceof HTMLElement && node.getAttribute("data-tadpole-track-lane") === trackId,
+      ) ?? null
+    );
+  };
+
+  const nextKeyframeFocusIdAfterRemoval = (trackId: string, keyframeId: string): string => {
+    const buttons = timelineKeyframeButtonsForTrack(trackId);
+    const currentIndex = buttons.findIndex((button) => button.getAttribute("data-keyframe-id") === keyframeId);
+    if (currentIndex === -1) {
+      return "";
+    }
+    return (
+      buttons[currentIndex + 1]?.getAttribute("data-keyframe-id") ??
+      buttons[currentIndex - 1]?.getAttribute("data-keyframe-id") ??
+      ""
+    );
+  };
+
+  const focusKeyframeOrTrackLane = (trackId: string, keyframeId: string): void => {
+    const keyframeTarget = keyframeId
+      ? timelineKeyframeButtonsForTrack(trackId).find((button) => button.getAttribute("data-keyframe-id") === keyframeId)
+      : null;
+    const focusTarget = keyframeTarget ?? timelineTrackLaneFor(trackId);
+    focusTarget?.focus();
+  };
+
+  const handleKeyframeKeyboard = (
+    trackId: string,
+    keyframeId: string,
+    currentKeyframeTime: number,
+    event: KeyboardEvent,
+  ): void => {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      selectKeyframe(trackId, keyframeId, currentKeyframeTime);
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextFocusKeyframeId = nextKeyframeFocusIdAfterRemoval(trackId, keyframeId);
+      removeKeyframe(trackId, keyframeId);
+      selectedKeyframeId = nextFocusKeyframeId;
+      void nextDomUpdate().then(() => focusKeyframeOrTrackLane(trackId, nextFocusKeyframeId));
+      return;
+    }
+    if (moveKeyframeByKeyboard(trackId, keyframeId, currentKeyframeTime, event)) {
+      event.stopPropagation();
+    }
   };
 
   const startKeyframeDrag = (trackId: string, event: MouseEvent): void => {
@@ -4710,6 +4811,8 @@ ${runnableRuntimeScript}
         class:status-warning={documentWarningCount > 0}
         data-tadpole-warning-badge
         data-tadpole-warning-count={documentWarningCount}
+        aria-label={`Warnings: ${documentWarningCount}. Open warnings panel.`}
+        aria-keyshortcuts="Enter Space"
         on:click={openWarningsFromBadge}
       >
         Warnings: {documentWarningCount}
@@ -5904,7 +6007,13 @@ ${runnableRuntimeScript}
                             class="track-lane"
                             role="button"
                             tabindex="0"
-                            aria-label={`Add keyframe for ${propertyRow.targetLabel} ${propertyRow.track.property}`}
+                            data-tadpole-track-lane={propertyRow.track.id}
+                            data-tadpole-target-id={propertyRow.track.targetId}
+                            data-tadpole-property={propertyRow.track.property}
+                            data-tadpole-keyframe-count={propertyRow.keyframeCount}
+                            data-tadpole-selected-track={selectedTrackId === propertyRow.track.id ? "true" : "false"}
+                            aria-label={`Timeline lane for ${propertyRow.targetLabel} ${propertyRow.track.property}. Press Enter or Space to add a keyframe at ${currentTime}ms.`}
+                            aria-keyshortcuts="Enter Space K ArrowLeft ArrowRight Home End PageUp PageDown"
                             on:click={(event) => addKeyframeFromLane(propertyRow.track.id, event)}
                             on:keydown={(event) => {
                               if (event.key === " " || event.key === "Enter") {
@@ -5934,15 +6043,17 @@ ${runnableRuntimeScript}
                                     : ""
                                 }`}
                                 data-keyframe-id={keyframe.id}
+                                data-tadpole-keyframe-track-id={propertyRow.track.id}
+                                data-tadpole-keyframe-time={keyframe.time}
+                                data-tadpole-keyframe-value={keyframe.value}
+                                data-tadpole-target-id={propertyRow.track.targetId}
+                                data-tadpole-property={propertyRow.track.property}
+                                aria-label={`${propertyRow.targetLabel} ${propertyRow.track.property} keyframe ${keyframe.id} at ${keyframe.time}ms value ${keyframe.value}`}
+                                aria-keyshortcuts="Enter Space ArrowLeft ArrowRight Delete Backspace"
                                 style={`left:${trackPercent(keyframe.time)}%;`}
                                 on:mousedown={(event) => startKeyframeDrag(propertyRow.track.id, event)}
                                 on:click|stopPropagation={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
-                                on:keydown={(event) => {
-                                  if (event.key === " " || event.key === "Enter") {
-                                    event.preventDefault();
-                                    selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
-                                  }
-                                }}
+                                on:keydown={(event) => handleKeyframeKeyboard(propertyRow.track.id, keyframe.id, keyframe.time, event)}
                                 title={`${keyframe.id} • ${keyframe.time}ms • ${keyframe.value}`}
                               >
                                 {Math.round(keyframe.time)}
@@ -5965,13 +6076,16 @@ ${runnableRuntimeScript}
                                 <button
                                   type="button"
                                   class="key-id-button"
+                                  data-tadpole-keyframe-list-button={keyframe.id}
+                                  data-tadpole-keyframe-track-id={propertyRow.track.id}
+                                  data-tadpole-keyframe-time={keyframe.time}
+                                  data-tadpole-keyframe-value={keyframe.value}
+                                  data-tadpole-target-id={propertyRow.track.targetId}
+                                  data-tadpole-property={propertyRow.track.property}
+                                  aria-label={`${propertyRow.targetLabel} ${propertyRow.track.property} keyframe ${keyframe.id} at ${keyframe.time}ms value ${keyframe.value}`}
+                                  aria-keyshortcuts="Enter Space ArrowLeft ArrowRight Delete Backspace"
                                   on:click={() => selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time)}
-                                  on:keydown={(event) => {
-                                    if (event.key === " " || event.key === "Enter") {
-                                      event.preventDefault();
-                                      selectKeyframe(propertyRow.track.id, keyframe.id, keyframe.time);
-                                    }
-                                  }}
+                                  on:keydown={(event) => handleKeyframeKeyboard(propertyRow.track.id, keyframe.id, keyframe.time, event)}
                                 >
                                   <span class="key-id">{keyframe.id}</span>
                                 </button>
