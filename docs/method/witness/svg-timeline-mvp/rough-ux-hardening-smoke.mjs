@@ -58,6 +58,7 @@ const openPanel = async (page, menu, command, selector) => {
 
 const openSourcePanel = async (page) => openPanel(page, "view", "view.showSource", ".panel-svg-source");
 const openTargetsPanel = async (page) => openPanel(page, "view", "view.showTargets", ".panel-target-library");
+const openInspectorPanel = async (page) => openPanel(page, "view", "view.showInspector", "[data-tadpole-inspector-panel]");
 
 const importRawSvg = async (page, svg) => {
   await openSourcePanel(page);
@@ -108,26 +109,30 @@ const runSelectedTargetQuickActionSmoke = async (browser) => {
   const previewText = await textOf(page.locator(".panel-preview"));
   assert(previewText.includes("Selected target: Solo Target #solo"), "preview selected-target chip was missing");
 
-  const inspectorText = await textOf(page.locator(".inspector-panel"));
+  await openInspectorPanel(page);
+  const inspectorPanel = page.locator("[data-tadpole-inspector-panel]");
+  const inspectorText = await textOf(inspectorPanel);
   assert(
     inspectorText.includes("Solo Target has no tracks yet. Create a track to animate this selected target."),
     "selected-target no-track empty state was missing",
   );
 
-  await page.getByRole("button", { name: "Create Opacity track for Solo Target" }).click();
+  await inspectorPanel.getByRole("button", { name: "Create Opacity track for Solo Target" }).click();
   assert(
     (await page.locator(".track-card", { hasText: "Solo Target" }).locator("text=Opacity").count()) > 0,
     "quick action did not create an opacity track for the selected target",
   );
 
+  await openSourcePanel(page);
   await page.getByRole("button", { name: "Clear Tracks" }).click();
   assert((await page.locator(".track-card").count()) === 0, "clear tracks did not remove the selected-target track");
   assert(
     (await textOf(page.locator(".track-list"))).includes("No timeline tracks yet. Select a target, then create a track to start animating."),
     "clear tracks did not restore the timeline empty state",
   );
+  await openInspectorPanel(page);
   assert(
-    (await textOf(page.locator(".inspector-panel"))).includes(
+    (await textOf(page.locator("[data-tadpole-inspector-panel]"))).includes(
       "Solo Target has no tracks yet. Create a track to animate this selected target.",
     ),
     "clear tracks did not restore the selected-target no-track state",

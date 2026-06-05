@@ -20,6 +20,22 @@ const fixtureSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg
   </circle>
 </svg>`;
 
+const cleanFixtureSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg" aria-label="Clean Inspector Fixture">
+  <rect id="clean-box" data-tadpole-name="Clean Box" x="22" y="20" width="58" height="34" fill="#0f766e">
+    <animate attributeName="opacity" values="0.4;0.9" dur="1000ms" />
+  </rect>
+</svg>`;
+
+const reorderedWarningFixtureSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg" aria-label="Reordered Warning Fixture">
+  <rect id="inspect-box" data-tadpole-name="Inspect Box" x="18" y="18" width="54" height="36" fill="#2563eb">
+    <set attributeName="fill" to="#ef4444" dur="1000ms" />
+    <animate attributeName="opacity" values="0.25;1" dur="1000ms" />
+  </rect>
+  <circle id="inspect-dot" data-tadpole-name="Inspect Dot" cx="122" cy="48" r="18" fill="#14b8a6">
+    <animate attributeName="opacity" values="0.2;1" dur="1000ms" calcMode="discrete" />
+  </circle>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -44,17 +60,28 @@ const runCommand = async (page, menu, command) => {
   await page.locator(`[data-tadpole-command="${command}"]`).click();
 };
 
-const importSvgByPaste = async (page, source) => {
+const openPanel = async (page, command, selector) => {
+  const panel = page.locator(selector);
+  if (await panel.isVisible()) {
+    return;
+  }
+  await runCommand(page, "view", command);
+  await panel.waitFor({ state: "visible" });
+};
+
+const importSvgByPaste = async (page, source, expectedTargetId = "inspect-box") => {
   await runCommand(page, "file", "file.pasteSvg");
   const dialog = page.locator("[data-tadpole-active-dialog]");
   await dialog.waitFor({ state: "visible" });
   await dialog.locator("textarea").fill(source);
   await dialog.getByRole("button", { name: "Import Pasted SVG" }).click();
   await dialog.waitFor({ state: "hidden" });
-  await page.locator('[data-tadpole-canvas-stage] #inspect-box').waitFor({ state: "attached" });
+  await page.locator(`[data-tadpole-canvas-stage] #${expectedTargetId}`).waitFor({ state: "attached" });
 };
 
 const inspector = (page) => page.locator("[data-tadpole-inspector-panel]");
+
+const calcModeWarningRow = (page) => page.locator("[data-tadpole-warning-row]", { hasText: 'Unsupported calcMode "discrete" on #inspect-dot.' });
 
 const run = async () => {
   const browser = await chromium.launch();
@@ -62,7 +89,7 @@ const run = async () => {
   try {
     await page.goto(appUrl, { waitUntil: "networkidle" });
     await importSvgByPaste(page, fixtureSvg);
-    await runCommand(page, "view", "view.showInspector");
+    await openPanel(page, "view.showInspector", "[data-tadpole-inspector-panel]");
 
     const panel = inspector(page);
     await panel.waitFor({ state: "visible" });
@@ -103,6 +130,19 @@ const run = async () => {
       );
     });
 
+    await importSvgByPaste(page, cleanFixtureSvg, "clean-box");
+    await panel.waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const panelNode = document.querySelector("[data-tadpole-inspector-panel]");
+      return (
+        panelNode?.getAttribute("data-tadpole-inspector-mode") === "track" &&
+        panelNode.getAttribute("data-tadpole-inspector-target-id") === "clean-box" &&
+        panelNode.getAttribute("data-tadpole-inspector-validation") === "valid" &&
+        panelNode.getAttribute("data-tadpole-inspector-warning-id") === ""
+      );
+    });
+
+    await importSvgByPaste(page, fixtureSvg);
     await page.locator("[data-tadpole-panel-close]").click();
     await page.locator("[data-tadpole-inspector-panel]").waitFor({ state: "hidden" });
     await page.locator('[data-tadpole-property-row] [data-keyframe-id]').first().click();
@@ -111,11 +151,22 @@ const run = async () => {
       return selectedMarker !== null;
     });
 
-    await runCommand(page, "view", "view.showWarnings");
+    await openPanel(page, "view.showWarnings", "[data-tadpole-warnings-panel]");
     const warningsPanel = page.locator("[data-tadpole-warnings-panel]");
     await warningsPanel.waitFor({ state: "visible" });
-    await warningsPanel.locator("[data-tadpole-warning-row]").first().click();
-    await runCommand(page, "view", "view.showInspector");
+    const initialCalcModeWarningId = await calcModeWarningRow(page).getAttribute("data-tadpole-warning-row");
+    assert(initialCalcModeWarningId, "calcMode warning row did not expose a stable ID");
+
+    await importSvgByPaste(page, reorderedWarningFixtureSvg);
+    await openPanel(page, "view.showWarnings", "[data-tadpole-warnings-panel]");
+    const reorderedCalcModeWarningId = await calcModeWarningRow(page).getAttribute("data-tadpole-warning-row");
+    assert(
+      reorderedCalcModeWarningId === initialCalcModeWarningId,
+      `calcMode warning ID shifted from ${initialCalcModeWarningId} to ${reorderedCalcModeWarningId}`,
+    );
+
+    await calcModeWarningRow(page).click();
+    await openPanel(page, "view.showInspector", "[data-tadpole-inspector-panel]");
     await page.waitForFunction(() => {
       const panelNode = document.querySelector("[data-tadpole-inspector-panel]");
       return panelNode?.getAttribute("data-tadpole-inspector-mode") === "warning";

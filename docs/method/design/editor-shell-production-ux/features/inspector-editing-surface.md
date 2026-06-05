@@ -251,15 +251,11 @@ track, selects a keyframe, edits a valid and invalid value, closes the
 Inspector, proves timeline selection still works, then reopens the Inspector in
 warning mode.
 
-## Open Questions
-
-- @flyingrobots: Should Inspector auto-open on target selection or only when
-  enabled? Default to contextual open on desktop and a panel sheet on narrow
-  screens.
-
 ## Follow-On Issues
 
 - Curves mode value-shape editing.
+- Optional power-user auto-open behavior for Inspector selection changes,
+  tracked separately from the default View-menu-opened contract.
 
 ## Retrospective
 

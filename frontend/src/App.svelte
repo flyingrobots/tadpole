@@ -1258,6 +1258,18 @@
       }));
   };
 
+  const inspectorWarningHashOffset = 2_166_136_261;
+  const inspectorWarningHashPrime = 16_777_619;
+
+  const stableInspectorWarningId = (source: string, message: string): string => {
+    let hash = inspectorWarningHashOffset;
+    for (const character of `${source}:${message}`) {
+      hash ^= character.codePointAt(0) ?? 0;
+      hash = Math.imul(hash, inspectorWarningHashPrime) >>> 0;
+    }
+    return `${source}-${hash.toString(36)}`;
+  };
+
   const buildInspectorWarnings = (
     svgError: string,
     projectError: string,
@@ -1271,8 +1283,8 @@
     if (projectError) {
       warnings.push({ id: "project-import-error", source: "Project import", message: projectError });
     }
-    importWarnings.forEach((warning, index) => {
-      warnings.push({ id: `animation-import-${index}`, source: "Animation import", message: warning });
+    importWarnings.forEach((warning) => {
+      warnings.push({ id: stableInspectorWarningId("animation-import", warning), source: "Animation import", message: warning });
     });
     missingTargetIds.forEach((targetId) => {
       warnings.push({
@@ -2157,6 +2169,11 @@ ${runnableRuntimeScript}
     clearInspectorValidation();
   };
 
+  const resetInspectorStateForDocumentChange = (): void => {
+    clearInspectorWarningSelection();
+    clearInspectorValidation();
+  };
+
   const resetEditorCommandHistory = (): void => {
     editorCommandHistory = EditorCommandHistory.empty();
     editorCommandStatus = "Command history reset.";
@@ -2297,6 +2314,7 @@ ${runnableRuntimeScript}
     }
 
     pauseTimeline();
+    resetInspectorStateForDocumentChange();
 
     const targetIds = new Set(parsed.targets.map((target) => target.id));
     const importedTracksForTargets = parsed.animation.tracks.filter((track) => targetIds.has(track.targetId));
@@ -3137,6 +3155,7 @@ ${runnableRuntimeScript}
 
     pauseTimeline();
     beginSvgImport();
+    resetInspectorStateForDocumentChange();
 
     const label = parsed.project.svg.label.trim() || "Imported Project";
     const nextDuration = clamp(Math.max(250, parsed.project.timeline.duration), 250, 30000);
@@ -6010,143 +6029,6 @@ ${runnableRuntimeScript}
           </div>
         </div>
 
-        <section class="panel inspector-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Selection Inspector</h2>
-              <p class="muted">Quickly inspect and edit the selected track and keyframe.</p>
-            </div>
-          </div>
-          {#if selectedTarget}
-            <div class="selected-target-summary">
-              <h3>Selected SVG Target</h3>
-              <div class="inspector-grid">
-                <label class="inline-label compact">
-                  <span>Name</span>
-                  <input value={selectedTarget.name} readonly />
-                </label>
-                <label class="inline-label compact">
-                  <span>ID</span>
-                  <input value={selectedTarget.id} readonly />
-                </label>
-                <label class="inline-label compact">
-                  <span>Kind</span>
-                  <input value={selectedTarget.kind} readonly />
-                </label>
-              </div>
-              {#if selectedTargetTracks.length === 0}
-                <p class="empty-state tiny">
-                  {selectedTarget.name} has no tracks yet. Create a track to animate this selected target.
-                </p>
-              {/if}
-              <div class="toolbar quick-track-actions" aria-label={`Quick track actions for ${selectedTarget.name}`}>
-                {#each quickTrackProperties as property}
-                  <button type="button" on:click={() => addTrackForSelectedTarget(property.id)}>
-                    Create {property.label} track for {selectedTarget.name}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/if}
-          {#if selectedTrack}
-            <div class="inspector-grid">
-              <label class="inline-label compact">
-                <span>Selected Track</span>
-                <input value={selectedTrack.id} readonly />
-              </label>
-              <label class="inline-label compact">
-                <span>Target</span>
-                <select value={selectedTrack.targetId} on:change={(event) => setTrackTarget(selectedTrack.id, event)}>
-                  {#each availableTargets as target}
-                    <option value={target.id}>{target.name}</option>
-                  {/each}
-                </select>
-              </label>
-              <label class="inline-label compact">
-                <span>Property</span>
-                <select value={selectedTrack.property} on:change={(event) => setTrackProperty(selectedTrack.id, event)}>
-                  {#each propertyCatalog as property}
-                    <option value={property.id}>{property.label}</option>
-                  {/each}
-                </select>
-              </label>
-              <label class="inline-label compact">
-                <span>Playhead value</span>
-                <input value={toCssValue(getCurrentValue(selectedTrack, currentTime), selectedTrack.property)} readonly />
-              </label>
-              <div class="inline-label compact">
-                <span>Mute</span>
-                <button type="button" on:click={() => toggleTrackMute(selectedTrack.id)}>
-                  {selectedTrack.muted ? "Unmute" : "Mute"}
-                </button>
-              </div>
-              <div class="inline-label compact">
-                <span>Keyframes</span>
-                <input value={selectedTrack.keyframes.length} readonly />
-              </div>
-            </div>
-
-            <div class="inspector-actions">
-              <button type="button" on:click={() => addKeyframeAtTimeForTrack(selectedTrack.id, currentTime)} disabled={selectedTrack === null}>
-                Drop keyframe @ {formatMs(currentTime)}
-              </button>
-              <button
-                type="button"
-                on:click={duplicateSelectedKeyframe}
-                disabled={selectedTrackId === "" || selectedKeyframeId === ""}
-              >
-                Duplicate selected keyframe
-              </button>
-              <button type="button" on:click={() => removeTrack(selectedTrack.id)} disabled={tracks.length <= 1}>
-                Delete track
-              </button>
-            </div>
-
-            {#if selectedKeyframe}
-              <div class="inspector-keyframe">
-                <h3>Active Keyframe</h3>
-                <p class="muted">Editing: <strong>{selectedKeyframe.id}</strong> on {targetNameById.get(selectedTrack.targetId)}: {selectedTrack.property}</p>
-                <div class="track-keys mini">
-                  <label class="inline-label compact">
-                    <span>time</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max={timelineDurationMs}
-                      value={selectedKeyframe.time}
-                      on:input={(event) => updateKeyframeTime(selectedTrack.id, selectedKeyframe.id, event)}
-                    />
-                  </label>
-                  <label class="inline-label compact">
-                    <span>value</span>
-                    <input
-                      type={isNumericProperty(selectedTrack.property) ? "number" : "text"}
-                      min={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).min ?? 0}` : undefined}
-                      max={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).max ?? 0}` : undefined}
-                      step={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).step ?? 1}` : undefined}
-                      value={selectedKeyframe.value}
-                      on:input={(event) => updateKeyframeValue(selectedTrack.id, selectedKeyframe.id, event)}
-                    />
-                  </label>
-                  <label class="inline-label compact">
-                    <span>easing</span>
-                    <select value={selectedKeyframe.easing} on:change={(event) => updateKeyframeEasing(selectedTrack.id, selectedKeyframe.id, event)}>
-                      {#each easingModes as easing}
-                        <option value={easing}>{easing}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <button type="button" on:click={() => removeKeyframe(selectedTrack.id, selectedKeyframe.id)}>Delete keyframe</button>
-                </div>
-              </div>
-            {:else}
-              <p class="muted tiny">Select a keyframe in the timeline to edit per-keyframe values.</p>
-            {/if}
-          {:else}
-            <p class="muted tiny">Select a track to unlock detailed editing controls.</p>
-          {/if}
-        </section>
-
         <div class="add-track">
           <h3>New Track</h3>
           <div class="toolbar">
@@ -7501,22 +7383,6 @@ ${runnableRuntimeScript}
     flex-wrap: wrap;
     gap: var(--size-2);
     align-items: center;
-  }
-
-  .inspector-keyframe {
-    border-top: 1px dashed var(--tadpole-border);
-    padding-top: var(--size-3);
-    margin-top: var(--size-2);
-  }
-
-  .inspector-keyframe .track-keys {
-    margin-top: 0.75rem;
-    border-top: 0;
-    padding-top: 0;
-  }
-
-  .inspector-keyframe .track-keys .inline-label {
-    min-width: 0;
   }
 
   .track-keys.mini .inline-label {
