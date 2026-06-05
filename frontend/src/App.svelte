@@ -37,7 +37,16 @@
     kind: SvgTargetKind;
   };
 
-  type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
+  type AnimationProperty =
+    | "x"
+    | "y"
+    | "scale"
+    | "rotation"
+    | "opacity"
+    | "fill"
+    | "stroke"
+    | "strokeWidth"
+    | "strokeDashoffset";
   type TrackSortMode = "manual" | "target" | "property";
   type TimeDisplayMode = "seconds" | "frames";
   type EditorPanel =
@@ -279,6 +288,7 @@
     { id: "fill", label: "Fill", kind: "color", defaultValue: "var(--color-6)" },
     { id: "stroke", label: "Stroke", kind: "color", defaultValue: "var(--color-4)" },
     { id: "strokeWidth", label: "Stroke Width", kind: "number", defaultValue: "1", min: 0.5, max: 8, step: 0.25, unit: "px", snap: 0.25 },
+    { id: "strokeDashoffset", label: "Stroke Dash Offset", kind: "number", defaultValue: "0", step: 1, snap: 1 },
   ];
   const quickTrackPropertyIds = new Set<AnimationProperty>(["x", "y", "opacity", "fill"]);
   const quickTrackProperties = propertyCatalog.filter((property) => quickTrackPropertyIds.has(property.id));
@@ -295,6 +305,7 @@
     fill: string;
     stroke: string;
     strokeWidth: string;
+    strokeDashoffset: string;
   };
   type PreviewStyleProperty =
     | "transform"
@@ -303,7 +314,8 @@
     | "opacity"
     | "fill"
     | "stroke"
-    | "stroke-width";
+    | "stroke-width"
+    | "stroke-dashoffset";
   type OriginalInlineStyle = {
     value: string;
     priority: string;
@@ -423,6 +435,7 @@
     "fill",
     "stroke",
     "stroke-width",
+    "stroke-dashoffset",
   ];
   const supportedSmilAttributeProperties = new Map<string, AnimationProperty>([
     ["opacity", "opacity"],
@@ -430,6 +443,8 @@
     ["stroke", "stroke"],
     ["stroke-width", "strokeWidth"],
     ["strokewidth", "strokeWidth"],
+    ["stroke-dashoffset", "strokeDashoffset"],
+    ["strokedashoffset", "strokeDashoffset"],
   ]);
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
@@ -1373,7 +1388,7 @@
   const selectedTrackId = typeof timeline.selectedTrackId === "string" ? timeline.selectedTrackId : "";
   const duration = Math.max(1, Number(timeline.duration) || 1);
   const isLooping = timeline.isLooping !== false;
-  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth"]);
+  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth", "strokeDashoffset"]);
   const transformProperties = ["x", "y", "scale", "rotation"];
   const defaults = {
     x: "0",
@@ -1384,6 +1399,7 @@
     fill: "none",
     stroke: "none",
     strokeWidth: "1.2",
+    strokeDashoffset: "0",
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -1556,6 +1572,9 @@
       }
       if (activeTrackFor(target.id, "strokeWidth")) {
         element.style.strokeWidth = trackValue(target.id, "strokeWidth", defaults.strokeWidth, time);
+      }
+      if (activeTrackFor(target.id, "strokeDashoffset")) {
+        element.style.strokeDashoffset = trackValue(target.id, "strokeDashoffset", defaults.strokeDashoffset, time);
       }
     });
   };
@@ -2585,6 +2604,7 @@ ${runnableRuntimeScript}
     values: string[],
     keyTimes: number[],
     duration: number,
+    offset: number,
   ): ImportedAnimationKeyframe[] | null => {
     if (values.length !== keyTimes.length || duration <= 0) {
       return null;
@@ -2600,7 +2620,7 @@ ${runnableRuntimeScript}
       }
 
       return {
-        time: Math.round(duration * keyTimes[index]!),
+        time: Math.round(offset + duration * keyTimes[index]!),
         value: normalizedValue,
         easing: "linear",
       };
@@ -2678,6 +2698,7 @@ ${runnableRuntimeScript}
     element: Element,
     targetId: string,
     duration: number,
+    beginOffset: number,
     warnings: string[],
   ): ImportedAnimationTrack | null => {
     const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
@@ -2694,7 +2715,7 @@ ${runnableRuntimeScript}
       return null;
     }
 
-    const keyframes = trackKeyframesFromValues(property, values, keyTimes, duration);
+    const keyframes = trackKeyframesFromValues(property, values, keyTimes, duration, beginOffset);
     if (!keyframes) {
       warnings.push(`Unsupported ${attributeName} values on #${targetId}.`);
       return null;
@@ -2707,6 +2728,7 @@ ${runnableRuntimeScript}
     element: Element,
     targetId: string,
     duration: number,
+    beginOffset: number,
     warnings: string[],
   ): ImportedAnimationTrack[] => {
     const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
@@ -2735,8 +2757,8 @@ ${runnableRuntimeScript}
       const xValues = dimensionValuesFromTransformValues(values, 0);
       const yValues = dimensionValuesFromTransformValues(values, 1);
       const tracks: ImportedAnimationTrack[] = [];
-      const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration);
-      const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration);
+      const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration, beginOffset);
+      const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration, beginOffset);
       if (xKeyframes && valuesChange(xValues)) {
         tracks.push({ targetId, property: "x", keyframes: xKeyframes });
       }
@@ -2759,7 +2781,7 @@ ${runnableRuntimeScript}
         return [];
       }
       const scaleValues = dimensionValuesFromTransformValues(values, 0);
-      const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration);
+      const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration, beginOffset);
       if (!keyframes) {
         warnings.push(`Unsupported scale values on #${targetId}.`);
         return [];
@@ -2773,7 +2795,7 @@ ${runnableRuntimeScript}
         return [];
       }
       const rotationValues = dimensionValuesFromTransformValues(values, 0);
-      const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration);
+      const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration, beginOffset);
       if (!keyframes) {
         warnings.push(`Unsupported rotate values on #${targetId}.`);
         return [];
@@ -2844,8 +2866,9 @@ ${runnableRuntimeScript}
       }
 
       const begin = element.getAttribute("begin");
-      if (begin && (parseClockValueMs(begin) ?? -1) !== 0) {
-        warnings.push(`Unsupported non-zero begin time on #${targetId}.`);
+      const beginOffset = begin ? parseClockValueMs(begin) : 0;
+      if (beginOffset === null || beginOffset < 0) {
+        warnings.push(`Unsupported begin time on #${targetId}.`);
         return;
       }
 
@@ -2874,7 +2897,7 @@ ${runnableRuntimeScript}
       }
 
       if (tag === "animate") {
-        const track = extractAnimateElementTrack(element, targetId, duration, warnings);
+        const track = extractAnimateElementTrack(element, targetId, duration, beginOffset, warnings);
         if (track && appendImportedTrack(track)) {
           if (hasIndefiniteRepeat(element)) {
             importedIndefiniteRepeat = true;
@@ -2883,7 +2906,7 @@ ${runnableRuntimeScript}
         return;
       }
 
-      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, warnings);
+      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, beginOffset, warnings);
       let appendedTransformTrack = false;
       transformTracks.forEach((track) => {
         if (appendImportedTrack(track)) {
@@ -3570,6 +3593,7 @@ ${runnableRuntimeScript}
       fill: baseFill,
       stroke: baseStroke,
       strokeWidth: targetId === "arc" ? "2.5" : "1.2",
+      strokeDashoffset: "0",
     };
   };
 
@@ -3583,12 +3607,14 @@ ${runnableRuntimeScript}
     const fill = resolveTrackValue(targetId, "fill", base.fill);
     const stroke = resolveTrackValue(targetId, "stroke", base.stroke);
     const strokeWidth = resolveTrackValue(targetId, "strokeWidth", base.strokeWidth);
+    const strokeDashoffset = resolveTrackValue(targetId, "strokeDashoffset", base.strokeDashoffset);
     return {
       transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
       opacity,
       fill,
       stroke,
       strokeWidth: `${strokeWidth}`,
+      strokeDashoffset: `${strokeDashoffset}`,
     };
   };
 
@@ -3679,6 +3705,12 @@ ${runnableRuntimeScript}
         setPreviewStyleProperty(element, "stroke-width", style.strokeWidth);
       } else {
         restorePreviewStyleProperty(element, "stroke-width");
+      }
+
+      if (getActiveTrackForTarget(target.id, "strokeDashoffset")) {
+        setPreviewStyleProperty(element, "stroke-dashoffset", style.strokeDashoffset);
+      } else {
+        restorePreviewStyleProperty(element, "stroke-dashoffset");
       }
     });
   };

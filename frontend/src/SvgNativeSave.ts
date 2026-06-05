@@ -1,4 +1,13 @@
-export type SvgNativeSaveProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
+export type SvgNativeSaveProperty =
+  | "x"
+  | "y"
+  | "scale"
+  | "rotation"
+  | "opacity"
+  | "fill"
+  | "stroke"
+  | "strokeWidth"
+  | "strokeDashoffset";
 
 export type SvgNativeSaveSeverity = "warning" | "error";
 
@@ -110,14 +119,26 @@ export class SvgNativeSaveResult {
 const svgNamespace = "http://www.w3.org/2000/svg";
 const authoredAttributeName = "data-tadpole-authored";
 const metadataAttributeName = "data-tadpole-native-save-metadata";
-const propertyOrder: SvgNativeSaveProperty[] = ["opacity", "fill", "stroke", "strokeWidth", "x", "y", "scale", "rotation"];
-const scalarProperties: SvgNativeSaveProperty[] = ["opacity", "fill", "stroke", "strokeWidth"];
+const propertyOrder: SvgNativeSaveProperty[] = [
+  "opacity",
+  "fill",
+  "stroke",
+  "strokeWidth",
+  "strokeDashoffset",
+  "x",
+  "y",
+  "scale",
+  "rotation",
+];
+const scalarProperties: SvgNativeSaveProperty[] = ["opacity", "fill", "stroke", "strokeWidth", "strokeDashoffset"];
 const unsafeStyleValuePattern = /(?:url\s*\(|@import|expression\s*\(|(?:java|vb)script:|data:|https?:|\/\/|[;{}<>])/i;
 
 const attributeNameForProperty = (property: SvgNativeSaveProperty): string => {
   switch (property) {
     case "strokeWidth":
       return "stroke-width";
+    case "strokeDashoffset":
+      return "stroke-dashoffset";
     case "opacity":
       return "opacity";
     case "fill":
@@ -193,6 +214,8 @@ const isValidNumericValue = (property: SvgNativeSaveProperty, value: string): bo
       return isNumberInRange(parsed, 0, 1);
     case "strokeWidth":
       return isNumberInRange(parsed, 0.5, 8);
+    case "strokeDashoffset":
+      return true;
     case "x":
       return isNumberInRange(parsed, -220, 220);
     case "y":

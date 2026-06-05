@@ -1,4 +1,13 @@
-export type EditorCommandProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
+export type EditorCommandProperty =
+  | "x"
+  | "y"
+  | "scale"
+  | "rotation"
+  | "opacity"
+  | "fill"
+  | "stroke"
+  | "strokeWidth"
+  | "strokeDashoffset";
 
 export type EditorCommandEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 

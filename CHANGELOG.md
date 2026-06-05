@@ -81,6 +81,10 @@ All notable changes for Tadpole are documented here.
   selection on the SVG node itself.
 - Fixed focused menu item activation so Enter and Space execute the selected
   command, and hardened playback work-area guards before reading loop bounds.
+- Fixed SVG animation import for staggered safe SMIL timelines by importing
+  non-zero `begin` offsets into keyframe times and supporting
+  `stroke-dashoffset` as an editable, previewable, runnable, and saveable
+  numeric property.
 
 ## [0.1.0] - 2026-05-31
 
