@@ -3,12 +3,12 @@ title: "G18-001 - Inspector Editing Surface"
 lane: "design"
 goal: "Goal 18"
 issue: "https://github.com/flyingrobots/tadpole/issues/40"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: ""
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-05"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -27,8 +27,8 @@ updated: "2026-06-03"
 - [x] `git fetch origin` completed.
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
-- [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] GitHub issue created or reused.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -56,10 +56,21 @@ state, proven by a browser witness.
 
 ## Current Truth
 
-- Current UI includes track/keyframe controls, but not as contextual Inspector
-  modes.
-- Parent design: [Inspector Model](../design.md#inspector-model).
-- Mockup: [Panels](../mockups/panels-inspector-layers.svg).
+- Current `main` includes a thin drawer Inspector panel with selected target
+  and track facts, but it does not expose a stable mode contract or keyframe
+  editor. Evidence:
+  [`frontend/src/App.svelte#5032:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5032).
+- Current `main` also includes an always-visible timeline-side selection
+  inspector with target, track, and keyframe controls, so precision editing
+  exists but is not the contextual Inspector panel surface. Evidence:
+  [`frontend/src/App.svelte#5754:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5754).
+- Current timeline property rows still own direct keyframe editing, preserving
+  the invariant that timing edits do not require the Inspector. Evidence:
+  [`frontend/src/App.svelte#5677:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/frontend/src/App.svelte#L5677).
+- Parent design: Inspector Model starts in
+  [`docs/method/design/editor-shell-production-ux/design.md#1046:870f3c136e9a800c6ad12a4ad32ffbaa521eeef3`](https://github.com/flyingrobots/tadpole/blob/870f3c136e9a800c6ad12a4ad32ffbaa521eeef3/docs/method/design/editor-shell-production-ux/design.md#L1046).
+- Mockup:
+  [`docs/method/design/editor-shell-production-ux/mockups/panels-inspector-layers.svg`](../mockups/panels-inspector-layers.svg).
 
 ## Problem
 
