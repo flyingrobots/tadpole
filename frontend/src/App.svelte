@@ -4118,6 +4118,44 @@ ${runnableRuntimeScript}
     return true;
   };
 
+  const timelineKeyframeButtonsForTrack = (trackId: string): HTMLElement[] => {
+    const nodes = Array.from(document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]"));
+    return nodes.filter(
+      (node): node is HTMLElement =>
+        node instanceof HTMLElement && node.getAttribute("data-tadpole-keyframe-track-id") === trackId,
+    );
+  };
+
+  const timelineTrackLaneFor = (trackId: string): HTMLElement | null => {
+    const lanes = Array.from(document.querySelectorAll("[data-tadpole-track-lane]"));
+    return (
+      lanes.find(
+        (node): node is HTMLElement => node instanceof HTMLElement && node.getAttribute("data-tadpole-track-lane") === trackId,
+      ) ?? null
+    );
+  };
+
+  const nextKeyframeFocusIdAfterRemoval = (trackId: string, keyframeId: string): string => {
+    const buttons = timelineKeyframeButtonsForTrack(trackId);
+    const currentIndex = buttons.findIndex((button) => button.getAttribute("data-keyframe-id") === keyframeId);
+    if (currentIndex === -1) {
+      return "";
+    }
+    return (
+      buttons[currentIndex + 1]?.getAttribute("data-keyframe-id") ??
+      buttons[currentIndex - 1]?.getAttribute("data-keyframe-id") ??
+      ""
+    );
+  };
+
+  const focusKeyframeOrTrackLane = (trackId: string, keyframeId: string): void => {
+    const keyframeTarget = keyframeId
+      ? timelineKeyframeButtonsForTrack(trackId).find((button) => button.getAttribute("data-keyframe-id") === keyframeId)
+      : null;
+    const focusTarget = keyframeTarget ?? timelineTrackLaneFor(trackId);
+    focusTarget?.focus();
+  };
+
   const handleKeyframeKeyboard = (
     trackId: string,
     keyframeId: string,
@@ -4133,8 +4171,10 @@ ${runnableRuntimeScript}
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
       event.stopPropagation();
+      const nextFocusKeyframeId = nextKeyframeFocusIdAfterRemoval(trackId, keyframeId);
       removeKeyframe(trackId, keyframeId);
-      selectedKeyframeId = "";
+      selectedKeyframeId = nextFocusKeyframeId;
+      void nextDomUpdate().then(() => focusKeyframeOrTrackLane(trackId, nextFocusKeyframeId));
       return;
     }
     if (moveKeyframeByKeyboard(trackId, keyframeId, currentKeyframeTime, event)) {

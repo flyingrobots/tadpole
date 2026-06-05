@@ -115,6 +115,26 @@ const assertKeyframeActivationStayedLocal = async (page, expectedCount, keyName)
   assert(bubbledKey === null, `${keyName} on a focused keyframe bubbled into the parent lane`);
 };
 
+const deleteFocusedKeyframeAndAssertFocus = async (page) => {
+  const beforeCount = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
+  assert(beforeCount > 0, "no focused keyframe remains to delete");
+  await page.keyboard.press("Delete");
+  await page.waitForFunction(
+    (count) => document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length === count - 1,
+    beforeCount,
+  );
+  await page.waitForFunction(() => {
+    if (!(document.activeElement instanceof HTMLElement)) {
+      return false;
+    }
+    const remainingCount = document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length;
+    if (remainingCount === 0) {
+      return document.activeElement.matches("[data-tadpole-track-lane]");
+    }
+    return document.activeElement.matches("[data-tadpole-keyframe-track-id][data-keyframe-id]");
+  });
+};
+
 const run = async () => {
   const browser = await chromium.launch();
   const { page, consoleErrors, pageErrors } = await createPage(browser);
@@ -182,6 +202,16 @@ const run = async () => {
       (keyframeId) => document.querySelector(`[data-keyframe-id="${keyframeId}"]`) === null,
       selectedKeyframeId,
     );
+    await page.waitForFunction(
+      () =>
+        document.activeElement instanceof HTMLElement &&
+        (document.activeElement.matches("[data-tadpole-keyframe-track-id][data-keyframe-id]") ||
+          document.activeElement.matches("[data-tadpole-track-lane]")),
+    );
+    await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").first().focus();
+    await deleteFocusedKeyframeAndAssertFocus(page);
+    await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").first().focus();
+    await deleteFocusedKeyframeAndAssertFocus(page);
 
     await blurActiveElement(page);
     await runMenuCommandByKeyboard(page, "timeline", "timeline.playPause");
