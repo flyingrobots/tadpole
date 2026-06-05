@@ -3,12 +3,12 @@ title: "G19-001 - Keyboard Accessibility Witnesses"
 lane: "design"
 goal: "Goal 19"
 issue: "https://github.com/flyingrobots/tadpole/issues/41"
-pr: "https://github.com/flyingrobots/tadpole/pull/27"
-status: "draft"
+pr: ""
+status: "active"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
-updated: "2026-06-03"
+updated: "2026-06-05"
 ---
 
 <!-- markdownlint-disable-next-line MD025 -->
@@ -27,8 +27,8 @@ updated: "2026-06-03"
 - [x] `git fetch origin` completed.
 - [x] Local merge target branch synced to `origin/main` by regular merge.
 - [x] Cycle branch checked out.
-- [x] GitHub issue created.
-- [ ] `work-in-progress` label applied when implementation starts.
+- [x] GitHub issue created or reused.
+- [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
 - [ ] Branch pushed and non-draft PR opened to the merge target.
 
@@ -57,8 +57,20 @@ preview, and open warnings.
 
 ## Current Truth
 
-- Prior witnesses verify behavior mostly through direct selectors and pointer
-  actions.
+- Current `main` includes menu button and item keyboard handlers, so the top
+  menu is already partly keyboard-operable. Evidence:
+  [`frontend/src/App.svelte#4219:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L4219).
+- Current `main` includes global timeline keyboard shortcuts and shields menu
+  and dialog text entry from shortcut handling. Evidence:
+  [`frontend/src/App.svelte#1092:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L1092).
+- Current `main` makes layer rows keyboard focusable because they are buttons
+  with stable layer facts, but there is no golden-path keyboard-only witness
+  proving layer selection through edit and warning inspection. Evidence:
+  [`frontend/src/App.svelte#5115:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L5115).
+- Current `main` exposes keyframe markers as buttons with keyboard handlers,
+  but the focus path and shortcut outcomes are not covered by a dedicated
+  accessibility witness. Evidence:
+  [`frontend/src/App.svelte#5936:7e263e78c056c7a65a1b0078683d086e858c938e`](https://github.com/flyingrobots/tadpole/blob/7e263e78c056c7a65a1b0078683d086e858c938e/frontend/src/App.svelte#L5936).
 - Parent design: [Accessibility Contract](../design.md#accessibility-contract)
   and [Keyboard Model](../design.md#keyboard-model).
 
