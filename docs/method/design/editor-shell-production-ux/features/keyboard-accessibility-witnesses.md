@@ -3,7 +3,7 @@ title: "G19-001 - Keyboard Accessibility Witnesses"
 lane: "design"
 goal: "Goal 19"
 issue: "https://github.com/flyingrobots/tadpole/issues/41"
-pr: ""
+pr: "https://github.com/flyingrobots/tadpole/pull/51"
 status: "active"
 owners:
   - "@flyingrobots"
@@ -30,7 +30,7 @@ updated: "2026-06-05"
 - [x] GitHub issue created or reused.
 - [x] `work-in-progress` label applied when implementation starts.
 - [x] Design doc, issue link, and initial cycle scaffold staged and committed.
-- [ ] Branch pushed and non-draft PR opened to the merge target.
+- [x] Branch pushed and non-draft PR opened to the merge target.
 
 ## Decision Summary
 
