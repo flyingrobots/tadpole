@@ -16,6 +16,13 @@
     SetKeyframeValueCommand,
   } from "./EditorCommands";
   import { serializeSvgNativeSave, SvgNativeSaveRequest } from "./SvgNativeSave";
+  import { buildSvgLayerTree, type SvgLayerRow } from "./SvgLayerTree";
+  import {
+    selectableSvgTargetSelector,
+    svgTargetKindFromTag,
+    svgTargetNameFromElement,
+    type SvgTargetKind,
+  } from "./SvgTargetMetadata";
 
   type FontRecord = {
     file: string;
@@ -27,7 +34,7 @@
   type AnimationTarget = {
     id: string;
     name: string;
-    kind: "group" | "path" | "text" | "shape";
+    kind: SvgTargetKind;
   };
 
   type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
@@ -127,6 +134,14 @@
     warningCount: number;
     propertyRows: PropertyTimelineRow[];
     summaryKeyframes: TargetSummaryKeyframe[];
+  };
+
+  type LayerPanelRow = {
+    row: SvgLayerRow;
+    trackCount: number;
+    keyframeCount: number;
+    warningCount: number;
+    selected: boolean;
   };
 
   type SvgLoadOptions = {
@@ -335,7 +350,6 @@
     />
   </g>
 </svg>`;
-  const selectableSvgSelector = ["svg", "g", "path", "text", "rect", "circle", "ellipse", "line", "polyline", "polygon"].join(",");
   const blockedSvgElements = new Set([
     "animate",
     "animatecolor",
@@ -411,76 +425,6 @@
   ]);
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
-  const svgKindFromTag = (tagName: string): AnimationTarget["kind"] => {
-    const tag = tagName.toLowerCase();
-    if (tag === "g" || tag === "svg") {
-      return "group";
-    }
-    if (tag === "path") {
-      return "path";
-    }
-    if (tag === "text") {
-      return "text";
-    }
-    return "shape";
-  };
-
-  const nameFromId = (id: string): string =>
-    id
-      .replace(/[-_]+/g, " ")
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .trim()
-      .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-  const directChildText = (element: Element, tagName: string): string => {
-    const child = Array.from(element.children).find((candidate) => candidate.tagName.toLowerCase() === tagName);
-    return child?.textContent?.trim() ?? "";
-  };
-
-  const referencedLabelText = (element: Element): string => {
-    const labelIds = element.getAttribute("aria-labelledby")?.trim();
-    if (!labelIds) {
-      return "";
-    }
-
-    return labelIds
-      .split(/\s+/)
-      .map((id) => element.ownerDocument.getElementById(id)?.textContent?.trim() ?? "")
-      .filter(Boolean)
-      .join(" ");
-  };
-
-  const nameFromSvgElement = (element: Element, id: string): string => {
-    const explicitName = element.getAttribute("data-tadpole-name") ?? element.getAttribute("aria-label");
-    if (explicitName?.trim()) {
-      return explicitName.trim();
-    }
-
-    const referencedLabel = referencedLabelText(element);
-    if (referencedLabel) {
-      return referencedLabel;
-    }
-
-    const titleLabel = directChildText(element, "title");
-    if (titleLabel) {
-      return titleLabel;
-    }
-
-    const descriptionLabel = directChildText(element, "desc");
-    if (descriptionLabel) {
-      return descriptionLabel;
-    }
-
-    if (element.tagName.toLowerCase() === "text") {
-      const textLabel = element.textContent?.trim();
-      if (textLabel) {
-        return `${textLabel} Text`;
-      }
-    }
-
-    return nameFromId(id) || id;
-  };
-
   const isSafeSvgReference = (value: string): boolean => {
     if (value === "") {
       return true;
@@ -530,7 +474,7 @@
     }
 
     const seen = new Set<string>();
-    return Array.from(doc.querySelectorAll(selectableSvgSelector)).reduce<AnimationTarget[]>((targets, element) => {
+    return Array.from(doc.querySelectorAll(selectableSvgTargetSelector)).reduce<AnimationTarget[]>((targets, element) => {
       const id = element.getAttribute("id")?.trim();
       if (!id || seen.has(id)) {
         return targets;
@@ -539,8 +483,8 @@
       seen.add(id);
       targets.push({
         id,
-        name: nameFromSvgElement(element, id),
-        kind: svgKindFromTag(element.tagName),
+        name: svgTargetNameFromElement(element, id),
+        kind: svgTargetKindFromTag(element.tagName),
       });
       return targets;
     }, []);
@@ -792,11 +736,14 @@
   let projectMissingTargetIds: string[] = [];
   let showOnlySelected = false;
   let trackFilterTerm = "";
+  let layerSearchTerm = "";
   let trackSortMode: TrackSortMode = "manual";
   let showKeyboardShortcuts = false;
   let selectedKeyframeId = "";
   let timelineGridDensity = defaultGridDivisions;
   let draggingKeyframe: DraggingKeyframe = null;
+  let svgLayerRows: readonly SvgLayerRow[] = buildSvgLayerTree(svgMarkup).rows;
+  let visibleLayerRows: LayerPanelRow[] = [];
   let editorCommandHistory = EditorCommandHistory.empty();
   let editorCommandStatus = "Command history ready.";
   let editorLastCommandId = "";
@@ -1239,6 +1186,62 @@
     });
 
     return rows;
+  };
+
+  const warningReferencedTargetIds = (warning: string, sortedTargetIds: readonly string[]): string[] => {
+    const referencedTargetIds: string[] = [];
+    sortedTargetIds.forEach((targetId) => {
+      const marker = `#${targetId}`;
+      let markerIndex = warning.indexOf(marker);
+      while (markerIndex !== -1) {
+        const targetIdStart = markerIndex + 1;
+        const hasLongerKnownTargetMatch = referencedTargetIds.some(
+          (referencedTargetId) =>
+            referencedTargetId.startsWith(targetId) &&
+            warning.slice(targetIdStart, targetIdStart + referencedTargetId.length) === referencedTargetId,
+        );
+        if (!hasLongerKnownTargetMatch) {
+          referencedTargetIds.push(targetId);
+          return;
+        }
+        markerIndex = warning.indexOf(marker, markerIndex + marker.length);
+      }
+    });
+    return referencedTargetIds;
+  };
+
+  const buildLayerPanelRows = (
+    layerRows: readonly SvgLayerRow[],
+    trackItems: TimelineTrack[],
+    warnings: readonly string[],
+    selectedId: string,
+    query: string,
+  ): LayerPanelRow[] => {
+    const trackCountByTargetId = new Map<string, number>();
+    const keyframeCountByTargetId = new Map<string, number>();
+    const warningCountByTargetId = new Map<string, number>();
+    trackItems.forEach((track) => {
+      trackCountByTargetId.set(track.targetId, (trackCountByTargetId.get(track.targetId) ?? 0) + 1);
+      keyframeCountByTargetId.set(track.targetId, (keyframeCountByTargetId.get(track.targetId) ?? 0) + track.keyframes.length);
+    });
+    const sortedTargetIds = Array.from(new Set(layerRows.map((row) => row.targetId))).sort(
+      (first, second) => second.length - first.length || first.localeCompare(second),
+    );
+    warnings.forEach((warning) => {
+      warningReferencedTargetIds(warning, sortedTargetIds).forEach((targetId) => {
+        warningCountByTargetId.set(targetId, (warningCountByTargetId.get(targetId) ?? 0) + 1);
+      });
+    });
+
+    return layerRows
+      .filter((row) => row.matches(query))
+      .map((row): LayerPanelRow => ({
+        row,
+        trackCount: trackCountByTargetId.get(row.targetId) ?? 0,
+        keyframeCount: keyframeCountByTargetId.get(row.targetId) ?? 0,
+        warningCount: warningCountByTargetId.get(row.targetId) ?? 0,
+        selected: row.targetId === selectedId,
+      }));
   };
 
   const normalizeTrackList = (items: TimelineTrack[], duration = timelineDurationMs): TimelineTrack[] =>
@@ -1757,6 +1760,7 @@ ${runnableRuntimeScript}
   $: activePanelLabel = panelLabelFor(panelHostActivePanelId);
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
+  $: svgLayerRows = buildSvgLayerTree(svgMarkup).rows;
   $: targetNameById = new Map(availableTargets.map((target) => [target.id, target.name] as const));
   $: {
     const selectedTargetExists = availableTargets.some((target) => target.id === selectedTargetId);
@@ -1770,6 +1774,13 @@ ${runnableRuntimeScript}
   }
   $: selectedTarget = availableTargets.find((target) => target.id === selectedTargetId) ?? null;
   $: selectedTargetTracks = selectedTarget ? tracks.filter((track) => track.targetId === selectedTarget.id) : [];
+  $: visibleLayerRows = buildLayerPanelRows(
+    svgLayerRows,
+    tracks,
+    animationImportWarnings,
+    selectedTargetId,
+    layerSearchTerm,
+  );
   $: {
     if (previewSvgHostElement) {
       currentTime;
@@ -1981,6 +1992,10 @@ ${runnableRuntimeScript}
     const input = event.currentTarget as HTMLInputElement;
     trackFilterTerm = input.value;
   };
+  const setLayerSearchTerm = (event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement;
+    layerSearchTerm = input.value;
+  };
   const setTrackSortMode = (mode: TrackSortMode): void => {
     trackSortMode = mode;
   };
@@ -1999,6 +2014,14 @@ ${runnableRuntimeScript}
   };
   const expandAllTimelineStacks = (): void => {
     collapsedTimelineTargetIds = new Set<string>();
+  };
+  const expandTimelineStackForTarget = (targetId: string): void => {
+    if (!collapsedTimelineTargetIds.has(targetId)) {
+      return;
+    }
+    const nextCollapsedTargetIds = new Set(collapsedTimelineTargetIds);
+    nextCollapsedTargetIds.delete(targetId);
+    collapsedTimelineTargetIds = nextCollapsedTargetIds;
   };
   const collapseAllTimelineStacks = (): void => {
     collapsedTimelineTargetIds = new Set(timelineTargetRows.map((row) => row.targetId));
@@ -3700,6 +3723,11 @@ ${runnableRuntimeScript}
     selectedKeyframeId = "";
   };
 
+  const selectLayerTarget = (targetId: string): void => {
+    selectTarget(targetId, { syncTrack: true });
+    expandTimelineStackForTarget(targetId);
+  };
+
   const selectPreviewTarget = (event: PointerEvent): void => {
     const targetId = resolvePreviewTargetId(event.target);
     if (!targetId) {
@@ -4926,20 +4954,74 @@ ${runnableRuntimeScript}
         {/if}
 
         {#if activePanel === "layers"}
-        <section class="panel panel-layers" data-tadpole-layers-panel data-tadpole-panel-id="layers" data-tadpole-panel-open="true">
+        <section
+          class="panel panel-layers"
+          data-tadpole-layers-panel
+          data-tadpole-panel-id="layers"
+          data-tadpole-panel-open="true"
+          data-tadpole-layer-total-count={svgLayerRows.length}
+          data-tadpole-layer-visible-count={visibleLayerRows.length}
+        >
           <h2>Layers</h2>
-          <p class="muted">SVG targets available to animate in the current document.</p>
-          {#if availableTargets.length === 0}
+          <p class="muted">Browse SVG hierarchy, inspect target facts, and select targets without using the canvas.</p>
+          <label class="inline-label compact">
+            <span>Search layers</span>
+            <input
+              type="search"
+              data-tadpole-layer-search
+              placeholder="Filter by id, name, parent, or kind"
+              value={layerSearchTerm}
+              on:input={setLayerSearchTerm}
+            />
+          </label>
+          <div class="svg-source-summary" aria-live="polite">
+            <span class="status-chip">{visibleLayerRows.length} visible</span>
+            <span class="status-chip">{svgLayerRows.length} total</span>
+            <span class="status-chip">{selectedTarget ? `Selected #${selectedTarget.id}` : "No selected target"}</span>
+          </div>
+          {#if svgLayerRows.length === 0}
             <p class="empty-state tiny">No editable SVG targets found.</p>
+          {:else if visibleLayerRows.length === 0}
+            <p class="empty-state tiny">No layer rows match the current search.</p>
           {:else}
-            <ul class="layer-list">
-              {#each availableTargets as target}
-                <li class:selected={target.id === selectedTargetId}>
-                  <button type="button" on:click={() => selectTarget(target.id, { syncTrack: true })}>
-                    <span>{target.name}</span>
-                    <code>#{target.id}</code>
+            <ul class="layer-list" role="tree" aria-label="SVG layer tree">
+              {#each visibleLayerRows as layer}
+                <li>
+                  <button
+                    type="button"
+                    class="layer-row"
+                    class:selected={layer.selected}
+                    data-tadpole-layer-row={layer.row.targetId}
+                    data-tadpole-layer-parent-id={layer.row.parentTargetId}
+                    data-tadpole-layer-label={layer.row.label}
+                    data-tadpole-layer-kind={layer.row.kind}
+                    data-tadpole-layer-depth={layer.row.depth}
+                    data-tadpole-layer-track-count={layer.trackCount}
+                    data-tadpole-layer-key-count={layer.keyframeCount}
+                    data-tadpole-layer-warning-count={layer.warningCount}
+                    data-tadpole-layer-selected={layer.selected ? "true" : "false"}
+                    data-tadpole-layer-visible="true"
+                    role="treeitem"
+                    aria-level={layer.row.depth + 1}
+                    aria-selected={layer.selected}
+                    aria-label={`${layer.row.label}, ${layer.row.kind}, ${layer.trackCount} tracks, ${layer.warningCount} warnings`}
+                    style={`--layer-depth:${layer.row.depth};`}
+                    on:click={() => selectLayerTarget(layer.row.targetId)}
+                  >
+                    <span class="layer-row-main">
+                      <span class="layer-row-disclosure" aria-hidden="true">▸</span>
+                      <span class="layer-row-label">{layer.row.label}</span>
+                      <code>#{layer.row.targetId}</code>
+                    </span>
+                    <span class="layer-row-facts">
+                      <span class="chip">{layer.row.kind}</span>
+                      <span class="chip">{layer.trackCount} tracks</span>
+                      <span class="chip">{layer.keyframeCount} keys</span>
+                      {#if layer.warningCount > 0}
+                        <span class="chip warning">{layer.warningCount} warnings</span>
+                      {/if}
+                    </span>
                   </button>
-                  <span class="chip">{target.kind}</span>
                 </li>
               {/each}
             </ul>
@@ -7367,33 +7449,62 @@ ${runnableRuntimeScript}
   }
 
   .layer-list li {
+    min-width: 0;
+  }
+
+  .layer-row {
+    width: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--size-2);
     align-items: center;
     border: 1px solid transparent;
     border-radius: var(--radius-2);
-    padding: var(--size-1);
+    background: color-mix(in oklab, var(--color-13) 64%, transparent);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    padding: var(--size-1) var(--size-2);
+    cursor: pointer;
   }
 
-  .layer-list li.selected {
+  .layer-row:hover,
+  .layer-row:focus-visible,
+  .layer-row.selected {
     border-color: color-mix(in oklab, var(--tadpole-accent) 42%, var(--tadpole-border));
     background: color-mix(in oklab, var(--color-8) 12%, transparent);
   }
 
-  .layer-list button {
+  .layer-row-main {
     min-width: 0;
     display: grid;
-    gap: 0.15rem;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.2rem var(--size-1);
+    align-items: center;
+    padding-inline-start: calc(var(--layer-depth, 0) * 1rem);
+  }
+
+  .layer-row-disclosure {
+    color: var(--tadpole-text-muted);
+    font-size: var(--font-size-0);
+  }
+
+  .layer-row-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .layer-row-facts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--size-1);
   }
 
   .layer-list code {
+    grid-column: 2;
     color: var(--tadpole-text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -7428,6 +7539,10 @@ ${runnableRuntimeScript}
     text-overflow: ellipsis;
     overflow: hidden;
     max-width: 13rem;
+  }
+
+  .chip.warning {
+    color: var(--color-3);
   }
 
   @media (max-width: 960px) {
