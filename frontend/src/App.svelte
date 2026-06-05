@@ -3710,15 +3710,16 @@ ${runnableRuntimeScript}
     const workAreaLoop = activeWorkAreaLoopBounds();
     const workAreaLoopStart = workAreaLoop?.start;
     const workAreaLoopEnd = workAreaLoop?.end;
+    const hasWorkAreaLoop = typeof workAreaLoopStart === "number" && typeof workAreaLoopEnd === "number";
     let next = isLooping ? elapsed % duration : clamp(elapsed, 0, duration);
-    if (typeof workAreaLoopStart === "number" && typeof workAreaLoopEnd === "number") {
+    if (hasWorkAreaLoop) {
       const workAreaDuration = Math.max(1, workAreaLoopEnd - workAreaLoopStart);
       next = workAreaLoopStart + (elapsed % workAreaDuration);
     }
     next = applySnap(clampMs(next));
     currentTime = next;
 
-    if (!isLooping && elapsed >= duration) {
+    if (!isLooping && !hasWorkAreaLoop && elapsed >= duration) {
       currentTime = timelineDurationMs;
       isPlaying = false;
       if (rafHandle !== null) {

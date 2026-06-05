@@ -96,6 +96,12 @@ const runWorkAreaSmoke = async (browser) => {
   await page.waitForTimeout(650);
   const loopedTime = await timelineNumberFact(timeline, "data-tadpole-current-time-ms");
   assert(loopedTime >= 208 && loopedTime < 704, `playback escaped work area loop: ${loopedTime}`);
+  await page.waitForTimeout(750);
+  const extendedLoopedTime = await timelineNumberFact(timeline, "data-tadpole-current-time-ms");
+  assert(
+    extendedLoopedTime >= 208 && extendedLoopedTime < 704,
+    `playback escaped work area loop after full duration elapsed: ${extendedLoopedTime}`,
+  );
   await page.getByRole("button", { name: "Stop" }).first().click();
 
   await workAreaControls.locator('[data-tadpole-command="timeline.clearWorkArea"]').click();
