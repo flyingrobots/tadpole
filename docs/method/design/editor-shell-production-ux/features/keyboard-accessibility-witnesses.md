@@ -4,7 +4,7 @@ lane: "design"
 goal: "Goal 19"
 issue: "https://github.com/flyingrobots/tadpole/issues/41"
 pr: "https://github.com/flyingrobots/tadpole/pull/51"
-status: "active"
+status: "landed"
 owners:
   - "@flyingrobots"
 created: "2026-06-03"
