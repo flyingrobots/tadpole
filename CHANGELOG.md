@@ -64,6 +64,9 @@ All notable changes for Tadpole are documented here.
 - Added Goal 17 layers panel navigation with a runtime SVG hierarchy model,
   searchable layer rows, target/parent/depth facts, track/keyframe/warning
   badges, keyboard target selection, and a layers-panel browser witness.
+- Added Goal 18 Inspector editing surface with contextual document, target,
+  track, keyframe, and warning modes, stable selected-state facts, keyframe
+  value validation, and an inspector browser witness.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

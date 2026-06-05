@@ -55,6 +55,8 @@
   type ContextPanel = Exclude<EditorPanel, "none">;
   type EditorMenu = "file" | "edit" | "view" | "timeline" | "export" | "help";
   type EditorDialog = "open-svg" | "paste-svg" | "save-svg" | "export-runnable";
+  type InspectorMode = "document" | "target" | "track" | "keyframe" | "warning";
+  type InspectorValidationState = "valid" | "invalid";
 
   type KeyframeEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 
@@ -142,6 +144,12 @@
     keyframeCount: number;
     warningCount: number;
     selected: boolean;
+  };
+
+  type InspectorWarning = {
+    id: string;
+    source: string;
+    message: string;
   };
 
   type SvgLoadOptions = {
@@ -676,6 +684,12 @@
   let selectedTrackId = tracks[0]?.id ?? "";
   let selectedTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedKeyframe: Keyframe | null = null;
+  let inspectorMode: InspectorMode = "document";
+  let inspectorValidationState: InspectorValidationState = "valid";
+  let inspectorValidationMessage = "";
+  let inspectorWarnings: InspectorWarning[] = [];
+  let selectedInspectorWarningId = "";
+  let selectedInspectorWarning: InspectorWarning | null = null;
   let activeTrack: TimelineTrack | null = tracks[0] ?? null;
   let selectedTrackHasKeyframes = tracks[0]?.keyframes.length ? tracks[0].keyframes.length > 0 : false;
   let selectedTrackNeighborhood: PlayheadNeighborhood = { at: null, previous: null, next: null };
@@ -1242,6 +1256,32 @@
         warningCount: warningCountByTargetId.get(row.targetId) ?? 0,
         selected: row.targetId === selectedId,
       }));
+  };
+
+  const buildInspectorWarnings = (
+    svgError: string,
+    projectError: string,
+    importWarnings: readonly string[],
+    missingTargetIds: readonly string[],
+  ): InspectorWarning[] => {
+    const warnings: InspectorWarning[] = [];
+    if (svgError) {
+      warnings.push({ id: "svg-import-error", source: "SVG import", message: svgError });
+    }
+    if (projectError) {
+      warnings.push({ id: "project-import-error", source: "Project import", message: projectError });
+    }
+    importWarnings.forEach((warning, index) => {
+      warnings.push({ id: `animation-import-${index}`, source: "Animation import", message: warning });
+    });
+    missingTargetIds.forEach((targetId) => {
+      warnings.push({
+        id: `project-missing-target-${targetId}`,
+        source: "Project restore",
+        message: `Missing target ID: ${targetId}`,
+      });
+    });
+    return warnings;
   };
 
   const normalizeTrackList = (items: TimelineTrack[], duration = timelineDurationMs): TimelineTrack[] =>
@@ -1911,6 +1951,18 @@ ${runnableRuntimeScript}
     ? selectedTrack.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null
     : null;
   $: selectedTrackNeighborhood = getNeighborhoodForTime(selectedTrack, currentTime);
+  $: inspectorWarnings = buildInspectorWarnings(svgImportError, projectImportError, animationImportWarnings, projectMissingTargetIds);
+  $: selectedInspectorWarning = inspectorWarnings.find((warning) => warning.id === selectedInspectorWarningId) ?? null;
+  $: inspectorMode = selectedInspectorWarning
+    ? "warning"
+    : selectedKeyframe
+      ? "keyframe"
+      : selectedTrack
+        ? "track"
+        : selectedTarget
+          ? "target"
+          : "document";
+  $: inspectorValidationState = inspectorValidationMessage ? "invalid" : "valid";
   $: {
     if (!selectedTrackId) {
       selectedKeyframeId = "";
@@ -2092,6 +2144,19 @@ ${runnableRuntimeScript}
     documentDirty = false;
   };
 
+  const clearInspectorWarningSelection = (): void => {
+    selectedInspectorWarningId = "";
+  };
+
+  const clearInspectorValidation = (): void => {
+    inspectorValidationMessage = "";
+  };
+
+  const selectInspectorWarning = (warningId: string): void => {
+    selectedInspectorWarningId = warningId;
+    clearInspectorValidation();
+  };
+
   const resetEditorCommandHistory = (): void => {
     editorCommandHistory = EditorCommandHistory.empty();
     editorCommandStatus = "Command history reset.";
@@ -2171,6 +2236,8 @@ ${runnableRuntimeScript}
   };
 
   const syncSelectedTrack = (trackId: string, keyframeId = ""): TimelineTrack | null => {
+    clearInspectorWarningSelection();
+    clearInspectorValidation();
     const track = tracks.find((candidate) => candidate.id === trackId) ?? null;
     if (!track) {
       selectedTrackId = "";
@@ -3706,6 +3773,8 @@ ${runnableRuntimeScript}
     if (!availableTargets.some((target) => target.id === targetId)) {
       return;
     }
+    clearInspectorWarningSelection();
+    clearInspectorValidation();
     selectedTargetId = targetId;
     newTrackTargetId = targetId;
 
@@ -4046,17 +4115,51 @@ ${runnableRuntimeScript}
     editorCommandStatus = "Command keyframe.move applied.";
   };
 
+  const normalizedKeyframeValueInput = (trackId: string, value: string): string | null => {
+    const keyframeTrack = tracks.find((track) => track.id === trackId);
+    if (!keyframeTrack) {
+      return null;
+    }
+    return normalizeProjectKeyframeValue(keyframeTrack.property, value);
+  };
+
+  const applyKeyframeValueInput = (trackId: string, keyframeId: string, value: string): boolean => {
+    const nextValue = normalizedKeyframeValueInput(trackId, value);
+    if (nextValue === null) {
+      return false;
+    }
+    return runEditorCommand(new SetKeyframeValueCommand(trackId, keyframeId, nextValue), true);
+  };
+
   const updateKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement;
+    applyKeyframeValueInput(trackId, keyframeId, input.value);
+  };
+
+  const updateInspectorKeyframeTime = (trackId: string, keyframeId: string, event: Event): void => {
+    clearInspectorValidation();
+    updateKeyframeTime(trackId, keyframeId, event);
+  };
+
+  const updateInspectorKeyframeValue = (trackId: string, keyframeId: string, event: Event): void => {
     const input = event.currentTarget as HTMLInputElement;
     const keyframeTrack = tracks.find((track) => track.id === trackId);
     if (!keyframeTrack) {
+      inspectorValidationMessage = "Invalid keyframe target.";
       return;
     }
-    const nextValue = normalizeProjectKeyframeValue(keyframeTrack.property, input.value);
+    const nextValue = normalizedKeyframeValueInput(trackId, input.value);
     if (nextValue === null) {
+      inspectorValidationMessage = `Invalid ${keyframeTrack.property} value.`;
       return;
     }
     runEditorCommand(new SetKeyframeValueCommand(trackId, keyframeId, nextValue), true);
+    clearInspectorValidation();
+  };
+
+  const updateInspectorKeyframeEasing = (trackId: string, keyframeId: string, event: Event): void => {
+    clearInspectorValidation();
+    updateKeyframeEasing(trackId, keyframeId, event);
   };
 
   const updateKeyframeEasing = (trackId: string, keyframeId: string, event: Event): void => {
@@ -4931,24 +5034,23 @@ ${runnableRuntimeScript}
           {#if documentWarningCount === 0}
             <p class="empty-state tiny">No document warnings are currently active.</p>
           {/if}
-          {#if svgImportError}
-            <p class="error tiny">{svgImportError}</p>
-          {/if}
-          {#if projectImportError}
-            <p class="error tiny">{projectImportError}</p>
-          {/if}
-          {#if animationImportWarnings.length > 0}
-            <div class="warning tiny">
-              <strong>Animation import warnings</strong>
-              <ul>
-                {#each animationImportWarnings as warning}
-                  <li>{warning}</li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          {#if projectMissingTargetIds.length > 0}
-            <p class="warning tiny">Missing target IDs: {projectMissingTargetIds.join(", ")}</p>
+          {#if inspectorWarnings.length > 0}
+            <ul class="warning-row-list" aria-label="Document warnings">
+              {#each inspectorWarnings as warning}
+                <li>
+                  <button
+                    type="button"
+                    class:selected={warning.id === selectedInspectorWarningId}
+                    data-tadpole-warning-row={warning.id}
+                    data-tadpole-warning-source={warning.source}
+                    on:click={() => selectInspectorWarning(warning.id)}
+                  >
+                    <strong>{warning.source}</strong>
+                    <span>{warning.message}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
           {/if}
         </section>
         {/if}
@@ -5031,44 +5133,201 @@ ${runnableRuntimeScript}
 
         {#if activePanel === "inspector"}
         <section
-          class="panel panel-command-inspector"
+          class="panel panel-command-inspector inspector-panel"
           data-tadpole-inspector-panel
           data-tadpole-panel-id="inspector"
           data-tadpole-panel-open="true"
+          data-tadpole-inspector-mode={inspectorMode}
+          data-tadpole-inspector-target-id={selectedTarget?.id ?? ""}
+          data-tadpole-inspector-track-id={selectedTrack?.id ?? ""}
+          data-tadpole-inspector-keyframe-id={selectedKeyframe?.id ?? ""}
+          data-tadpole-inspector-warning-id={selectedInspectorWarning?.id ?? ""}
+          data-tadpole-inspector-validation={inspectorValidationState}
+          role="complementary"
+          aria-label="Selection inspector"
         >
           <h2>Inspector</h2>
-          {#if selectedTarget}
-            <div class="inspector-grid">
-              <label class="inline-label compact">
-                <span>Target</span>
-                <input value={selectedTarget.name} readonly />
-              </label>
-              <label class="inline-label compact">
-                <span>ID</span>
-                <input value={selectedTarget.id} readonly />
-              </label>
-              <label class="inline-label compact">
-                <span>Kind</span>
-                <input value={selectedTarget.kind} readonly />
-              </label>
+          <div class="svg-source-summary" aria-live="polite">
+            <span class="status-chip">Mode: {inspectorMode}</span>
+            <span class="status-chip">Warnings: {documentWarningCount}</span>
+            <span class="status-chip">Dirty: {documentDirty ? "yes" : "no"}</span>
+          </div>
+
+          {#if inspectorMode === "warning" && selectedInspectorWarning}
+            <div class="selected-target-summary" data-tadpole-inspector-warning-mode>
+              <h3>{selectedInspectorWarning.source}</h3>
+              <p class="warning tiny" data-tadpole-inspector-warning-message>{selectedInspectorWarning.message}</p>
+              <div class="inspector-grid">
+                <label class="inline-label compact">
+                  <span>Warning ID</span>
+                  <input value={selectedInspectorWarning.id} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Source</span>
+                  <input value={selectedInspectorWarning.source} readonly />
+                </label>
+              </div>
+            </div>
+          {:else if inspectorMode === "keyframe" && selectedTrack && selectedKeyframe}
+            <div class="selected-target-summary" data-tadpole-inspector-keyframe-mode>
+              <h3>Keyframe</h3>
+              <p class="muted">
+                Editing <strong>{selectedKeyframe.id}</strong> on
+                {targetNameById.get(selectedTrack.targetId) ?? selectedTrack.targetId}:{selectedTrack.property}
+              </p>
+              <div class="track-keys mini">
+                <label class="inline-label compact">
+                  <span>Time</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={timelineDurationMs}
+                    value={selectedKeyframe.time}
+                    data-tadpole-inspector-keyframe-time
+                    on:input={(event) => updateInspectorKeyframeTime(selectedTrack.id, selectedKeyframe.id, event)}
+                  />
+                </label>
+                <label class="inline-label compact">
+                  <span>Value</span>
+                  <input
+                    type={isNumericProperty(selectedTrack.property) ? "number" : "text"}
+                    min={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).min ?? 0}` : undefined}
+                    max={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).max ?? 0}` : undefined}
+                    step={isNumericProperty(selectedTrack.property) ? `${propertySpec(selectedTrack.property).step ?? 1}` : undefined}
+                    value={selectedKeyframe.value}
+                    data-tadpole-inspector-keyframe-value
+                    aria-invalid={inspectorValidationState === "invalid"}
+                    aria-describedby={inspectorValidationState === "invalid" ? "inspector-keyframe-error" : undefined}
+                    on:input={(event) => updateInspectorKeyframeValue(selectedTrack.id, selectedKeyframe.id, event)}
+                  />
+                </label>
+                <label class="inline-label compact">
+                  <span>Easing</span>
+                  <select
+                    value={selectedKeyframe.easing}
+                    data-tadpole-inspector-keyframe-easing
+                    on:change={(event) => updateInspectorKeyframeEasing(selectedTrack.id, selectedKeyframe.id, event)}
+                  >
+                    {#each easingModes as easing}
+                      <option value={easing}>{easing}</option>
+                    {/each}
+                  </select>
+                </label>
+                <button type="button" on:click={() => removeKeyframe(selectedTrack.id, selectedKeyframe.id)}>Delete keyframe</button>
+              </div>
+              {#if inspectorValidationMessage}
+                <p id="inspector-keyframe-error" class="error tiny" data-tadpole-inspector-error>
+                  {inspectorValidationMessage}
+                </p>
+              {/if}
+            </div>
+          {:else if inspectorMode === "track" && selectedTrack}
+            <div class="selected-target-summary" data-tadpole-inspector-track-mode>
+              <h3>Track</h3>
+              <div class="inspector-grid">
+                <label class="inline-label compact">
+                  <span>Track</span>
+                  <input value={selectedTrack.id} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Target</span>
+                  <select value={selectedTrack.targetId} on:change={(event) => setTrackTarget(selectedTrack.id, event)}>
+                    {#each availableTargets as target}
+                      <option value={target.id}>{target.name}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="inline-label compact">
+                  <span>Property</span>
+                  <select value={selectedTrack.property} on:change={(event) => setTrackProperty(selectedTrack.id, event)}>
+                    {#each propertyCatalog as property}
+                      <option value={property.id}>{property.label}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="inline-label compact">
+                  <span>Playhead value</span>
+                  <input value={toCssValue(getCurrentValue(selectedTrack, currentTime), selectedTrack.property)} readonly />
+                </label>
+                <div class="inline-label compact">
+                  <span>Mute</span>
+                  <button type="button" on:click={() => toggleTrackMute(selectedTrack.id)}>
+                    {selectedTrack.muted ? "Unmute" : "Mute"}
+                  </button>
+                </div>
+                <label class="inline-label compact">
+                  <span>Keyframes</span>
+                  <input value={selectedTrack.keyframes.length} readonly />
+                </label>
+              </div>
+              <div class="inspector-actions">
+                <button type="button" on:click={() => addKeyframeAtTimeForTrack(selectedTrack.id, currentTime)}>
+                  Drop keyframe @ {formatMs(currentTime)}
+                </button>
+                <button type="button" on:click={duplicateSelectedKeyframe} disabled={selectedKeyframeId === ""}>
+                  Duplicate selected keyframe
+                </button>
+                <button type="button" on:click={() => removeTrack(selectedTrack.id)} disabled={tracks.length <= 1}>
+                  Delete track
+                </button>
+              </div>
+            </div>
+          {:else if inspectorMode === "target" && selectedTarget}
+            <div class="selected-target-summary" data-tadpole-inspector-target-mode>
+              <h3>Selected SVG Target</h3>
+              <div class="inspector-grid">
+                <label class="inline-label compact">
+                  <span>Name</span>
+                  <input value={selectedTarget.name} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>ID</span>
+                  <input value={selectedTarget.id} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Kind</span>
+                  <input value={selectedTarget.kind} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Tracks</span>
+                  <input value={selectedTargetTracks.length} readonly />
+                </label>
+              </div>
+              {#if selectedTargetTracks.length === 0}
+                <p class="empty-state tiny">
+                  {selectedTarget.name} has no tracks yet. Create a track to animate this selected target.
+                </p>
+              {/if}
+              <div class="toolbar quick-track-actions" aria-label={`Quick track actions for ${selectedTarget.name}`}>
+                {#each quickTrackProperties as property}
+                  <button type="button" on:click={() => addTrackForSelectedTarget(property.id)}>
+                    Create {property.label} track for {selectedTarget.name}
+                  </button>
+                {/each}
+              </div>
             </div>
           {:else}
-            <p class="empty-state tiny">No SVG target selected.</p>
-          {/if}
-          {#if selectedTrack}
-            <div class="inspector-grid">
-              <label class="inline-label compact">
-                <span>Track</span>
-                <input value={selectedTrack.id} readonly />
-              </label>
-              <label class="inline-label compact">
-                <span>Property</span>
-                <input value={selectedTrack.property} readonly />
-              </label>
-              <label class="inline-label compact">
-                <span>Keyframes</span>
-                <input value={selectedTrack.keyframes.length} readonly />
-              </label>
+            <div class="selected-target-summary" data-tadpole-inspector-document-mode>
+              <h3>Document</h3>
+              <p class="muted">No specific SVG target, track, keyframe, or warning is selected.</p>
+              <div class="inspector-grid">
+                <label class="inline-label compact">
+                  <span>SVG</span>
+                  <input value={svgSourceLabel} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Targets</span>
+                  <input value={availableTargets.length} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Tracks</span>
+                  <input value={tracks.length} readonly />
+                </label>
+                <label class="inline-label compact">
+                  <span>Duration</span>
+                  <input value={formatMs(timelineDurationMs)} readonly />
+                </label>
+              </div>
             </div>
           {/if}
         </section>
@@ -6710,6 +6969,43 @@ ${runnableRuntimeScript}
   .animation-import-warnings ul {
     margin: var(--size-1) 0 0;
     padding-left: var(--size-4);
+  }
+
+  .warning-row-list {
+    display: grid;
+    gap: var(--size-2);
+    margin: var(--size-2) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .warning-row-list button {
+    display: grid;
+    width: 100%;
+    gap: 0.15rem;
+    border: 1px solid color-mix(in oklab, var(--yellow-3) 36%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    padding: var(--size-2);
+    color: var(--tadpole-text);
+    background: color-mix(in oklab, var(--yellow-3) 8%, var(--color-13));
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .warning-row-list button:hover,
+  .warning-row-list button:focus-visible,
+  .warning-row-list button.selected {
+    border-color: color-mix(in oklab, var(--yellow-3) 72%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--yellow-3) 14%, var(--color-13));
+  }
+
+  .warning-row-list strong {
+    color: var(--yellow-3);
+  }
+
+  .warning-row-list span {
+    color: var(--tadpole-text-muted);
+    font-size: var(--font-size-0);
   }
 
   .quick-track-actions {
