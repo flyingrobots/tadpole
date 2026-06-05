@@ -5,6 +5,10 @@ const requireFromCwd = createRequire(`${process.cwd()}/`);
 const { chromium } = requireFromCwd("playwright");
 
 const appUrl = process.env.TADPOLE_APP_URL ?? "http://localhost:5173/";
+const keyboardBoxOpacityLaneSelector =
+  '[data-tadpole-track-lane][data-tadpole-target-id="keyboard-box"][data-tadpole-property="opacity"]';
+const keyboardBoxOpacityKeyframeSelector =
+  '[data-tadpole-keyframe-track-id][data-keyframe-id][data-tadpole-target-id="keyboard-box"][data-tadpole-property="opacity"]';
 
 const assert = (condition, message) => {
   if (!condition) {
@@ -17,8 +21,11 @@ const keyboardFixtureSvg = `<svg viewBox="0 0 180 120" xmlns="http://www.w3.org/
     <animate attributeName="opacity" values="0.25;1" dur="1000ms" />
   </rect>
   <circle id="keyboard-dot" data-tadpole-name="Keyboard Dot" cx="122" cy="48" r="19" fill="#14b8a6">
-    <animate attributeName="opacity" values="0.1;0.9" dur="1000ms" calcMode="discrete" />
+    <animate attributeName="opacity" values="0.1;0.9" dur="1000ms" />
   </circle>
+  <ellipse id="keyboard-warning" data-tadpole-name="Keyboard Warning" cx="122" cy="88" rx="20" ry="10" fill="#f59e0b">
+    <animate attributeName="opacity" values="0.1;0.9" dur="1000ms" calcMode="discrete" />
+  </ellipse>
 </svg>`;
 
 const createPage = async (browser) => {
@@ -90,9 +97,9 @@ const blurActiveElement = async (page) => {
   });
 };
 
-const installKeyframeBubbleProbe = async (page) => {
-  await page.evaluate(() => {
-    const lane = document.querySelector("[data-tadpole-track-lane]");
+const installKeyframeBubbleProbe = async (page, laneSelector) => {
+  await page.evaluate((selector) => {
+    const lane = document.querySelector(selector);
     if (!(lane instanceof HTMLElement)) {
       throw new Error("track lane missing for keyframe bubble probe");
     }
@@ -104,35 +111,35 @@ const installKeyframeBubbleProbe = async (page) => {
       lane.removeEventListener("keydown", handler);
     };
     lane.addEventListener("keydown", handler);
-  });
+  }, laneSelector);
 };
 
-const assertKeyframeActivationStayedLocal = async (page, expectedCount, keyName) => {
+const assertKeyframeActivationStayedLocal = async (page, expectedCount, keyName, laneSelector, keyframeSelector) => {
   await page.waitForTimeout(100);
-  const markerCount = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
-  const bubbledKey = await page.locator("[data-tadpole-track-lane]").getAttribute("data-tadpole-test-bubbled-keyframe-key");
+  const markerCount = await page.locator(keyframeSelector).count();
+  const bubbledKey = await page.locator(laneSelector).getAttribute("data-tadpole-test-bubbled-keyframe-key");
   assert(markerCount === expectedCount, `${keyName} on a focused keyframe created an extra keyframe`);
   assert(bubbledKey === null, `${keyName} on a focused keyframe bubbled into the parent lane`);
 };
 
-const deleteFocusedKeyframeAndAssertFocus = async (page) => {
-  const beforeCount = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
+const deleteFocusedKeyframeAndAssertFocus = async (page, laneSelector, keyframeSelector) => {
+  const beforeCount = await page.locator(keyframeSelector).count();
   assert(beforeCount > 0, "no focused keyframe remains to delete");
   await page.keyboard.press("Delete");
   await page.waitForFunction(
-    (count) => document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length === count - 1,
-    beforeCount,
+    ({ selector, count }) => document.querySelectorAll(selector).length === count - 1,
+    { selector: keyframeSelector, count: beforeCount },
   );
-  await page.waitForFunction(() => {
+  await page.waitForFunction(({ lane, keyframe }) => {
     if (!(document.activeElement instanceof HTMLElement)) {
       return false;
     }
-    const remainingCount = document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length;
+    const remainingCount = document.querySelectorAll(keyframe).length;
     if (remainingCount === 0) {
-      return document.activeElement.matches("[data-tadpole-track-lane]");
+      return document.activeElement.matches(lane);
     }
-    return document.activeElement.matches("[data-tadpole-keyframe-track-id][data-keyframe-id]");
-  });
+    return document.activeElement.matches(keyframe);
+  }, { lane: laneSelector, keyframe: keyframeSelector });
 };
 
 const run = async () => {
@@ -152,23 +159,24 @@ const run = async () => {
       return row?.getAttribute("data-tadpole-layer-selected") === "true" && selectedCanvasTarget !== null;
     });
 
-    const trackLane = page.locator(
-      '[data-tadpole-track-lane][data-tadpole-target-id="keyboard-box"][data-tadpole-property="opacity"]',
-    );
+    const trackLane = page.locator(keyboardBoxOpacityLaneSelector);
     await trackLane.waitFor({ state: "visible" });
     const trackLaneName = await trackLane.getAttribute("aria-label");
     assert(trackLaneName?.includes("Keyboard Box opacity"), `timeline lane accessible name mismatch: ${trackLaneName ?? ""}`);
 
-    const initialKeyframeCount = await page.locator('[data-tadpole-keyframe-track-id][data-keyframe-id]').count();
+    const initialKeyframeCount = await page.locator(keyboardBoxOpacityKeyframeSelector).count();
     await trackLane.focus();
     await page.keyboard.press("Tab");
-    await waitForFocusedSelector(page, "[data-tadpole-keyframe-track-id][data-keyframe-id]");
+    await waitForFocusedSelector(page, keyboardBoxOpacityKeyframeSelector);
     await trackLane.focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("k");
-    await page.waitForFunction((count) => document.querySelectorAll("[data-tadpole-keyframe-track-id][data-keyframe-id]").length > count, initialKeyframeCount);
+    await page.waitForFunction(
+      ({ selector, count }) => document.querySelectorAll(selector).length > count,
+      { selector: keyboardBoxOpacityKeyframeSelector, count: initialKeyframeCount },
+    );
 
-    const selectedMarker = page.locator("[data-tadpole-keyframe-track-id].is-selected").first();
+    const selectedMarker = page.locator(`${keyboardBoxOpacityKeyframeSelector}.is-selected`).first();
     await selectedMarker.waitFor({ state: "visible" });
     const selectedKeyframeId = await selectedMarker.getAttribute("data-keyframe-id");
     const selectedMarkerLabel = await selectedMarker.getAttribute("aria-label");
@@ -189,13 +197,25 @@ const run = async () => {
       { keyframeId: selectedKeyframeId, time: originalTime },
     );
 
-    const countBeforeFocusedActivation = await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").count();
-    await installKeyframeBubbleProbe(page);
+    const countBeforeFocusedActivation = await page.locator(keyboardBoxOpacityKeyframeSelector).count();
+    await installKeyframeBubbleProbe(page, keyboardBoxOpacityLaneSelector);
     await selectedMarker.press("Enter");
-    await assertKeyframeActivationStayedLocal(page, countBeforeFocusedActivation, "Enter");
-    await installKeyframeBubbleProbe(page);
+    await assertKeyframeActivationStayedLocal(
+      page,
+      countBeforeFocusedActivation,
+      "Enter",
+      keyboardBoxOpacityLaneSelector,
+      keyboardBoxOpacityKeyframeSelector,
+    );
+    await installKeyframeBubbleProbe(page, keyboardBoxOpacityLaneSelector);
     await selectedMarker.press("Space");
-    await assertKeyframeActivationStayedLocal(page, countBeforeFocusedActivation, "Space");
+    await assertKeyframeActivationStayedLocal(
+      page,
+      countBeforeFocusedActivation,
+      "Space",
+      keyboardBoxOpacityLaneSelector,
+      keyboardBoxOpacityKeyframeSelector,
+    );
 
     await page.keyboard.press("Delete");
     await page.waitForFunction(
@@ -203,15 +223,15 @@ const run = async () => {
       selectedKeyframeId,
     );
     await page.waitForFunction(
-      () =>
+      ({ keyframe, lane }) =>
         document.activeElement instanceof HTMLElement &&
-        (document.activeElement.matches("[data-tadpole-keyframe-track-id][data-keyframe-id]") ||
-          document.activeElement.matches("[data-tadpole-track-lane]")),
+        (document.activeElement.matches(keyframe) || document.activeElement.matches(lane)),
+      { keyframe: keyboardBoxOpacityKeyframeSelector, lane: keyboardBoxOpacityLaneSelector },
     );
-    await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").first().focus();
-    await deleteFocusedKeyframeAndAssertFocus(page);
-    await page.locator("[data-tadpole-keyframe-track-id][data-keyframe-id]").first().focus();
-    await deleteFocusedKeyframeAndAssertFocus(page);
+    await page.locator(keyboardBoxOpacityKeyframeSelector).first().focus();
+    await deleteFocusedKeyframeAndAssertFocus(page, keyboardBoxOpacityLaneSelector, keyboardBoxOpacityKeyframeSelector);
+    await page.locator(keyboardBoxOpacityKeyframeSelector).first().focus();
+    await deleteFocusedKeyframeAndAssertFocus(page, keyboardBoxOpacityLaneSelector, keyboardBoxOpacityKeyframeSelector);
 
     await blurActiveElement(page);
     await runMenuCommandByKeyboard(page, "timeline", "timeline.playPause");
