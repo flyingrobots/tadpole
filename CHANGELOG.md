@@ -71,6 +71,9 @@ All notable changes for Tadpole are documented here.
   import, Layers target selection, timeline keyframe creation, focused
   keyframe move/delete, playback, warning inspection, and panel focus-return
   coverage.
+- Added a Dockview-like editor shell contract with left/right panel docking,
+  dock-region facts, dock-aware resizing, and bottom timeline track visibility
+  controls so the SVG canvas remains the center workspace.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
