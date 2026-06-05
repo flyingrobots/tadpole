@@ -3,7 +3,7 @@ title: "G21-001 - Static SVG Starter Timelines"
 lane: "design"
 goal: "Goal 21"
 issue: "https://github.com/flyingrobots/tadpole/issues/24"
-status: "active"
+status: "landed"
 owners:
   - "@flyingrobots"
 created: "2026-06-05"
@@ -222,28 +222,28 @@ Choose Option B. Starter timelines are suggestions until explicitly applied.
 
 ## Implementation Slices
 
-- [ ] Slice 1: Add design doc and cycle tracking for Goal 21.
-- [ ] Slice 2: Add runtime-backed starter timeline planner classes.
-- [ ] Slice 3: Add failing browser witness for static SVG suggest/edit/apply.
-- [ ] Slice 4: Wire static import state into the timeline suggestion surface.
-- [ ] Slice 5: Validate, document, push, and open/update PR.
+- [x] Slice 1: Add design doc and cycle tracking for Goal 21.
+- [x] Slice 2: Add runtime-backed starter timeline planner classes.
+- [x] Slice 3: Add failing browser witness for static SVG suggest/edit/apply.
+- [x] Slice 4: Wire static import state into the timeline suggestion surface.
+- [x] Slice 5: Validate, document, push, and open/update PR.
 
 ## Tests To Write First
 
-- [ ] Browser witness imports a static SVG and sees deterministic suggestions.
-- [ ] Browser witness toggles one suggestion off before apply.
-- [ ] Browser witness edits a suggested keyframe value before apply.
-- [ ] Browser witness applies selected suggestions and confirms exported project
+- [x] Browser witness imports a static SVG and sees deterministic suggestions.
+- [x] Browser witness toggles one suggestion off before apply.
+- [x] Browser witness edits a suggested keyframe value before apply.
+- [x] Browser witness applies selected suggestions and confirms exported project
       JSON contains only applied tracks and edited values.
 
 ## Acceptance Criteria
 
-- [ ] Static SVGs with no supported animation data show an optional suggestion
+- [x] Static SVGs with no supported animation data show an optional suggestion
       affordance.
-- [ ] Suggestions are deterministic and explainable from inspectable SVG facts.
-- [ ] The user can accept, reject, or edit suggested tracks before project state.
-- [ ] Suggestions do not masquerade as imported animation truth.
-- [ ] Browser witness proves the workflow through rendered UI and exported
+- [x] Suggestions are deterministic and explainable from inspectable SVG facts.
+- [x] The user can accept, reject, or edit suggested tracks before project state.
+- [x] Suggestions do not masquerade as imported animation truth.
+- [x] Browser witness proves the workflow through rendered UI and exported
       project state.
 
 ## Validation Plan
@@ -291,16 +291,18 @@ Mitigations:
 
 What changed from the design:
 
-- TBD
+- The implementation stayed within the planned suggestion-buffer shape.
 
 What the tests proved:
 
-- TBD
+- The browser witness imports a static SVG, inspects heuristic suggestion facts,
+  deselects one suggestion, edits a keyframe value, applies selected
+  suggestions, and verifies project JSON contains only applied tracks.
 
 What remains open:
 
-- TBD
+- Geometry-aware suggestions and named presets remain follow-on work.
 
 PR:
 
-- TBD
+- [PR #54](https://github.com/flyingrobots/tadpole/pull/54)

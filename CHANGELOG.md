@@ -74,6 +74,9 @@ All notable changes for Tadpole are documented here.
 - Added a Dockview-like editor shell contract with left/right panel docking,
   dock-region facts, dock-aware resizing, and bottom timeline track visibility
   controls so the SVG canvas remains the center workspace.
+- Added deterministic starter timeline suggestions for static SVG imports with
+  inspectable reasons, include/exclude controls, editable suggested keyframe
+  values, and a command-backed apply path.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

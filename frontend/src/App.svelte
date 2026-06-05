@@ -23,6 +23,9 @@
     svgTargetNameFromElement,
     type SvgTargetKind,
   } from "./SvgTargetMetadata";
+  import { StarterTimelinePlanner } from "./StarterTimelinePlanner";
+  import { StarterTimelineSuggestion } from "./StarterTimelineSuggestion";
+  import { StarterTimelineTargetFact } from "./StarterTimelineTargetFact";
 
   type FontRecord = {
     file: string;
@@ -298,6 +301,7 @@
   const propertyById = new Map<AnimationProperty, PropertyDefinition>(
     propertyCatalog.map((property): [AnimationProperty, PropertyDefinition] => [property.id, property]),
   );
+  const starterTimelinePlanner = new StarterTimelinePlanner();
   const numericProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "number"));
   const colorProperties = new Set(properties.filter((property) => propertyById.get(property)?.kind === "color"));
   type PreviewStyle = {
@@ -718,6 +722,11 @@
   let collapsedTimelineTargetIds = new Set<string>();
   let timelineTracksVisible = true;
   let timelineTargetRows: TargetTimelineRow[] = [];
+  let starterTimelineSuggestions: StarterTimelineSuggestion[] = [];
+  let starterTimelineSelectedIds = new Set<string>();
+  let starterTimelineStatus = "No starter timeline suggestions.";
+  let starterTimelineSelectedCount = 0;
+  let starterTimelineCanApply = false;
   let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
   let isPlaying = false;
@@ -1861,6 +1870,10 @@ ${runnableRuntimeScript}
   $: panelDockLabel = panelDockRegion === "left" ? "Left" : "Right";
   $: dockLayoutMode = panelHostUsesDialog ? "sheet" : "docked";
   $: timelineDockState = timelineTracksVisible ? "expanded" : "collapsed";
+  $: starterTimelineSelectedCount = starterTimelineSuggestions.filter((suggestion) =>
+    starterTimelineSelectedIds.has(suggestion.id),
+  ).length;
+  $: starterTimelineCanApply = starterTimelineSelectedCount > 0;
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
   $: svgLayerRows = buildSvgLayerTree(svgMarkup).rows;
@@ -2228,6 +2241,125 @@ ${runnableRuntimeScript}
     clearInspectorValidation();
   };
 
+  const clearStarterTimelineSuggestions = (status = "No starter timeline suggestions."): void => {
+    starterTimelineSuggestions = [];
+    starterTimelineSelectedIds = new Set<string>();
+    starterTimelineStatus = status;
+  };
+
+  const starterTimelineTargetFactsFor = (
+    targets: readonly AnimationTarget[],
+    layerRows: readonly SvgLayerRow[],
+  ): StarterTimelineTargetFact[] => {
+    const rowByTargetId = new Map(layerRows.map((row): [string, SvgLayerRow] => [row.targetId, row]));
+    return targets.map((target, index) => {
+      const row = rowByTargetId.get(target.id);
+      return new StarterTimelineTargetFact(
+        target.id,
+        target.name,
+        target.kind,
+        row?.parentTargetId ?? "",
+        row?.depth ?? 0,
+        index,
+      );
+    });
+  };
+
+  const prepareStarterTimelineSuggestions = (
+    targets: readonly AnimationTarget[],
+    layerRows: readonly SvgLayerRow[],
+    existingTrackCount: number,
+  ): void => {
+    const plan = starterTimelinePlanner.plan(starterTimelineTargetFactsFor(targets, layerRows), existingTrackCount);
+    starterTimelineSuggestions = [...plan.suggestions];
+    starterTimelineSelectedIds = new Set(starterTimelineSuggestions.map((suggestion) => suggestion.id));
+    starterTimelineStatus =
+      starterTimelineSuggestions.length > 0
+        ? `${starterTimelineSuggestions.length} deterministic starter timeline suggestions ready.`
+        : "No starter timeline suggestions.";
+  };
+
+  const dismissStarterTimelineSuggestions = (): void => {
+    clearStarterTimelineSuggestions("Starter timeline suggestions dismissed.");
+  };
+
+  const isStarterTimelineSuggestionSelected = (suggestionId: string): boolean =>
+    starterTimelineSelectedIds.has(suggestionId);
+
+  const toggleStarterTimelineSuggestion = (suggestionId: string, event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement;
+    const nextSelectedIds = new Set(starterTimelineSelectedIds);
+    if (input.checked) {
+      nextSelectedIds.add(suggestionId);
+    } else {
+      nextSelectedIds.delete(suggestionId);
+    }
+    starterTimelineSelectedIds = nextSelectedIds;
+  };
+
+  const updateStarterTimelineSuggestionValue = (suggestionId: string, keyframeIndex: number, event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement;
+    if (input.value.trim() === "") {
+      starterTimelineStatus = "Starter keyframe values cannot be blank.";
+      return;
+    }
+    starterTimelineSuggestions = starterTimelineSuggestions.map((suggestion) =>
+      suggestion.id === suggestionId ? suggestion.withKeyframeValue(keyframeIndex, input.value) : suggestion,
+    );
+    starterTimelineStatus = "Starter timeline suggestion edited.";
+  };
+
+  const trackFromStarterTimelineSuggestion = (suggestion: StarterTimelineSuggestion): TimelineTrack | null => {
+    if (!isAnimationProperty(suggestion.property)) {
+      starterTimelineStatus = `Starter suggestion ${suggestion.id} uses unsupported property ${suggestion.property}.`;
+      return null;
+    }
+    const keyframes: Keyframe[] = [];
+    for (const keyframe of suggestion.keyframes) {
+      if (!isKeyframeEasing(keyframe.easing)) {
+        starterTimelineStatus = `Starter suggestion ${suggestion.id} uses unsupported easing ${keyframe.easing}.`;
+        return null;
+      }
+      const normalizedValue = normalizeProjectKeyframeValue(suggestion.property, keyframe.value);
+      if (normalizedValue === null) {
+        starterTimelineStatus = `Starter suggestion ${suggestion.id} has invalid ${suggestion.property} value.`;
+        return null;
+      }
+      keyframes.push({
+        id: makeKeyframeId(),
+        time: clampMs(keyframe.time),
+        value: normalizedValue,
+        easing: keyframe.easing,
+      });
+    }
+    return {
+      id: makeTrackId(),
+      targetId: suggestion.targetId,
+      property: suggestion.property,
+      keyframes,
+      muted: false,
+    };
+  };
+
+  const applySelectedStarterTimelineSuggestions = (): void => {
+    const selectedSuggestions = starterTimelineSuggestions.filter((suggestion) =>
+      starterTimelineSelectedIds.has(suggestion.id),
+    );
+    let appliedCount = 0;
+    for (const suggestion of selectedSuggestions) {
+      const track = trackFromStarterTimelineSuggestion(suggestion);
+      if (track && runEditorCommand(new AddTrackCommand(track), true)) {
+        appliedCount += 1;
+      }
+    }
+    if (appliedCount === 0) {
+      starterTimelineStatus = "No starter timeline suggestions were applied.";
+      return;
+    }
+    clearStarterTimelineSuggestions(`Applied ${appliedCount} starter timeline ${appliedCount === 1 ? "track" : "tracks"}.`);
+    svgImportStatus = `Applied ${appliedCount} starter timeline ${appliedCount === 1 ? "track" : "tracks"} to ${svgSourceLabel}.`;
+  };
+
   const resetEditorCommandHistory = (): void => {
     editorCommandHistory = EditorCommandHistory.empty();
     editorCommandStatus = "Command history reset.";
@@ -2364,6 +2496,7 @@ ${runnableRuntimeScript}
     if (!parsed) {
       svgImportError = "Import failed: enter valid SVG markup.";
       animationImportWarnings = [];
+      clearStarterTimelineSuggestions("Starter timeline suggestions unavailable because SVG import failed.");
       return false;
     }
 
@@ -2379,6 +2512,7 @@ ${runnableRuntimeScript}
       ...parsed.animation.warnings,
       ...missingAnimationTargetIds.map((targetId) => `Skipped animation track for missing target #${targetId}.`),
     ];
+    const parsedLayerRows = buildSvgLayerTree(parsed.markup).rows;
     const importedTimelineTracks = importedTracksForTargets.map(createTimelineTrackFromImported);
     const importedTrackCount = importedTimelineTracks.length;
     const restoredSampleTracks = options.restoreSampleTracks && importedTrackCount === 0 ? createSampleTracks() : null;
@@ -2411,6 +2545,15 @@ ${runnableRuntimeScript}
       normalizeWorkAreaToDuration();
     }
     tracks = reconciledTracks;
+    if (importedTrackCount === 0 && !restoredSampleTracks && reconciledTracks.length === 0) {
+      prepareStarterTimelineSuggestions(parsed.targets, parsedLayerRows, reconciledTracks.length);
+    } else {
+      clearStarterTimelineSuggestions(
+        importedTrackCount > 0
+          ? "Starter timeline suggestions skipped because SVG animation tracks were imported."
+          : "Starter timeline suggestions skipped because editable tracks already exist.",
+      );
+    }
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.targets);
     resetEditorCommandHistory();
@@ -3242,6 +3385,7 @@ ${runnableRuntimeScript}
     originalPreviewInlineStyles = new WeakMap<SVGElement, Map<PreviewStyleProperty, OriginalInlineStyle>>();
     settleSelectionForTargets(parsed.parsedSvg.targets);
     resetEditorCommandHistory();
+    clearStarterTimelineSuggestions("Starter timeline suggestions skipped because a project timeline was restored.");
 
     const skippedSummary = formatSkippedTargetSummary(missingTargetIds);
     projectImportError = "";
@@ -4858,6 +5002,15 @@ ${runnableRuntimeScript}
       <span class="status-chip">Tracks: {tracks.length}</span>
       <span
         class="status-chip"
+        data-tadpole-starter-suggestion-badge
+        data-tadpole-starter-suggestion-count={starterTimelineSuggestions.length}
+        data-tadpole-selected-starter-suggestion-count={starterTimelineSelectedCount}
+        title={starterTimelineStatus}
+      >
+        Starter suggestions: {starterTimelineSuggestions.length}
+      </span>
+      <span
+        class="status-chip"
         data-tadpole-command-history
         data-tadpole-can-undo={canUndoEditorCommand ? "true" : "false"}
         data-tadpole-can-redo={canRedoEditorCommand ? "true" : "false"}
@@ -5956,7 +6109,82 @@ ${runnableRuntimeScript}
         <div class="track-scroll">
           <div class="track-list">
             {#if visibleTracks.length === 0}
-              {#if availableTargets.length === 0}
+              {#if starterTimelineSuggestions.length > 0}
+                <section
+                  class="starter-timeline-suggestions"
+                  data-tadpole-starter-timeline-suggestions
+                  data-tadpole-starter-origin="heuristic"
+                  data-tadpole-starter-suggestion-count={starterTimelineSuggestions.length}
+                  data-tadpole-selected-starter-suggestion-count={starterTimelineSelectedCount}
+                  aria-label="Starter timeline suggestions"
+                >
+                  <div class="starter-suggestion-heading">
+                    <div>
+                      <h3>Starter timeline suggestions</h3>
+                      <p class="muted tiny">
+                        Deterministic suggestions from SVG ids, labels, kinds, hierarchy, and source order. They are not
+                        imported animation truth.
+                      </p>
+                    </div>
+                    <span class="status-chip">Selected: {starterTimelineSelectedCount}</span>
+                  </div>
+                  <div class="starter-suggestion-list">
+                    {#each starterTimelineSuggestions as suggestion}
+                      <section
+                        class="starter-suggestion-row"
+                        data-tadpole-starter-suggestion-id={suggestion.id}
+                        data-tadpole-starter-target-id={suggestion.targetId}
+                        data-tadpole-starter-property={suggestion.property}
+                        data-tadpole-starter-reason={suggestion.reason}
+                      >
+                        <label class="starter-suggestion-toggle">
+                          <input
+                            type="checkbox"
+                            data-tadpole-starter-suggestion-toggle
+                            checked={isStarterTimelineSuggestionSelected(suggestion.id)}
+                            on:change={(event) => toggleStarterTimelineSuggestion(suggestion.id, event)}
+                          />
+                          <span>
+                            <strong>{suggestion.targetLabel}</strong>
+                            <span class="muted tiny">#{suggestion.targetId} • {suggestion.propertyLabel}</span>
+                          </span>
+                        </label>
+                        <p class="muted tiny">{suggestion.reason}</p>
+                        <div class="starter-keyframes">
+                          {#each suggestion.keyframes as keyframe, keyframeIndex}
+                            <label class="inline-label compact">
+                              <span>{formatMs(keyframe.time)}</span>
+                              <input
+                                value={keyframe.value}
+                                data-tadpole-starter-keyframe-value={keyframeIndex}
+                                aria-label={`${suggestion.targetLabel} ${suggestion.propertyLabel} starter keyframe at ${formatMs(
+                                  keyframe.time,
+                                )}`}
+                                on:input={(event) =>
+                                  updateStarterTimelineSuggestionValue(suggestion.id, keyframeIndex, event)}
+                              />
+                            </label>
+                          {/each}
+                        </div>
+                      </section>
+                    {/each}
+                  </div>
+                  <div class="starter-suggestion-actions">
+                    <button
+                      type="button"
+                      data-tadpole-apply-starter-timeline
+                      disabled={!starterTimelineCanApply}
+                      on:click={applySelectedStarterTimelineSuggestions}
+                    >
+                      Apply selected starter tracks
+                    </button>
+                    <button type="button" data-tadpole-dismiss-starter-timeline on:click={dismissStarterTimelineSuggestions}>
+                      Dismiss suggestions
+                    </button>
+                    <span class="muted tiny" aria-live="polite">{starterTimelineStatus}</span>
+                  </div>
+                </section>
+              {:else if availableTargets.length === 0}
                 <p class="empty-state tiny">Import an SVG with editable targets before creating timeline tracks.</p>
               {:else if tracks.length === 0}
                 <p class="empty-state tiny">No timeline tracks yet. Select a target, then create a track to start animating.</p>
@@ -7321,6 +7549,62 @@ ${runnableRuntimeScript}
     margin-top: var(--size-4);
     display: grid;
     gap: var(--size-3);
+  }
+
+  .starter-timeline-suggestions {
+    display: grid;
+    gap: var(--size-3);
+    border: 1px solid color-mix(in oklab, var(--tadpole-accent) 34%, var(--tadpole-border));
+    border-radius: var(--radius-2);
+    padding: var(--size-3);
+    background: color-mix(in oklab, var(--color-13) 88%, transparent);
+  }
+
+  .starter-suggestion-heading,
+  .starter-suggestion-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--size-2);
+  }
+
+  .starter-suggestion-heading h3 {
+    margin: 0;
+    font-size: var(--font-size-3);
+  }
+
+  .starter-suggestion-list {
+    display: grid;
+    gap: var(--size-2);
+  }
+
+  .starter-suggestion-row {
+    display: grid;
+    gap: var(--size-2);
+    border: 1px solid var(--tadpole-border);
+    border-radius: var(--radius-2);
+    padding: var(--size-2);
+    background: color-mix(in oklab, var(--color-14) 80%, black);
+  }
+
+  .starter-suggestion-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    min-width: 0;
+  }
+
+  .starter-suggestion-toggle input {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+  }
+
+  .starter-keyframes {
+    display: grid;
+    gap: var(--size-2);
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   }
 
   .track-scroll {
