@@ -452,6 +452,8 @@
     ["stroke-dashoffset", "strokeDashoffset"],
     ["strokedashoffset", "strokeDashoffset"],
   ]);
+  const nativeSaveMetadataAttributeName = "data-tadpole-native-save-metadata";
+  const nativeSaveMetadataVersion = "tadpole-svg-native-save-1";
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
   const isSafeSvgReference = (value: string): boolean => {
@@ -2662,6 +2664,66 @@ ${runnableRuntimeScript}
   const isKeyframeEasing = (value: unknown): value is KeyframeEasing =>
     typeof value === "string" && easingModes.includes(value as KeyframeEasing);
 
+  const sourceElementById = (document: Document, id: string): Element | null =>
+    Array.from(document.querySelectorAll("[id]")).find((element) => element.getAttribute("id") === id) ?? null;
+
+  const smilAttributeNameForProperty = (property: AnimationProperty): string => {
+    switch (property) {
+      case "strokeWidth":
+        return "stroke-width";
+      case "strokeDashoffset":
+        return "stroke-dashoffset";
+      case "opacity":
+        return "opacity";
+      case "fill":
+        return "fill";
+      case "stroke":
+        return "stroke";
+      case "x":
+        return "x";
+      case "y":
+        return "y";
+      case "scale":
+        return "scale";
+      case "rotation":
+        return "rotation";
+    }
+  };
+
+  const inlineStylePropertyValue = (element: Element, propertyName: string): string => {
+    const styleAttribute = element.getAttribute("style") ?? "";
+    const propertyNameLower = propertyName.toLowerCase();
+    for (const declaration of styleAttribute.split(";")) {
+      const separatorIndex = declaration.indexOf(":");
+      if (separatorIndex < 0) {
+        continue;
+      }
+      const name = declaration.slice(0, separatorIndex).trim().toLowerCase();
+      const value = declaration.slice(separatorIndex + 1).trim();
+      if (name === propertyNameLower && value !== "") {
+        return value;
+      }
+    }
+    return "";
+  };
+
+  const defaultUnderlyingValueForProperty = (property: AnimationProperty): string => {
+    switch (property) {
+      case "opacity":
+      case "scale":
+      case "strokeWidth":
+        return "1";
+      case "strokeDashoffset":
+      case "x":
+      case "y":
+      case "rotation":
+        return "0";
+      case "fill":
+      case "stroke":
+        return "";
+    }
+  };
+
   const normalizeProjectKeyframeValue = (property: AnimationProperty, value: string): string | null => {
     const trimmedValue = value.trim();
     if (trimmedValue === "") {
@@ -2690,6 +2752,91 @@ ${runnableRuntimeScript}
     }
 
     return trimmedValue;
+  };
+
+  const normalizeUnderlyingAnimationValue = (property: AnimationProperty, value: string): string | null => {
+    const normalized = normalizeProjectKeyframeValue(property, value);
+    if (normalized === null) {
+      return null;
+    }
+    return colorProperties.has(property) && parseCssColor(normalized) === null ? null : normalized;
+  };
+
+  const underlyingAnimationValue = (property: AnimationProperty, targetElement: Element | null): string | null => {
+    const attributeName = smilAttributeNameForProperty(property);
+    const candidates = targetElement
+      ? [
+          inlineStylePropertyValue(targetElement, attributeName),
+          targetElement.getAttribute(attributeName)?.trim() ?? "",
+          defaultUnderlyingValueForProperty(property),
+        ]
+      : [defaultUnderlyingValueForProperty(property)];
+
+    for (const candidate of candidates) {
+      if (candidate === "") {
+        continue;
+      }
+      const normalized = normalizeUnderlyingAnimationValue(property, candidate);
+      if (normalized !== null) {
+        return normalized;
+      }
+    }
+
+    return null;
+  };
+
+  const withPreBeginHoldKeyframes = (
+    property: AnimationProperty,
+    keyframes: ImportedAnimationKeyframe[],
+    beginOffset: number,
+    targetElement: Element | null,
+  ): ImportedAnimationKeyframe[] => {
+    if (beginOffset <= 0) {
+      return keyframes;
+    }
+
+    const firstKeyframe = keyframes[0];
+    if (!firstKeyframe || firstKeyframe.time <= 0) {
+      return keyframes;
+    }
+
+    const underlyingValue = underlyingAnimationValue(property, targetElement);
+    if (underlyingValue === null || underlyingValue === firstKeyframe.value) {
+      return keyframes;
+    }
+
+    const holdKeyframes: ImportedAnimationKeyframe[] = [{ time: 0, value: underlyingValue, easing: "linear" }];
+    const holdUntil = firstKeyframe.time - 1;
+    if (holdUntil > 0) {
+      holdKeyframes.push({ time: holdUntil, value: underlyingValue, easing: "linear" });
+    }
+
+    return [...holdKeyframes, ...keyframes];
+  };
+
+  const svgNativeSaveMetadataDuration = (document: Document): number => {
+    const metadataElements = Array.from(document.querySelectorAll(`[${nativeSaveMetadataAttributeName}="true"]`));
+    for (const metadataElement of metadataElements) {
+      const text = metadataElement.textContent?.trim() ?? "";
+      if (text === "") {
+        continue;
+      }
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (
+          isRecord(parsed) &&
+          parsed.version === nativeSaveMetadataVersion &&
+          typeof parsed.durationMs === "number" &&
+          Number.isFinite(parsed.durationMs) &&
+          parsed.durationMs > 0
+        ) {
+          return Math.round(parsed.durationMs);
+        }
+      } catch {
+        return 0;
+      }
+    }
+    return 0;
   };
 
   const parseClockValueMs = (value: string): number | null => {
@@ -2884,6 +3031,7 @@ ${runnableRuntimeScript}
   const extractAnimateElementTrack = (
     element: Element,
     targetId: string,
+    targetElement: Element | null,
     duration: number,
     beginOffset: number,
     warnings: string[],
@@ -2908,12 +3056,13 @@ ${runnableRuntimeScript}
       return null;
     }
 
-    return { targetId, property, keyframes };
+    return { targetId, property, keyframes: withPreBeginHoldKeyframes(property, keyframes, beginOffset, targetElement) };
   };
 
   const extractAnimateTransformTracks = (
     element: Element,
     targetId: string,
+    targetElement: Element | null,
     duration: number,
     beginOffset: number,
     warnings: string[],
@@ -2947,10 +3096,10 @@ ${runnableRuntimeScript}
       const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration, beginOffset);
       const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration, beginOffset);
       if (xKeyframes && valuesChange(xValues)) {
-        tracks.push({ targetId, property: "x", keyframes: xKeyframes });
+        tracks.push({ targetId, property: "x", keyframes: withPreBeginHoldKeyframes("x", xKeyframes, beginOffset, targetElement) });
       }
       if (yKeyframes && valuesChange(yValues)) {
-        tracks.push({ targetId, property: "y", keyframes: yKeyframes });
+        tracks.push({ targetId, property: "y", keyframes: withPreBeginHoldKeyframes("y", yKeyframes, beginOffset, targetElement) });
       }
       if (tracks.length === 0) {
         warnings.push(`Unsupported or static translate values on #${targetId}.`);
@@ -2973,7 +3122,7 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported scale values on #${targetId}.`);
         return [];
       }
-      return [{ targetId, property: "scale", keyframes }];
+      return [{ targetId, property: "scale", keyframes: withPreBeginHoldKeyframes("scale", keyframes, beginOffset, targetElement) }];
     }
 
     if (transformType === "rotate") {
@@ -2987,7 +3136,7 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported rotate values on #${targetId}.`);
         return [];
       }
-      return [{ targetId, property: "rotation", keyframes }];
+      return [{ targetId, property: "rotation", keyframes: withPreBeginHoldKeyframes("rotation", keyframes, beginOffset, targetElement) }];
     }
 
     warnings.push(`Unsupported animateTransform type "${transformType || "unknown"}" on #${targetId}.`);
@@ -3007,6 +3156,7 @@ ${runnableRuntimeScript}
 
     const warnings: string[] = [];
     const tracks: ImportedAnimationTrack[] = [];
+    const metadataDuration = svgNativeSaveMetadataDuration(doc);
     const importedTrackKeys = new Set<string>();
     let importedIndefiniteRepeat = false;
     const appendImportedTrack = (track: ImportedAnimationTrack): boolean => {
@@ -3051,6 +3201,7 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported ${tag} animation on #${targetId}.`);
         return;
       }
+      const targetElement = sourceElementById(doc, targetId);
 
       const begin = element.getAttribute("begin");
       const beginOffset = begin ? parseClockValueMs(begin) : 0;
@@ -3084,7 +3235,7 @@ ${runnableRuntimeScript}
       }
 
       if (tag === "animate") {
-        const track = extractAnimateElementTrack(element, targetId, duration, beginOffset, warnings);
+        const track = extractAnimateElementTrack(element, targetId, targetElement, duration, beginOffset, warnings);
         if (track && appendImportedTrack(track)) {
           if (hasIndefiniteRepeat(element)) {
             importedIndefiniteRepeat = true;
@@ -3093,7 +3244,7 @@ ${runnableRuntimeScript}
         return;
       }
 
-      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, beginOffset, warnings);
+      const transformTracks = extractAnimateTransformTracks(element, targetId, targetElement, duration, beginOffset, warnings);
       let appendedTransformTrack = false;
       transformTracks.forEach((track) => {
         if (appendImportedTrack(track)) {
@@ -3105,10 +3256,11 @@ ${runnableRuntimeScript}
       }
     });
 
-    const duration = tracks.reduce((maxDuration, track) => {
+    const importedDuration = tracks.reduce((maxDuration, track) => {
       const trackDuration = track.keyframes.reduce((maxTime, keyframe) => Math.max(maxTime, keyframe.time), 0);
       return Math.max(maxDuration, trackDuration);
     }, 0);
+    const duration = Math.max(importedDuration, metadataDuration);
 
     return { tracks, warnings: Array.from(new Set(warnings)), duration, hasIndefiniteRepeat: importedIndefiniteRepeat };
   };

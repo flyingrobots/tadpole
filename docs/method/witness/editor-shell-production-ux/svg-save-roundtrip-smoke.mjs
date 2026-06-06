@@ -32,11 +32,18 @@ const saveRoundtripSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/20
 
 const staggeredSaveSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Staggered SVG Native Save Fixture">
   <path id="tadpoleQ" data-tadpole-name="Tadpole Q" d="M20 40 C20 18 54 18 54 40 C54 62 20 62 20 40" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="120" stroke-dashoffset="120">
-    <animate attributeName="stroke-dashoffset" values="120;0" dur="1000ms" begin="250ms" />
+    <animate attributeName="stroke-dashoffset" values="120;0" dur="1000ms" begin="250ms" repeatCount="indefinite" />
   </path>
   <circle id="coC" data-tadpole-name="CO C" cx="86" cy="40" r="18" fill="#2563eb">
-    <animate attributeName="opacity" values="0;1" dur="500ms" begin="1s" />
+    <animate attributeName="opacity" values="0;1" dur="500ms" begin="1s" repeatCount="indefinite" />
   </circle>
+</svg>`;
+
+const savedPartialDurationSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Saved Partial Duration Fixture">
+  <metadata data-tadpole-native-save-metadata="true">{"version":"tadpole-svg-native-save-1","durationMs":1500,"serializedTrackCount":1}</metadata>
+  <path id="partialQ" data-tadpole-name="Partial Q" d="M20 40 C20 18 54 18 54 40 C54 62 20 62 20 40" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="120" stroke-dashoffset="120">
+    <animate attributeName="stroke-dashoffset" values="120;0" keyTimes="0;1" dur="1000ms" begin="250ms" repeatCount="indefinite" data-tadpole-authored="true" data-tadpole-track-id="track-partial" data-tadpole-property="strokeDashoffset" />
+  </path>
 </svg>`;
 
 const createPage = async (browser) => {
@@ -186,16 +193,31 @@ const runStaggeredSvgSaveSmoke = async (browser) => {
   const savedSvg = await page.locator("[data-tadpole-svg-save-output]").textContent();
   assert(savedSvg, "staggered saved SVG output missing");
   assert(savedSvg.includes('attributeName="stroke-dashoffset"'), "staggered save lost stroke-dashoffset animation");
-  assert(savedSvg.includes('begin="250ms"'), "staggered save did not preserve dashoffset begin");
-  assert(savedSvg.includes('begin="1000ms"'), "staggered save did not preserve opacity begin");
-  assert(savedSvg.includes('dur="500ms"'), "staggered save did not serialize local opacity duration");
+  assert(!savedSvg.includes('dur="1000ms"'), "staggered looping save retained a local dashoffset duration");
+  assert(!savedSvg.includes('dur="500ms"'), "staggered looping save retained a local opacity duration");
+  assert(authoredNodeCount(savedSvg) === 2, `expected two authored staggered animation nodes, got ${authoredNodeCount(savedSvg)}`);
+  assert((savedSvg.match(/dur="1500ms"/g) ?? []).length === 2, "staggered looping save did not use the full timeline period");
   await closeActiveDialog(page);
 
   await importViaPasteDialog(page, savedSvg, "[data-tadpole-canvas-stage] #tadpoleQ");
   const payload = await projectPayload(page);
   assert(payload.timeline.duration === 1500, `staggered reopened duration mismatch: ${payload.timeline.duration}`);
-  assertTrack(payload, "tadpoleQ", "strokeDashoffset", ["250:120", "1250:0"]);
-  assertTrack(payload, "coC", "opacity", ["1000:0", "1500:1"]);
+  assertTrack(payload, "tadpoleQ", "strokeDashoffset", ["0:120", "250:120", "1250:0", "1500:0"]);
+  assertTrack(payload, "coC", "opacity", ["0:1", "999:1", "1000:0", "1500:1"]);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runNativeMetadataDurationSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("[data-tadpole-canvas-stage] svg");
+
+  await importViaPasteDialog(page, savedPartialDurationSvg, "[data-tadpole-canvas-stage] #partialQ");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.duration === 1500, `native metadata duration was ignored on reopen: ${payload.timeline.duration}`);
+  assertTrack(payload, "partialQ", "strokeDashoffset", ["250:120", "1250:0"]);
 
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();
@@ -205,6 +227,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   await runSvgSaveRoundtripSmoke(browser);
   await runStaggeredSvgSaveSmoke(browser);
+  await runNativeMetadataDurationSmoke(browser);
   console.log("svg save roundtrip browser smoke passed");
 } finally {
   await browser.close();

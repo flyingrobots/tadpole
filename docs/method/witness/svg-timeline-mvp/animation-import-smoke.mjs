@@ -543,10 +543,17 @@ const runStaggeredDashoffsetSmoke = async (browser) => {
       opacityTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "1"),
     `opacity keyframes were not offset by begin time: ${JSON.stringify(opacityTrack.keyframes)}`,
   );
+  assert(
+    opacityTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "1") &&
+      opacityTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "1"),
+    `delayed opacity import did not preserve the pre-begin underlying value: ${JSON.stringify(opacityTrack.keyframes)}`,
+  );
 
   await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("750");
   const dashOffset = await page.locator(".preview-svg-host #tadpoleQ").evaluate((element) => element.style.strokeDashoffset);
   assert(dashOffset !== "" && Number(dashOffset) < 120 && Number(dashOffset) > 0, `stroke-dashoffset did not apply at playhead: ${dashOffset}`);
+  const preBeginOpacity = await page.locator(".preview-svg-host #coC").evaluate((element) => Number(element.style.opacity));
+  assert(preBeginOpacity === 1, `delayed opacity changed before SMIL begin: ${preBeginOpacity}`);
 
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();

@@ -95,6 +95,10 @@ All notable changes for Tadpole are documented here.
   `stroke-dashoffset` as an editable, previewable, runnable, and saveable
   numeric property, including SVG-native save/reopen for partial-duration
   scalar tracks.
+- Fixed delayed and partial SVG-native animation roundtrips so delayed imports
+  preserve pre-begin underlying values, saved looping tracks repeat over the
+  full timeline period, and native-save metadata preserves timeline duration on
+  reopen.
 
 ## [0.1.0] - 2026-05-31
 
