@@ -37,7 +37,8 @@ Tadpole is not a full SVG animation implementation yet.
 - Unsupported SMIL features, CSS animations, Web Animations, and several
   non-linear or partial-duration cases surface warnings instead of editable
   tracks.
-- Static SVG starter timeline suggestions are deferred.
+- Static SVG starter timeline suggestions are heuristic starting points, not
+  imported source truth.
 - Project JSON is the working persistence format; generated HTML and SVG exports
   are artifacts.
 - The frontend still has a large `App.svelte` surface that predates the newer
@@ -193,11 +194,10 @@ The near-term direction is to keep pushing from "rough but works" toward an
 editor that can handle real SVG production workflows:
 
 - richer import intelligence for existing SVG animation timelines
-- starter timeline suggestions for static SVGs
 - denser timeline editing for complex artwork
 - broader SVG-native save parity
+- deeper batch target/keyframe workflows
 - curve/tangent editing
-- multi-select target workflows
 - stronger decomposition of the current frontend monolith
 
 ## GitHub

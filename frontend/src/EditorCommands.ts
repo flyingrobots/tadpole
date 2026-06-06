@@ -14,6 +14,7 @@ export type EditorCommandEasing = "linear" | "power1.inOut" | "power2.out" | "po
 export type EditorCommandId =
   | "target.select"
   | "track.add"
+  | "track.addMany"
   | "track.remove"
   | "keyframe.set"
   | "keyframe.move"
@@ -178,6 +179,30 @@ export class AddTrackCommand extends EditorCommandIntent {
       [...state.tracks, this.track],
       this.track.targetId,
       this.track.id,
+      "",
+      state.currentTime,
+    );
+  }
+}
+
+export class AddTracksCommand extends EditorCommandIntent {
+  readonly tracks: readonly EditorCommandTrack[];
+
+  constructor(tracks: readonly EditorCommandTrack[]) {
+    super("track.addMany");
+    this.tracks = cloneTracks(tracks);
+    Object.freeze(this);
+  }
+
+  apply(state: EditorCommandStateSnapshot): EditorCommandStateSnapshot {
+    const lastTrack = this.tracks.at(-1);
+    if (lastTrack === undefined) {
+      return state;
+    }
+    return new EditorCommandStateSnapshot(
+      [...state.tracks, ...this.tracks],
+      lastTrack.targetId,
+      lastTrack.id,
       "",
       state.currentTime,
     );

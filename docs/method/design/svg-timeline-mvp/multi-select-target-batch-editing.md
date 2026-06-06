@@ -3,7 +3,7 @@ title: "G22-001 - Multi-Select Target Batch Editing"
 lane: "design"
 goal: "Goal 22"
 issue: "https://github.com/flyingrobots/tadpole/issues/25"
-status: "active"
+status: "landed"
 owners:
   - "@flyingrobots"
 created: "2026-06-05"
@@ -292,31 +292,31 @@ preserving the existing single-select row interaction.
 ## Implementation Slices
 
 - [x] Slice 1: Add Goal 22 design doc and mark issue #25 in progress.
-- [ ] Slice 2: Add failing browser witness for multi-select batch creation and
+- [x] Slice 2: Add failing browser witness for multi-select batch creation and
       one-step undo/redo.
-- [ ] Slice 3: Add `AddTracksCommand` and refactor track construction so
+- [x] Slice 3: Add `AddTracksCommand` and refactor track construction so
       single and batch creation share the same track factory.
-- [ ] Slice 4: Wire Layers panel multi-select controls and inspectable facts.
-- [ ] Slice 5: Validate, document, push, open PR, and close the cycle.
+- [x] Slice 4: Wire Layers panel multi-select controls and inspectable facts.
+- [x] Slice 5: Validate, document, push, open PR, and close the cycle.
 
 ## Tests To Write First
 
-- [ ] Browser witness imports a multi-target static SVG and opens Layers.
-- [ ] Browser witness toggles multiple target checkboxes and verifies count,
+- [x] Browser witness imports a multi-target static SVG and opens Layers.
+- [x] Browser witness toggles multiple target checkboxes and verifies count,
       ids, and row facts.
-- [ ] Browser witness creates batch tracks and verifies exported project JSON.
-- [ ] Browser witness undoes the batch in one step and redoes it in one step.
+- [x] Browser witness creates batch tracks and verifies exported project JSON.
+- [x] Browser witness undoes the batch in one step and redoes it in one step.
 
 ## Acceptance Criteria
 
-- [ ] Users can add and remove targets from a multi-selection without losing
+- [x] Users can add and remove targets from a multi-selection without losing
       current single-target workflows.
-- [ ] Batch track creation uses existing track validation and target
+- [x] Batch track creation uses existing track validation and target
       reconciliation paths.
-- [ ] Multi-selected state is visible, keyboard-accessible, and inspectable.
-- [ ] Batch operations interact cleanly with undo/redo once command history
+- [x] Multi-selected state is visible, keyboard-accessible, and inspectable.
+- [x] Batch operations interact cleanly with undo/redo once command history
       exists.
-- [ ] Browser witness proves the workflow through rendered UI and exported
+- [x] Browser witness proves the workflow through rendered UI and exported
       project state.
 
 ## Validation Plan
@@ -369,16 +369,21 @@ Mitigations:
 
 What changed from the design:
 
-- TBD.
+- The implementation stayed within the explicit checkbox and batch toolbar
+  design. Batch creation skips target/property pairs that already exist.
 
 What the tests proved:
 
-- TBD.
+- The browser witness imports a static SVG, checks three layer batch toggles,
+  verifies selected ids and row facts, preserves independent single-target row
+  selection, creates three opacity tracks with one `track.addMany` command, and
+  proves undo/redo restores exported project JSON in one step.
 
 What remains open:
 
-- TBD.
+- Canvas marquee selection, batch keyframe editing, batch mute/delete, and
+  curve/tangent editing remain follow-on work.
 
 PR:
 
-- TBD.
+- [PR #55](https://github.com/flyingrobots/tadpole/pull/55)

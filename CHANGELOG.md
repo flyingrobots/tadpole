@@ -77,6 +77,9 @@ All notable changes for Tadpole are documented here.
 - Added deterministic starter timeline suggestions for static SVG imports with
   inspectable reasons, include/exclude controls, editable suggested keyframe
   values, and a command-backed apply path.
+- Added multi-select target batch editing in the Layers panel with inspectable
+  selected-target facts, batch property track creation, and one-step undo/redo
+  through `track.addMany`.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 

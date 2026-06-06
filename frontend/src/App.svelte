@@ -3,6 +3,7 @@
   import {
     AddKeyframeCommand,
     AddTrackCommand,
+    AddTracksCommand,
     DeleteKeyframeCommand,
     dispatchEditorCommand,
     EditorCommandHistory,
@@ -778,6 +779,11 @@
   let showOnlySelected = false;
   let trackFilterTerm = "";
   let layerSearchTerm = "";
+  let multiSelectedTargetIds = new Set<string>();
+  let multiSelectedTargets: AnimationTarget[] = [];
+  let multiSelectedTargetIdList = "";
+  let batchTrackProperty: AnimationProperty = "opacity";
+  let lastBatchCreatedCount = 0;
   let trackSortMode: TrackSortMode = "manual";
   let showKeyboardShortcuts = false;
   let selectedKeyframeId = "";
@@ -1890,6 +1896,14 @@ ${runnableRuntimeScript}
   }
   $: selectedTarget = availableTargets.find((target) => target.id === selectedTargetId) ?? null;
   $: selectedTargetTracks = selectedTarget ? tracks.filter((track) => track.targetId === selectedTarget.id) : [];
+  $: {
+    const validTargetIds = new Set(availableTargets.map((target) => target.id));
+    if ([...multiSelectedTargetIds].some((targetId) => !validTargetIds.has(targetId))) {
+      multiSelectedTargetIds = new Set([...multiSelectedTargetIds].filter((targetId) => validTargetIds.has(targetId)));
+    }
+  }
+  $: multiSelectedTargets = availableTargets.filter((target) => multiSelectedTargetIds.has(target.id));
+  $: multiSelectedTargetIdList = multiSelectedTargets.map((target) => target.id).join(",");
   $: visibleLayerRows = buildLayerPanelRows(
     svgLayerRows,
     tracks,
@@ -2421,6 +2435,7 @@ ${runnableRuntimeScript}
     editorCommandHistory = move.history;
     editorLastCommandId = move.commandId ?? "";
     editorCommandStatus = `Undid ${move.commandId ?? "command"}.`;
+    lastBatchCreatedCount = 0;
     markDocumentDirty();
   };
 
@@ -2435,6 +2450,7 @@ ${runnableRuntimeScript}
     editorCommandHistory = move.history;
     editorLastCommandId = move.commandId ?? "";
     editorCommandStatus = `Redid ${move.commandId ?? "command"}.`;
+    lastBatchCreatedCount = 0;
     markDocumentDirty();
   };
 
@@ -4038,6 +4054,39 @@ ${runnableRuntimeScript}
     expandTimelineStackForTarget(targetId);
   };
 
+  const setTargetBatchSelection = (targetId: string, event: Event): void => {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement) || !availableTargets.some((target) => target.id === targetId)) {
+      return;
+    }
+    const nextSelectedTargetIds = new Set(multiSelectedTargetIds);
+    if (input.checked) {
+      nextSelectedTargetIds.add(targetId);
+    } else {
+      nextSelectedTargetIds.delete(targetId);
+    }
+    multiSelectedTargetIds = nextSelectedTargetIds;
+    lastBatchCreatedCount = 0;
+  };
+
+  const clearBatchTargetSelection = (): void => {
+    multiSelectedTargetIds = new Set<string>();
+    lastBatchCreatedCount = 0;
+  };
+
+  const setBatchTrackProperty = (event: Event): void => {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLSelectElement)) {
+      return;
+    }
+    const property = input.value;
+    if (!isAnimationProperty(property)) {
+      return;
+    }
+    batchTrackProperty = property;
+    lastBatchCreatedCount = 0;
+  };
+
   const selectPreviewTarget = (event: PointerEvent): void => {
     const targetId = resolvePreviewTargetId(event.target);
     if (!targetId) {
@@ -4051,18 +4100,51 @@ ${runnableRuntimeScript}
     drawerOpen = true;
   };
 
-  const createTrack = (targetId: string, property: AnimationProperty): TimelineTrack | null => {
+  const createTrackDraft = (targetId: string, property: AnimationProperty): TimelineTrack | null => {
     if (!availableTargets.some((target) => target.id === targetId)) {
       return null;
     }
-    const newTrack: TimelineTrack = {
+    return {
       id: makeTrackId(),
       targetId,
       property,
       muted: false,
       keyframes: [{ id: makeKeyframeId(), time: 0, value: defaultValueFor(property), easing: "linear" }],
     };
+  };
+
+  const createTrack = (targetId: string, property: AnimationProperty): TimelineTrack | null => {
+    const newTrack = createTrackDraft(targetId, property);
+    if (!newTrack) {
+      return null;
+    }
     return runEditorCommand(new AddTrackCommand(newTrack), true) ? newTrack : null;
+  };
+
+  const createTracksForSelectedTargets = (): void => {
+    const newTracks = multiSelectedTargets
+      .filter((target) => !tracks.some((track) => track.targetId === target.id && track.property === batchTrackProperty))
+      .map((target) => createTrackDraft(target.id, batchTrackProperty))
+      .filter((track): track is TimelineTrack => track !== null);
+    if (newTracks.length === 0) {
+      lastBatchCreatedCount = 0;
+      svgImportStatus = `No new ${propertySpec(batchTrackProperty).label} tracks to create for the batch selection.`;
+      return;
+    }
+    const added = runEditorCommand(new AddTracksCommand(newTracks), true);
+    if (!added) {
+      lastBatchCreatedCount = 0;
+      return;
+    }
+    const lastTrack = newTracks.at(-1);
+    lastBatchCreatedCount = newTracks.length;
+    newTrackProperty = batchTrackProperty;
+    if (lastTrack) {
+      newTrackTargetId = lastTrack.targetId;
+    }
+    newTracks.forEach((track) => expandTimelineStackForTarget(track.targetId));
+    showOnlySelected = false;
+    svgImportStatus = `Created ${newTracks.length} ${propertySpec(batchTrackProperty).label} batch ${newTracks.length === 1 ? "track" : "tracks"}.`;
   };
 
   const addTrack = (): void => {
@@ -5439,6 +5521,9 @@ ${runnableRuntimeScript}
           data-tadpole-panel-open="true"
           data-tadpole-layer-total-count={svgLayerRows.length}
           data-tadpole-layer-visible-count={visibleLayerRows.length}
+          data-tadpole-multi-select-count={multiSelectedTargets.length}
+          data-tadpole-multi-selected-target-ids={multiSelectedTargetIdList}
+          data-tadpole-batch-created-count={lastBatchCreatedCount}
         >
           <h2>Layers</h2>
           <p class="muted">Browse SVG hierarchy, inspect target facts, and select targets without using the canvas.</p>
@@ -5456,6 +5541,37 @@ ${runnableRuntimeScript}
             <span class="status-chip">{visibleLayerRows.length} visible</span>
             <span class="status-chip">{svgLayerRows.length} total</span>
             <span class="status-chip">{selectedTarget ? `Selected #${selectedTarget.id}` : "No selected target"}</span>
+            <span class="status-chip">Batch: {multiSelectedTargets.length}</span>
+          </div>
+          <div class="layer-batch-toolbar" aria-label="Layer batch editing">
+            <label class="inline-label compact">
+              <span>Batch property</span>
+              <select
+                value={batchTrackProperty}
+                data-tadpole-batch-track-property
+                on:change={setBatchTrackProperty}
+              >
+                {#each propertyCatalog as property}
+                  <option value={property.id}>{property.label}</option>
+                {/each}
+              </select>
+            </label>
+            <button
+              type="button"
+              data-tadpole-batch-create-tracks
+              on:click={createTracksForSelectedTargets}
+              disabled={multiSelectedTargets.length === 0}
+            >
+              Create tracks for selected targets
+            </button>
+            <button
+              type="button"
+              data-tadpole-clear-multi-selection
+              on:click={clearBatchTargetSelection}
+              disabled={multiSelectedTargets.length === 0}
+            >
+              Clear
+            </button>
           </div>
           {#if svgLayerRows.length === 0}
             <p class="empty-state tiny">No editable SVG targets found.</p>
@@ -5465,41 +5581,53 @@ ${runnableRuntimeScript}
             <ul class="layer-list" role="tree" aria-label="SVG layer tree">
               {#each visibleLayerRows as layer}
                 <li>
-                  <button
-                    type="button"
-                    class="layer-row"
-                    class:selected={layer.selected}
-                    data-tadpole-layer-row={layer.row.targetId}
-                    data-tadpole-layer-parent-id={layer.row.parentTargetId}
-                    data-tadpole-layer-label={layer.row.label}
-                    data-tadpole-layer-kind={layer.row.kind}
-                    data-tadpole-layer-depth={layer.row.depth}
-                    data-tadpole-layer-track-count={layer.trackCount}
-                    data-tadpole-layer-key-count={layer.keyframeCount}
-                    data-tadpole-layer-warning-count={layer.warningCount}
-                    data-tadpole-layer-selected={layer.selected ? "true" : "false"}
-                    data-tadpole-layer-visible="true"
-                    role="treeitem"
-                    aria-level={layer.row.depth + 1}
-                    aria-selected={layer.selected}
-                    aria-label={`${layer.row.label}, ${layer.row.kind}, ${layer.trackCount} tracks, ${layer.warningCount} warnings`}
-                    style={`--layer-depth:${layer.row.depth};`}
-                    on:click={() => selectLayerTarget(layer.row.targetId)}
-                  >
-                    <span class="layer-row-main">
-                      <span class="layer-row-disclosure" aria-hidden="true">▸</span>
-                      <span class="layer-row-label">{layer.row.label}</span>
-                      <code>#{layer.row.targetId}</code>
-                    </span>
-                    <span class="layer-row-facts">
-                      <span class="chip">{layer.row.kind}</span>
-                      <span class="chip">{layer.trackCount} tracks</span>
-                      <span class="chip">{layer.keyframeCount} keys</span>
-                      {#if layer.warningCount > 0}
-                        <span class="chip warning">{layer.warningCount} warnings</span>
-                      {/if}
-                    </span>
-                  </button>
+                  <div class="layer-row-shell">
+                    <label class="layer-batch-toggle">
+                      <input
+                        type="checkbox"
+                        checked={multiSelectedTargetIds.has(layer.row.targetId)}
+                        data-tadpole-layer-batch-toggle={layer.row.targetId}
+                        aria-label={`Include ${layer.row.label} in batch selection`}
+                        on:change={(event) => setTargetBatchSelection(layer.row.targetId, event)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      class="layer-row"
+                      class:selected={layer.selected}
+                      data-tadpole-layer-row={layer.row.targetId}
+                      data-tadpole-layer-parent-id={layer.row.parentTargetId}
+                      data-tadpole-layer-label={layer.row.label}
+                      data-tadpole-layer-kind={layer.row.kind}
+                      data-tadpole-layer-depth={layer.row.depth}
+                      data-tadpole-layer-track-count={layer.trackCount}
+                      data-tadpole-layer-key-count={layer.keyframeCount}
+                      data-tadpole-layer-warning-count={layer.warningCount}
+                      data-tadpole-layer-selected={layer.selected ? "true" : "false"}
+                      data-tadpole-layer-multi-selected={multiSelectedTargetIds.has(layer.row.targetId) ? "true" : "false"}
+                      data-tadpole-layer-visible="true"
+                      role="treeitem"
+                      aria-level={layer.row.depth + 1}
+                      aria-selected={layer.selected}
+                      aria-label={`${layer.row.label}, ${layer.row.kind}, ${layer.trackCount} tracks, ${layer.warningCount} warnings`}
+                      style={`--layer-depth:${layer.row.depth};`}
+                      on:click={() => selectLayerTarget(layer.row.targetId)}
+                    >
+                      <span class="layer-row-main">
+                        <span class="layer-row-disclosure" aria-hidden="true">▸</span>
+                        <span class="layer-row-label">{layer.row.label}</span>
+                        <code>#{layer.row.targetId}</code>
+                      </span>
+                      <span class="layer-row-facts">
+                        <span class="chip">{layer.row.kind}</span>
+                        <span class="chip">{layer.trackCount} tracks</span>
+                        <span class="chip">{layer.keyframeCount} keys</span>
+                        {#if layer.warningCount > 0}
+                          <span class="chip warning">{layer.warningCount} warnings</span>
+                        {/if}
+                      </span>
+                    </button>
+                  </div>
                 </li>
               {/each}
             </ul>
@@ -8158,6 +8286,39 @@ ${runnableRuntimeScript}
 
   .layer-list li {
     min-width: 0;
+  }
+
+  .layer-batch-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: var(--size-2);
+    align-items: end;
+    margin-block-start: var(--size-3);
+  }
+
+  .layer-batch-toolbar button {
+    min-height: 2.3rem;
+  }
+
+  .layer-row-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--size-1);
+    align-items: stretch;
+  }
+
+  .layer-batch-toggle {
+    display: grid;
+    place-items: center;
+    min-width: 1.75rem;
+    min-height: 2.25rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--color-13) 52%, transparent);
+  }
+
+  .layer-batch-toggle input {
+    margin: 0;
   }
 
   .layer-row {
