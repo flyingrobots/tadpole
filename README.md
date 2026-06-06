@@ -184,6 +184,7 @@ Cycle source-of-truth surfaces:
 
 - `BEARING.md`
 - `CHANGELOG.md`
+- `docs/method/ROADMAP_PLANNING_SYSTEM.md`
 - `docs/method/design/`
 - `docs/method/witness/`
 - `docs/method/retro/`
