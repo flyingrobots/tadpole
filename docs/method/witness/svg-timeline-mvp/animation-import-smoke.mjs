@@ -141,6 +141,19 @@ const duplicatePropertyAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://ww
   </rect>
 </svg>`;
 
+const fillOpacityAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg" aria-label="Fill Opacity Fixture">
+  <rect id="fill-alpha" data-tadpole-name="Fill Alpha" x="8" y="8" width="28" height="18" fill="#2563eb" fill-opacity="0">
+    <animate id="fillAlphaFade" attributeName="fill-opacity" values="0;1" dur="120ms" begin="400ms" />
+  </rect>
+</svg>`;
+
+const syncbaseBeginSvg = `<svg viewBox="0 0 100 40" xmlns="http://www.w3.org/2000/svg" aria-label="Syncbase Begin Fixture">
+  <path id="sync-path" data-tadpole-name="Sync Path" d="M8 24 H82" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="82" stroke-dashoffset="82">
+    <animate id="baseDraw" attributeName="fill-opacity" values="0;1" dur="100ms" begin="400ms" />
+    <animate attributeName="stroke-dashoffset" values="82;0" dur="200ms" begin="baseDraw.end+300ms" />
+  </path>
+</svg>`;
+
 const staggeredDashoffsetSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Staggered Dash Offset Fixture">
   <path id="tadpoleQ" data-tadpole-name="Tadpole Q" d="M20 40 C20 18 54 18 54 40 C54 62 20 62 20 40" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="120" stroke-dashoffset="120">
     <animate attributeName="stroke-dashoffset" values="120;0" dur="1000ms" begin="250ms" />
@@ -547,6 +560,60 @@ const runDuplicatePropertyWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runFillOpacityImportSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, fillOpacityAnimationSvg);
+  await page.waitForSelector(".preview-svg-host #fill-alpha");
+
+  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(!warningsText.includes("Unsupported animate attribute"), `fill-opacity import emitted warning: ${warningsText}`);
+  const payload = await projectPayload(page);
+  const fillOpacityTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "fill-alpha" && track.property === "fillOpacity",
+  );
+  assert(fillOpacityTrack, "fill-opacity animation was not imported as a fillOpacity track");
+  assertTrackValueAt(fillOpacityTrack, 400, "0");
+  assertTrackValueAt(fillOpacityTrack, 520, "1");
+  assert(payload.timeline.duration === 520, `fill-opacity import did not extend timeline duration: ${payload.timeline.duration}`);
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("460");
+  const fillOpacity = await page.locator(".preview-svg-host #fill-alpha").evaluate((element) => Number(element.style.fillOpacity));
+  assert(fillOpacity > 0 && fillOpacity < 1, `fill-opacity did not apply at playhead: ${fillOpacity}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runSyncbaseBeginImportSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, syncbaseBeginSvg);
+  await page.waitForSelector(".preview-svg-host #sync-path", { state: "attached" });
+
+  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(!warningsText.includes("Unsupported begin time"), `syncbase begin import emitted warning: ${warningsText}`);
+  const payload = await projectPayload(page);
+  const fillOpacityTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "sync-path" && track.property === "fillOpacity",
+  );
+  const dashTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "sync-path" && track.property === "strokeDashoffset",
+  );
+  assert(fillOpacityTrack, "syncbase reference fill-opacity track missing");
+  assert(dashTrack, "syncbase-dependent stroke-dashoffset track missing");
+  assertTrackValueAt(fillOpacityTrack, 400, "0");
+  assertTrackValueAt(fillOpacityTrack, 500, "1");
+  assertTrackValueAt(dashTrack, 800, "82");
+  assertTrackValueAt(dashTrack, 1000, "0");
+  assert(payload.timeline.duration === 1000, `syncbase begin import did not extend timeline duration: ${payload.timeline.duration}`);
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("900");
+  const dashOffset = await page.locator(".preview-svg-host #sync-path").evaluate((element) => element.style.strokeDashoffset);
+  assert(dashOffset !== "" && Number(dashOffset) < 82 && Number(dashOffset) > 0, `syncbase dashoffset did not apply: ${dashOffset}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const runStaggeredDashoffsetSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await importSvgMarkup(page, staggeredDashoffsetSvg);
@@ -736,6 +803,8 @@ try {
   await runOneShotLoopingSmoke(browser);
   await runRepeatedKeyTimesWarningSmoke(browser);
   await runDuplicatePropertyWarningSmoke(browser);
+  await runFillOpacityImportSmoke(browser);
+  await runSyncbaseBeginImportSmoke(browser);
   await runStaggeredDashoffsetSmoke(browser);
   await runDelayedBaseTransformSmoke(browser);
   await runDelayedScaleBaseTransformSmoke(browser);
