@@ -37,7 +37,16 @@
     kind: SvgTargetKind;
   };
 
-  type AnimationProperty = "x" | "y" | "scale" | "rotation" | "opacity" | "fill" | "stroke" | "strokeWidth";
+  type AnimationProperty =
+    | "x"
+    | "y"
+    | "scale"
+    | "rotation"
+    | "opacity"
+    | "fill"
+    | "stroke"
+    | "strokeWidth"
+    | "strokeDashoffset";
   type TrackSortMode = "manual" | "target" | "property";
   type TimeDisplayMode = "seconds" | "frames";
   type EditorPanel =
@@ -57,6 +66,7 @@
   type EditorDialog = "open-svg" | "paste-svg" | "save-svg" | "export-runnable";
   type InspectorMode = "document" | "target" | "track" | "keyframe" | "warning";
   type InspectorValidationState = "valid" | "invalid";
+  type DockRegion = "left" | "right";
 
   type KeyframeEasing = "linear" | "power1.inOut" | "power2.out" | "power3.inOut" | "expo.out" | "back.inOut";
 
@@ -279,6 +289,7 @@
     { id: "fill", label: "Fill", kind: "color", defaultValue: "var(--color-6)" },
     { id: "stroke", label: "Stroke", kind: "color", defaultValue: "var(--color-4)" },
     { id: "strokeWidth", label: "Stroke Width", kind: "number", defaultValue: "1", min: 0.5, max: 8, step: 0.25, unit: "px", snap: 0.25 },
+    { id: "strokeDashoffset", label: "Stroke Dash Offset", kind: "number", defaultValue: "0", step: 1, snap: 1 },
   ];
   const quickTrackPropertyIds = new Set<AnimationProperty>(["x", "y", "opacity", "fill"]);
   const quickTrackProperties = propertyCatalog.filter((property) => quickTrackPropertyIds.has(property.id));
@@ -295,6 +306,7 @@
     fill: string;
     stroke: string;
     strokeWidth: string;
+    strokeDashoffset: string;
   };
   type PreviewStyleProperty =
     | "transform"
@@ -303,7 +315,8 @@
     | "opacity"
     | "fill"
     | "stroke"
-    | "stroke-width";
+    | "stroke-width"
+    | "stroke-dashoffset";
   type OriginalInlineStyle = {
     value: string;
     priority: string;
@@ -423,6 +436,7 @@
     "fill",
     "stroke",
     "stroke-width",
+    "stroke-dashoffset",
   ];
   const supportedSmilAttributeProperties = new Map<string, AnimationProperty>([
     ["opacity", "opacity"],
@@ -430,6 +444,8 @@
     ["stroke", "stroke"],
     ["stroke-width", "strokeWidth"],
     ["strokewidth", "strokeWidth"],
+    ["stroke-dashoffset", "strokeDashoffset"],
+    ["strokedashoffset", "strokeDashoffset"],
   ]);
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
@@ -700,6 +716,7 @@
   let selectedTarget: AnimationTarget | null = availableTargets[0] ?? null;
   let selectedTargetTracks: TimelineTrack[] = [];
   let collapsedTimelineTargetIds = new Set<string>();
+  let timelineTracksVisible = true;
   let timelineTargetRows: TargetTimelineRow[] = [];
   let timelineDurationMs = sampleTimelineDurationMs;
   let currentTime = 0;
@@ -726,6 +743,7 @@
   let isScrubbing = false;
   let scrubberSource: "timeline" | "preview" | null = null;
   let drawerOpen = false;
+  let panelDockRegion: DockRegion = "left";
   let activePanel: EditorPanel = "none";
   let openMenu: EditorMenu | null = null;
   let activeDialog: EditorDialog | null = null;
@@ -820,6 +838,10 @@
   };
   const syncPanelHostMode = (): void => {
     panelHostIsSheet = panelSheetMediaQuery?.matches ?? false;
+  };
+  const setPanelDockRegion = (region: DockRegion): void => {
+    panelDockRegion = region;
+    drawerOpen = true;
   };
   const closePanel = (): void => {
     const returnFocusSelector = panelReturnFocusSelector || defaultPanelReturnFocusSelector;
@@ -1041,15 +1063,28 @@
     }
   };
   const resizeDrawerByKeyboard = (event: KeyboardEvent): void => {
-    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+    const step = event.shiftKey ? 24 : 12;
+    if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setDrawerWidth(drawerWidth - (event.shiftKey ? 24 : 12));
+      setDrawerWidth(drawerWidth + (panelDockRegion === "right" ? step : -step));
       drawerOpen = true;
       return;
     }
-    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+    if (event.key === "ArrowRight") {
       event.preventDefault();
-      setDrawerWidth(drawerWidth + (event.shiftKey ? 24 : 12));
+      setDrawerWidth(drawerWidth + (panelDockRegion === "right" ? -step : step));
+      drawerOpen = true;
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setDrawerWidth(drawerWidth - step);
+      drawerOpen = true;
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setDrawerWidth(drawerWidth + step);
       drawerOpen = true;
       return;
     }
@@ -1075,7 +1110,9 @@
     if (!isResizingDrawer) {
       return;
     }
-    const next = drawerResizeStartWidth + Math.round(event.clientX - drawerResizeStartX);
+    const pointerDelta = event.clientX - drawerResizeStartX;
+    const dockAwareDelta = panelDockRegion === "right" ? -pointerDelta : pointerDelta;
+    const next = drawerResizeStartWidth + Math.round(dockAwareDelta);
     setDrawerWidth(next);
   };
   const startDrawerResize = (event: MouseEvent): void => {
@@ -1373,7 +1410,7 @@
   const selectedTrackId = typeof timeline.selectedTrackId === "string" ? timeline.selectedTrackId : "";
   const duration = Math.max(1, Number(timeline.duration) || 1);
   const isLooping = timeline.isLooping !== false;
-  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth"]);
+  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth", "strokeDashoffset"]);
   const transformProperties = ["x", "y", "scale", "rotation"];
   const defaults = {
     x: "0",
@@ -1384,6 +1421,7 @@
     fill: "none",
     stroke: "none",
     strokeWidth: "1.2",
+    strokeDashoffset: "0",
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -1556,6 +1594,9 @@
       }
       if (activeTrackFor(target.id, "strokeWidth")) {
         element.style.strokeWidth = trackValue(target.id, "strokeWidth", defaults.strokeWidth, time);
+      }
+      if (activeTrackFor(target.id, "strokeDashoffset")) {
+        element.style.strokeDashoffset = trackValue(target.id, "strokeDashoffset", defaults.strokeDashoffset, time);
       }
     });
   };
@@ -1817,6 +1858,9 @@ ${runnableRuntimeScript}
   $: panelHostOpenPanelIds = drawerOpen && activePanel !== "none" ? activePanel : "";
   $: panelHostUsesDialog = panelHostIsSheet && drawerOpen && activePanel !== "none";
   $: activePanelLabel = panelLabelFor(panelHostActivePanelId);
+  $: panelDockLabel = panelDockRegion === "left" ? "Left" : "Right";
+  $: dockLayoutMode = panelHostUsesDialog ? "sheet" : "docked";
+  $: timelineDockState = timelineTracksVisible ? "expanded" : "collapsed";
   $: svgMarkup = sanitizeSvgSource(svgSource) || defaultSvgSource;
   $: availableTargets = discoverSvgTargets(svgMarkup);
   $: svgLayerRows = buildSvgLayerTree(svgMarkup).rows;
@@ -2096,6 +2140,9 @@ ${runnableRuntimeScript}
   };
   const collapseAllTimelineStacks = (): void => {
     collapsedTimelineTargetIds = new Set(timelineTargetRows.map((row) => row.targetId));
+  };
+  const toggleTimelineTrackVisibility = (): void => {
+    timelineTracksVisible = !timelineTracksVisible;
   };
 
   const jumpToUsingRef = (ref: HTMLElement | null, event: MouseEvent): void => {
@@ -2585,6 +2632,7 @@ ${runnableRuntimeScript}
     values: string[],
     keyTimes: number[],
     duration: number,
+    offset: number,
   ): ImportedAnimationKeyframe[] | null => {
     if (values.length !== keyTimes.length || duration <= 0) {
       return null;
@@ -2600,7 +2648,7 @@ ${runnableRuntimeScript}
       }
 
       return {
-        time: Math.round(duration * keyTimes[index]!),
+        time: Math.round(offset + duration * keyTimes[index]!),
         value: normalizedValue,
         easing: "linear",
       };
@@ -2678,6 +2726,7 @@ ${runnableRuntimeScript}
     element: Element,
     targetId: string,
     duration: number,
+    beginOffset: number,
     warnings: string[],
   ): ImportedAnimationTrack | null => {
     const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
@@ -2694,7 +2743,7 @@ ${runnableRuntimeScript}
       return null;
     }
 
-    const keyframes = trackKeyframesFromValues(property, values, keyTimes, duration);
+    const keyframes = trackKeyframesFromValues(property, values, keyTimes, duration, beginOffset);
     if (!keyframes) {
       warnings.push(`Unsupported ${attributeName} values on #${targetId}.`);
       return null;
@@ -2707,6 +2756,7 @@ ${runnableRuntimeScript}
     element: Element,
     targetId: string,
     duration: number,
+    beginOffset: number,
     warnings: string[],
   ): ImportedAnimationTrack[] => {
     const attributeName = element.getAttribute("attributeName")?.trim().toLowerCase() ?? "";
@@ -2735,8 +2785,8 @@ ${runnableRuntimeScript}
       const xValues = dimensionValuesFromTransformValues(values, 0);
       const yValues = dimensionValuesFromTransformValues(values, 1);
       const tracks: ImportedAnimationTrack[] = [];
-      const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration);
-      const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration);
+      const xKeyframes = trackKeyframesFromValues("x", xValues, keyTimes, duration, beginOffset);
+      const yKeyframes = trackKeyframesFromValues("y", yValues, keyTimes, duration, beginOffset);
       if (xKeyframes && valuesChange(xValues)) {
         tracks.push({ targetId, property: "x", keyframes: xKeyframes });
       }
@@ -2759,7 +2809,7 @@ ${runnableRuntimeScript}
         return [];
       }
       const scaleValues = dimensionValuesFromTransformValues(values, 0);
-      const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration);
+      const keyframes = trackKeyframesFromValues("scale", scaleValues, keyTimes, duration, beginOffset);
       if (!keyframes) {
         warnings.push(`Unsupported scale values on #${targetId}.`);
         return [];
@@ -2773,7 +2823,7 @@ ${runnableRuntimeScript}
         return [];
       }
       const rotationValues = dimensionValuesFromTransformValues(values, 0);
-      const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration);
+      const keyframes = trackKeyframesFromValues("rotation", rotationValues, keyTimes, duration, beginOffset);
       if (!keyframes) {
         warnings.push(`Unsupported rotate values on #${targetId}.`);
         return [];
@@ -2844,8 +2894,9 @@ ${runnableRuntimeScript}
       }
 
       const begin = element.getAttribute("begin");
-      if (begin && (parseClockValueMs(begin) ?? -1) !== 0) {
-        warnings.push(`Unsupported non-zero begin time on #${targetId}.`);
+      const beginOffset = begin ? parseClockValueMs(begin) : 0;
+      if (beginOffset === null || beginOffset < 0) {
+        warnings.push(`Unsupported begin time on #${targetId}.`);
         return;
       }
 
@@ -2874,7 +2925,7 @@ ${runnableRuntimeScript}
       }
 
       if (tag === "animate") {
-        const track = extractAnimateElementTrack(element, targetId, duration, warnings);
+        const track = extractAnimateElementTrack(element, targetId, duration, beginOffset, warnings);
         if (track && appendImportedTrack(track)) {
           if (hasIndefiniteRepeat(element)) {
             importedIndefiniteRepeat = true;
@@ -2883,7 +2934,7 @@ ${runnableRuntimeScript}
         return;
       }
 
-      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, warnings);
+      const transformTracks = extractAnimateTransformTracks(element, targetId, duration, beginOffset, warnings);
       let appendedTransformTrack = false;
       transformTracks.forEach((track) => {
         if (appendImportedTrack(track)) {
@@ -3570,6 +3621,7 @@ ${runnableRuntimeScript}
       fill: baseFill,
       stroke: baseStroke,
       strokeWidth: targetId === "arc" ? "2.5" : "1.2",
+      strokeDashoffset: "0",
     };
   };
 
@@ -3583,12 +3635,14 @@ ${runnableRuntimeScript}
     const fill = resolveTrackValue(targetId, "fill", base.fill);
     const stroke = resolveTrackValue(targetId, "stroke", base.stroke);
     const strokeWidth = resolveTrackValue(targetId, "strokeWidth", base.strokeWidth);
+    const strokeDashoffset = resolveTrackValue(targetId, "strokeDashoffset", base.strokeDashoffset);
     return {
       transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
       opacity,
       fill,
       stroke,
       strokeWidth: `${strokeWidth}`,
+      strokeDashoffset: `${strokeDashoffset}`,
     };
   };
 
@@ -3679,6 +3733,12 @@ ${runnableRuntimeScript}
         setPreviewStyleProperty(element, "stroke-width", style.strokeWidth);
       } else {
         restorePreviewStyleProperty(element, "stroke-width");
+      }
+
+      if (getActiveTrackForTarget(target.id, "strokeDashoffset")) {
+        setPreviewStyleProperty(element, "stroke-dashoffset", style.strokeDashoffset);
+      } else {
+        restorePreviewStyleProperty(element, "stroke-dashoffset");
       }
     });
   };
@@ -3842,6 +3902,9 @@ ${runnableRuntimeScript}
 
     event.stopPropagation();
     selectTarget(targetId, { syncTrack: true });
+    panelReturnFocusSelector = "[data-tadpole-canvas-stage]";
+    activePanel = "inspector";
+    drawerOpen = true;
   };
 
   const createTrack = (targetId: string, property: AnimationProperty): TimelineTrack | null => {
@@ -4956,11 +5019,25 @@ ${runnableRuntimeScript}
     </div>
   {/if}
 
-  <section class="editor-layout" style={`--tadpole-drawer-width:${layoutColumnWidth};`}>
+  <section
+    class="editor-layout"
+    class:dock-right={panelDockRegion === "right"}
+    data-tadpole-dock-layout
+    data-tadpole-dock-mode={dockLayoutMode}
+    data-tadpole-active-dock-region={panelDockRegion}
+    data-tadpole-left-dock-open={drawerOpen && activePanel !== "none" && panelDockRegion === "left" ? "true" : "false"}
+    data-tadpole-right-dock-open={drawerOpen && activePanel !== "none" && panelDockRegion === "right" ? "true" : "false"}
+    data-tadpole-center-pane="canvas"
+    data-tadpole-bottom-dock="timeline"
+    data-tadpole-timeline-dock-state={timelineDockState}
+    style={`--tadpole-drawer-width:${layoutColumnWidth};`}
+  >
     <aside
       class="drawer panel-host"
       class:drawer-collapsed={!drawerOpen}
       data-tadpole-panel-host
+      data-tadpole-dock-panel="context"
+      data-tadpole-dock-region={panelDockRegion}
       data-tadpole-active-panel={panelHostActivePanelId}
       data-tadpole-panel-open={drawerOpen && activePanel !== "none" ? "true" : "false"}
       data-tadpole-open-panel-ids={panelHostOpenPanelIds}
@@ -4979,9 +5056,13 @@ ${runnableRuntimeScript}
           data-tadpole-panel-toggle
           on:click={toggleDrawer}
           aria-expanded={drawerOpen}
-          aria-label={drawerOpen ? "Collapse left drawer" : "Expand left drawer"}
+          aria-label={drawerOpen ? `Collapse ${panelDockLabel.toLowerCase()} dock` : `Expand ${panelDockLabel.toLowerCase()} dock`}
         >
-          {drawerOpen ? "◂" : "▸"}
+          {#if panelDockRegion === "left"}
+            {drawerOpen ? "◂" : "▸"}
+          {:else}
+            {drawerOpen ? "▸" : "◂"}
+          {/if}
         </button>
       </div>
 
@@ -5002,7 +5083,27 @@ ${runnableRuntimeScript}
               <p class="eyebrow">Panel</p>
               <h2 id="active-panel-title">{activePanelLabel}</h2>
             </div>
-            <button type="button" data-tadpole-panel-close on:click={closePanel}>Close Panel</button>
+            <div class="dock-panel-actions" aria-label="Panel dock controls">
+              <button
+                type="button"
+                data-tadpole-dock-panel-left
+                data-tadpole-dock-active={panelDockRegion === "left" ? "true" : "false"}
+                aria-pressed={panelDockRegion === "left"}
+                on:click={() => setPanelDockRegion("left")}
+              >
+                Dock Left
+              </button>
+              <button
+                type="button"
+                data-tadpole-dock-panel-right
+                data-tadpole-dock-active={panelDockRegion === "right" ? "true" : "false"}
+                aria-pressed={panelDockRegion === "right"}
+                on:click={() => setPanelDockRegion("right")}
+              >
+                Dock Right
+              </button>
+              <button type="button" data-tadpole-panel-close on:click={closePanel}>Close Panel</button>
+            </div>
           </div>
         {/if}
 
@@ -5587,7 +5688,7 @@ ${runnableRuntimeScript}
     <button
       type="button"
       class="layout-resizer"
-      aria-label="Resize left drawer"
+      aria-label={`Resize ${panelDockLabel.toLowerCase()} dock`}
       tabindex="0"
       on:mousedown={startDrawerResize}
       on:keydown={resizeDrawerByKeyboard}
@@ -5664,7 +5765,9 @@ ${runnableRuntimeScript}
       {/if}
       <section
         class="panel panel-timeline"
+        class:timeline-tracks-collapsed={!timelineTracksVisible}
         data-tadpole-bottom-timeline
+        data-tadpole-timeline-tracks-visible={timelineTracksVisible ? "true" : "false"}
         data-tadpole-work-area-active={workAreaActive ? "true" : "false"}
         data-tadpole-work-area-in={workAreaInMs ?? ""}
         data-tadpole-work-area-out={workAreaOutMs ?? ""}
@@ -5789,6 +5892,14 @@ ${runnableRuntimeScript}
         <div class="timeline-stack-controls" data-tadpole-timeline-stack-controls>
           <span class="status-chip">Stacks: {timelineTargetRows.length}</span>
           <span class="status-chip">Visible tracks: {visibleTracks.length}</span>
+          <button
+            type="button"
+            data-tadpole-timeline-track-visibility
+            aria-pressed={!timelineTracksVisible}
+            on:click={toggleTimelineTrackVisibility}
+          >
+            {timelineTracksVisible ? "Collapse timeline tracks" : "Expand timeline tracks"}
+          </button>
           <button type="button" on:click={expandAllTimelineStacks} disabled={timelineTargetRows.length === 0}>
             Show timeline tracks
           </button>
@@ -6171,7 +6282,7 @@ ${runnableRuntimeScript}
 
       </section>
 
-      <section class="panel panel-preview" data-tadpole-canvas-stage aria-label="SVG canvas stage">
+      <section class="panel panel-preview" data-tadpole-canvas-stage tabindex="-1" aria-label="SVG canvas stage">
         <div class="panel-heading">
           <div>
             <h2>Live Preview</h2>
@@ -6498,6 +6609,27 @@ ${runnableRuntimeScript}
     height: 100%;
   }
 
+  .editor-layout.dock-right {
+    grid-template-columns: minmax(0, 1fr) var(--size-1) var(--tadpole-drawer-width, 3.25rem);
+  }
+
+  .editor-layout.dock-right .workbench {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .editor-layout.dock-right .layout-resizer {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .editor-layout.dock-right .drawer {
+    grid-column: 3;
+    grid-row: 1;
+    border-right: 0;
+    border-left: 1px solid var(--tadpole-border);
+  }
+
   .drawer {
     display: grid;
     gap: var(--size-2);
@@ -6535,6 +6667,18 @@ ${runnableRuntimeScript}
     border-radius: var(--radius-2);
     background: color-mix(in oklab, var(--color-13) 76%, transparent);
     padding: var(--size-2);
+  }
+
+  .dock-panel-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--size-1);
+  }
+
+  .dock-panel-actions [data-tadpole-dock-active="true"] {
+    border-color: color-mix(in oklab, var(--tadpole-accent) 58%, var(--tadpole-border));
+    background: color-mix(in oklab, var(--color-8) 24%, var(--color-12));
   }
 
   .panel-host-heading h2 {
@@ -7186,6 +7330,10 @@ ${runnableRuntimeScript}
     padding-bottom: var(--size-1);
   }
 
+  .timeline-tracks-collapsed .track-scroll {
+    display: none;
+  }
+
   .track-scroll::-webkit-scrollbar {
     width: 0.5rem;
   }
@@ -7826,6 +7974,18 @@ ${runnableRuntimeScript}
       grid-template-columns: var(--tadpole-drawer-width, 3.25rem) minmax(0, 1fr);
     }
 
+    .editor-layout.dock-right {
+      grid-template-columns: minmax(0, 1fr) var(--tadpole-drawer-width, 3.25rem);
+    }
+
+    .editor-layout.dock-right .workbench {
+      grid-column: 1;
+    }
+
+    .editor-layout.dock-right .drawer {
+      grid-column: 2;
+    }
+
     .layout-resizer {
       display: none;
     }
@@ -7918,6 +8078,10 @@ ${runnableRuntimeScript}
 
   @media (max-width: 720px) {
     .editor-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-layout.dock-right {
       grid-template-columns: minmax(0, 1fr);
     }
 

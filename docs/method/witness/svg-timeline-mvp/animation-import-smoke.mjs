@@ -12,6 +12,7 @@ const assert = (condition, message) => {
 };
 
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
+const optionalTextOf = async (locator) => ((await locator.count()) === 0 ? "" : textOf(locator));
 
 const animatedSvg = `<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg" aria-label="Animated Import Fixture">
   <style>
@@ -131,6 +132,15 @@ const duplicatePropertyAnimationSvg = `<svg viewBox="0 0 80 40" xmlns="http://ww
     <animate attributeName="opacity" values="0;1" dur="800ms" />
     <animate attributeName="opacity" values="1;0" dur="800ms" />
   </rect>
+</svg>`;
+
+const staggeredDashoffsetSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Staggered Dash Offset Fixture">
+  <path id="tadpoleQ" data-tadpole-name="Tadpole Q" d="M20 40 C20 18 54 18 54 40 C54 62 20 62 20 40" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="120" stroke-dashoffset="120">
+    <animate attributeName="stroke-dashoffset" values="120;0" dur="1000ms" begin="250ms" />
+  </path>
+  <circle id="coC" data-tadpole-name="CO C" cx="86" cy="40" r="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="500ms" begin="1s" />
+  </circle>
 </svg>`;
 
 const createPage = async (browser) => {
@@ -504,6 +514,44 @@ const runDuplicatePropertyWarningSmoke = async (browser) => {
   await page.close();
 };
 
+const runStaggeredDashoffsetSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, staggeredDashoffsetSvg);
+  await page.waitForSelector(".preview-svg-host #tadpoleQ");
+
+  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(!warningsText.includes("Unsupported animate attribute"), `staggered dashoffset import emitted attribute warning: ${warningsText}`);
+  assert(!warningsText.includes("Unsupported non-zero begin time"), `staggered dashoffset import emitted begin warning: ${warningsText}`);
+
+  const payload = await projectPayload(page);
+  const dashTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "tadpoleQ" && track.property === "strokeDashoffset",
+  );
+  const opacityTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "coC" && track.property === "opacity",
+  );
+  assert(dashTrack, "stroke-dashoffset animation was not imported");
+  assert(opacityTrack, "staggered opacity animation was not imported");
+  assert(payload.timeline.duration === 1500, `staggered begin times did not extend timeline duration: ${payload.timeline.duration}`);
+  assert(
+    dashTrack.keyframes.some((keyframe) => keyframe.time === 250 && keyframe.value === "120") &&
+      dashTrack.keyframes.some((keyframe) => keyframe.time === 1250 && keyframe.value === "0"),
+    `stroke-dashoffset keyframes were not offset by begin time: ${JSON.stringify(dashTrack.keyframes)}`,
+  );
+  assert(
+    opacityTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "0") &&
+      opacityTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "1"),
+    `opacity keyframes were not offset by begin time: ${JSON.stringify(opacityTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("750");
+  const dashOffset = await page.locator(".preview-svg-host #tadpoleQ").evaluate((element) => element.style.strokeDashoffset);
+  assert(dashOffset !== "" && Number(dashOffset) < 120 && Number(dashOffset) > 0, `stroke-dashoffset did not apply at playhead: ${dashOffset}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -524,6 +572,7 @@ try {
   await runOneShotLoopingSmoke(browser);
   await runRepeatedKeyTimesWarningSmoke(browser);
   await runDuplicatePropertyWarningSmoke(browser);
+  await runStaggeredDashoffsetSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

@@ -30,6 +30,15 @@ const saveRoundtripSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/20
   </g>
 </svg>`;
 
+const staggeredSaveSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Staggered SVG Native Save Fixture">
+  <path id="tadpoleQ" data-tadpole-name="Tadpole Q" d="M20 40 C20 18 54 18 54 40 C54 62 20 62 20 40" fill="none" stroke="#111827" stroke-width="4" stroke-dasharray="120" stroke-dashoffset="120">
+    <animate attributeName="stroke-dashoffset" values="120;0" dur="1000ms" begin="250ms" />
+  </path>
+  <circle id="coC" data-tadpole-name="CO C" cx="86" cy="40" r="18" fill="#2563eb">
+    <animate attributeName="opacity" values="0;1" dur="500ms" begin="1s" />
+  </circle>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -163,9 +172,39 @@ const runSvgSaveRoundtripSmoke = async (browser) => {
   await page.close();
 };
 
+const runStaggeredSvgSaveSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("[data-tadpole-canvas-stage] svg");
+
+  await importViaSourcePanel(page, staggeredSaveSvg, "[data-tadpole-canvas-stage] #tadpoleQ");
+  const readySave = await openSaveDialog(page);
+  assert((await readySave.getAttribute("data-tadpole-svg-save-state")) === "ready", "staggered SVG save should be ready");
+  assert((await readySave.getAttribute("data-tadpole-svg-save-track-count")) === "2", "staggered serialized track count mismatch");
+  assert((await readySave.getAttribute("data-tadpole-svg-save-warning-count")) === "0", "staggered SVG save emitted warnings");
+
+  const savedSvg = await page.locator("[data-tadpole-svg-save-output]").textContent();
+  assert(savedSvg, "staggered saved SVG output missing");
+  assert(savedSvg.includes('attributeName="stroke-dashoffset"'), "staggered save lost stroke-dashoffset animation");
+  assert(savedSvg.includes('begin="250ms"'), "staggered save did not preserve dashoffset begin");
+  assert(savedSvg.includes('begin="1000ms"'), "staggered save did not preserve opacity begin");
+  assert(savedSvg.includes('dur="500ms"'), "staggered save did not serialize local opacity duration");
+  await closeActiveDialog(page);
+
+  await importViaPasteDialog(page, savedSvg, "[data-tadpole-canvas-stage] #tadpoleQ");
+  const payload = await projectPayload(page);
+  assert(payload.timeline.duration === 1500, `staggered reopened duration mismatch: ${payload.timeline.duration}`);
+  assertTrack(payload, "tadpoleQ", "strokeDashoffset", ["250:120", "1250:0"]);
+  assertTrack(payload, "coC", "opacity", ["1000:0", "1500:1"]);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runSvgSaveRoundtripSmoke(browser);
+  await runStaggeredSvgSaveSmoke(browser);
   console.log("svg save roundtrip browser smoke passed");
 } finally {
   await browser.close();

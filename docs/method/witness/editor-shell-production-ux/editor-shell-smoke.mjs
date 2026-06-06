@@ -13,6 +13,18 @@ const assert = (condition, message) => {
 
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 
+const activeElementFact = async (page) =>
+  page.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) {
+      return "";
+    }
+    if (active.hasAttribute("data-tadpole-canvas-stage")) {
+      return "canvas-stage";
+    }
+    return active.tagName.toLowerCase();
+  });
+
 const fixtureSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Goal 10 Fixture">
   <rect id="badge" data-tadpole-name="Badge Rect" x="12" y="18" width="72" height="36" fill="#2563eb" />
   <circle id="dot" data-tadpole-name="Signal Dot" cx="96" cy="36" r="12" fill="#f97316" />
@@ -144,6 +156,9 @@ const assertWorkflowReachable = async (browser) => {
     (await page.locator("[data-tadpole-bottom-timeline] .track-card", { hasText: "Badge Rect" }).count()) > 0,
     "imported SVG edit workflow did not create a target-bound track",
   );
+  await page.locator("[data-tadpole-panel-close]").click();
+  await page.waitForFunction(() => document.querySelector("[data-tadpole-panel-host]")?.getAttribute("data-tadpole-panel-open") === "false");
+  assert((await activeElementFact(page)) === "canvas-stage", "preview-selected Inspector close did not return focus to canvas");
 
   await runCommand(page, "view", "view.showExport");
   assert((await page.locator("[data-tadpole-panel-host] .export-block pre").first().isVisible()) === true, "export panel did not open");

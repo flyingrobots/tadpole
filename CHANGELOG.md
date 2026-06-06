@@ -71,6 +71,9 @@ All notable changes for Tadpole are documented here.
   import, Layers target selection, timeline keyframe creation, focused
   keyframe move/delete, playback, warning inspection, and panel focus-return
   coverage.
+- Added a Dockview-like editor shell contract with left/right panel docking,
+  dock-region facts, dock-aware resizing, and bottom timeline track visibility
+  controls so the SVG canvas remains the center workspace.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
 
@@ -81,6 +84,11 @@ All notable changes for Tadpole are documented here.
   selection on the SVG node itself.
 - Fixed focused menu item activation so Enter and Space execute the selected
   command, and hardened playback work-area guards before reading loop bounds.
+- Fixed SVG animation import for staggered safe SMIL timelines by importing
+  non-zero `begin` offsets into keyframe times and supporting
+  `stroke-dashoffset` as an editable, previewable, runnable, and saveable
+  numeric property, including SVG-native save/reopen for partial-duration
+  scalar tracks.
 
 ## [0.1.0] - 2026-05-31
 
