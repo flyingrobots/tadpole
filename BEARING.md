@@ -50,6 +50,10 @@ deterministic keyframe-based motion for logo/diagram targets.
   SVG, selecting a target through Layers, adding/moving/deleting timeline
   keyframes, starting playback, opening warnings, and returning focus from
   panels.
+- Static SVG imports without supported animation can offer deterministic starter
+  timeline suggestions with inspectable reasons before the user applies tracks.
+- The Layers panel supports multi-select target batch editing for creating
+  matching property tracks across several SVG targets in one undoable command.
 - Frontend stack is now built on Vite + Svelte and Open Props for
   palette/theming.
 - New TypeScript infrastructure must follow
@@ -58,8 +62,8 @@ deterministic keyframe-based motion for logo/diagram targets.
 
 ## Priority
 
-1. Expand import intelligence after the safe SMIL subset, including static SVG
-   starter timeline suggestions and wider animation-format support.
+1. Expand import intelligence after the safe SMIL subset, including wider
+   animation-format support.
 2. Improve editing ergonomics for complex SVGs, including target navigation,
    undo/redo, and denser timeline workflows.
 3. Keep import/project persistence contracts covered by browser witnesses as
@@ -99,15 +103,17 @@ deterministic keyframe-based motion for logo/diagram targets.
 - Completed Goal 19 keyboard accessibility witnesses for the production editor
   golden path, focused keyframe controls, menu activation, warning inspection,
   playback, and panel focus return.
+- Completed Goal 21 static SVG starter timeline suggestions with deterministic
+  heuristic plans and project-state apply controls.
+- Completed Goal 22 multi-select target batch editing with Layers panel
+  inclusion controls, batch track creation, and one-step undo/redo.
 - Added checked-in browser witnesses for SVG import safety, project restore,
   rough UX states, and runnable export playback.
 
 ## Open loops
 
-- Static SVG starter timeline suggestions remain deferred after the supported
-  SMIL import subset.
 - Import/revert undo, work-area SVG metadata persistence, dense timeline
-  summary sampling, multi-select target editing, and curve/tangent editing
+  summary sampling, deeper batch keyframe editing, and curve/tangent editing
   remain deferred.
 - SVG-native save currently supports the safe importer subset only; non-linear
   easing, partial-duration tracks, unaligned translate components, and broader
