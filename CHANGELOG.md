@@ -97,7 +97,7 @@ All notable changes for Tadpole are documented here.
   scalar tracks.
 - Fixed delayed and partial SVG-native animation roundtrips so delayed imports
   preserve pre-begin underlying values, saved looping tracks repeat over the
-  full timeline period, and native-save metadata preserves timeline duration on
+  full timeline duration, and native-save metadata preserves timeline duration on
   reopen, including delayed base transforms, delayed default-fill animations,
   and delayed animations that inherit scalar presentation values from ancestor
   elements.

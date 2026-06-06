@@ -454,6 +454,7 @@
   ]);
   const nativeSaveMetadataAttributeName = "data-tadpole-native-save-metadata";
   const nativeSaveMetadataVersion = "tadpole-svg-native-save-1";
+  const nativeSaveAuthoredAttributeName = "data-tadpole-authored";
   const unsupportedAnimationTags = new Set(["animatecolor", "animatemotion", "set"]);
 
   const isSafeSvgReference = (value: string): boolean => {
@@ -2534,9 +2535,11 @@ ${runnableRuntimeScript}
     const importedTimelineTracks = importedTracksForTargets.map(createTimelineTrackFromImported);
     const importedTrackCount = importedTimelineTracks.length;
     const restoredSampleTracks = options.restoreSampleTracks && importedTrackCount === 0 ? createSampleTracks() : null;
+    const importedAnimationDuration =
+      parsed.animation.duration > 0 ? clamp(Math.max(250, parsed.animation.duration), 250, 30000) : 0;
     const nextDuration =
-      importedTrackCount > 0
-        ? clamp(Math.max(250, parsed.animation.duration), 250, 30000)
+      importedAnimationDuration > 0
+        ? importedAnimationDuration
         : restoredSampleTracks
           ? sampleTimelineDurationMs
         : timelineDurationMs;
@@ -2556,10 +2559,10 @@ ${runnableRuntimeScript}
       markDocumentDirty();
     }
     clearProjectImportStatus();
-    if (importedTrackCount > 0 || restoredSampleTracks) {
+    if (importedTrackCount > 0 || restoredSampleTracks || importedAnimationDuration > 0) {
       timelineDurationMs = nextDuration;
       currentTime = 0;
-      isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : true;
+      isLooping = importedTrackCount > 0 ? parsed.animation.hasIndefiniteRepeat : restoredSampleTracks ? true : isLooping;
       normalizeWorkAreaToDuration();
     }
     tracks = reconciledTracks;
@@ -2890,6 +2893,78 @@ ${runnableRuntimeScript}
     return [...holdKeyframes, ...keyframes];
   };
 
+  const constantTrackKeyframes = (value: string, startTime: number, endTime: number): ImportedAnimationKeyframe[] => [
+    { time: Math.round(startTime), value, easing: "linear" },
+    { time: Math.max(Math.round(startTime) + 1, Math.round(endTime)), value, easing: "linear" },
+  ];
+
+  const staticTransformComponentTrack = (
+    targetId: string,
+    property: AnimationProperty,
+    value: string,
+    beginOffset: number,
+    endTime: number,
+    targetElement: Element | null,
+  ): ImportedAnimationTrack | null => {
+    const normalizedValue = normalizeUnderlyingAnimationValue(property, value);
+    if (normalizedValue === null) {
+      return null;
+    }
+
+    const keyframes = constantTrackKeyframes(normalizedValue, beginOffset, endTime);
+    const keyframesWithHold = withPreBeginHoldKeyframes(property, keyframes, beginOffset, targetElement);
+    const defaultValue = normalizeUnderlyingAnimationValue(property, defaultUnderlyingValueForProperty(property));
+    const underlyingValue = underlyingAnimationValue(property, targetElement);
+    if (
+      keyframesWithHold.length === keyframes.length &&
+      normalizedValue === defaultValue &&
+      (underlyingValue === null || underlyingValue === normalizedValue)
+    ) {
+      return null;
+    }
+
+    return { targetId, property, keyframes: keyframesWithHold };
+  };
+
+  const baseTransformCompanionTrack = (
+    targetId: string,
+    property: AnimationProperty,
+    endTime: number,
+    targetElement: Element | null,
+  ): ImportedAnimationTrack | null => {
+    const baseValue = baseTransformUnderlyingValue(property, targetElement);
+    if (baseValue === null) {
+      return null;
+    }
+
+    const normalizedValue = normalizeUnderlyingAnimationValue(property, baseValue);
+    const defaultValue = normalizeUnderlyingAnimationValue(property, defaultUnderlyingValueForProperty(property));
+    if (normalizedValue === null || normalizedValue === defaultValue) {
+      return null;
+    }
+
+    return { targetId, property, keyframes: constantTrackKeyframes(normalizedValue, 0, endTime) };
+  };
+
+  const addBaseTransformCompanionTracks = (
+    tracks: ImportedAnimationTrack[],
+    targetId: string,
+    targetElement: Element | null,
+    endTime: number,
+  ): void => {
+    const representedProperties = new Set(tracks.map((track) => track.property));
+    for (const property of transformProperties) {
+      if (representedProperties.has(property)) {
+        continue;
+      }
+      const companionTrack = baseTransformCompanionTrack(targetId, property, endTime, targetElement);
+      if (companionTrack) {
+        tracks.push(companionTrack);
+        representedProperties.add(property);
+      }
+    }
+  };
+
   const svgNativeSaveMetadataDuration = (document: Document): number => {
     const metadataElements = Array.from(document.querySelectorAll(`[${nativeSaveMetadataAttributeName}="true"]`));
     for (const metadataElement of metadataElements) {
@@ -3150,6 +3225,9 @@ ${runnableRuntimeScript}
     }
 
     const transformType = element.getAttribute("type")?.trim().toLowerCase() ?? "";
+    const isNativeSaveAuthoredAnimation =
+      element.getAttribute(nativeSaveAuthoredAttributeName)?.trim().toLowerCase() === "true";
+    const shouldSeedBaseTransformCompanions = !isNativeSaveAuthoredAnimation;
     const values = resolveSmilValues(element);
     const keyTimes = resolveSmilKeyTimes(element, values.length);
     if (!keyTimes) {
@@ -3166,6 +3244,7 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported translate value arity on #${targetId}.`);
         return [];
       }
+      const animationEnd = beginOffset + duration;
       const xValues = dimensionValuesFromTransformValues(values, 0);
       const yValues = dimensionValuesFromTransformValues(values, 1);
       const tracks: ImportedAnimationTrack[] = [];
@@ -3176,6 +3255,25 @@ ${runnableRuntimeScript}
       }
       if (yKeyframes && valuesChange(yValues)) {
         tracks.push({ targetId, property: "y", keyframes: withPreBeginHoldKeyframes("y", yKeyframes, beginOffset, targetElement) });
+      }
+      if (xKeyframes && !valuesChange(xValues)) {
+        const xTrack: ImportedAnimationTrack | null = isNativeSaveAuthoredAnimation
+          ? { targetId, property: "x", keyframes: xKeyframes }
+          : staticTransformComponentTrack(targetId, "x", xValues[0] ?? "0", beginOffset, animationEnd, targetElement);
+        if (xTrack) {
+          tracks.push(xTrack);
+        }
+      }
+      if (yKeyframes && !valuesChange(yValues)) {
+        const yTrack: ImportedAnimationTrack | null = isNativeSaveAuthoredAnimation
+          ? { targetId, property: "y", keyframes: yKeyframes }
+          : staticTransformComponentTrack(targetId, "y", yValues[0] ?? "0", beginOffset, animationEnd, targetElement);
+        if (yTrack) {
+          tracks.push(yTrack);
+        }
+      }
+      if (shouldSeedBaseTransformCompanions) {
+        addBaseTransformCompanionTracks(tracks, targetId, targetElement, animationEnd);
       }
       if (tracks.length === 0) {
         warnings.push(`Unsupported or static translate values on #${targetId}.`);
@@ -3198,7 +3296,13 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported scale values on #${targetId}.`);
         return [];
       }
-      return [{ targetId, property: "scale", keyframes: withPreBeginHoldKeyframes("scale", keyframes, beginOffset, targetElement) }];
+      const tracks: ImportedAnimationTrack[] = [
+        { targetId, property: "scale", keyframes: withPreBeginHoldKeyframes("scale", keyframes, beginOffset, targetElement) },
+      ];
+      if (shouldSeedBaseTransformCompanions) {
+        addBaseTransformCompanionTracks(tracks, targetId, targetElement, beginOffset + duration);
+      }
+      return tracks;
     }
 
     if (transformType === "rotate") {
@@ -3212,7 +3316,13 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported rotate values on #${targetId}.`);
         return [];
       }
-      return [{ targetId, property: "rotation", keyframes: withPreBeginHoldKeyframes("rotation", keyframes, beginOffset, targetElement) }];
+      const tracks: ImportedAnimationTrack[] = [
+        { targetId, property: "rotation", keyframes: withPreBeginHoldKeyframes("rotation", keyframes, beginOffset, targetElement) },
+      ];
+      if (shouldSeedBaseTransformCompanions) {
+        addBaseTransformCompanionTracks(tracks, targetId, targetElement, beginOffset + duration);
+      }
+      return tracks;
     }
 
     warnings.push(`Unsupported animateTransform type "${transformType || "unknown"}" on #${targetId}.`);

@@ -11,6 +11,13 @@ const assert = (condition, message) => {
   }
 };
 
+const assertTrackValueAt = (track, time, value) => {
+  assert(
+    track.keyframes.some((keyframe) => keyframe.time === time && keyframe.value === value),
+    `track ${track.targetId}:${track.property} missing ${time}:${value}; saw ${JSON.stringify(track.keyframes)}`,
+  );
+};
+
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 const optionalTextOf = async (locator) => ((await locator.count()) === 0 ? "" : textOf(locator));
 
@@ -146,6 +153,12 @@ const staggeredDashoffsetSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.o
 const delayedBaseTransformSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Base Transform Fixture">
   <rect id="base-transform" data-tadpole-name="Base Transform" x="8" y="8" width="28" height="18" fill="#2563eb" transform="translate(10 20)">
     <animateTransform attributeName="transform" type="translate" values="40 60;80 100" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
+const delayedScaleBaseTransformSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Scale Base Transform Fixture">
+  <rect id="scale-base-transform" data-tadpole-name="Scale Base Transform" x="8" y="8" width="28" height="18" fill="#2563eb" transform="translate(40 10) scale(1.25) rotate(15)">
+    <animateTransform attributeName="transform" type="scale" values="1.5;2" dur="500ms" begin="1s" />
   </rect>
 </svg>`;
 
@@ -615,6 +628,46 @@ const runDelayedBaseTransformSmoke = async (browser) => {
   await page.close();
 };
 
+const runDelayedScaleBaseTransformSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedScaleBaseTransformSvg);
+  await page.waitForSelector(".preview-svg-host #scale-base-transform");
+
+  const payload = await projectPayload(page);
+  const xTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "x");
+  const yTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "y");
+  const scaleTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "scale");
+  const rotationTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "scale-base-transform" && track.property === "rotation",
+  );
+  assert(xTrack, "delayed scale base transform x companion track missing");
+  assert(yTrack, "delayed scale base transform y companion track missing");
+  assert(scaleTrack, "delayed scale base transform scale track missing");
+  assert(rotationTrack, "delayed scale base transform rotation companion track missing");
+  assertTrackValueAt(xTrack, 0, "40");
+  assertTrackValueAt(xTrack, 1500, "40");
+  assertTrackValueAt(yTrack, 0, "10");
+  assertTrackValueAt(yTrack, 1500, "10");
+  assertTrackValueAt(scaleTrack, 0, "1.25");
+  assertTrackValueAt(scaleTrack, 999, "1.25");
+  assertTrackValueAt(scaleTrack, 1000, "1.5");
+  assertTrackValueAt(scaleTrack, 1500, "2");
+  assertTrackValueAt(rotationTrack, 0, "15");
+  assertTrackValueAt(rotationTrack, 1500, "15");
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginTransform = await page.locator(".preview-svg-host #scale-base-transform").evaluate((element) => element.style.transform);
+  assert(
+    preBeginTransform.includes("translate(40px, 10px)") &&
+      preBeginTransform.includes("scale(1.25)") &&
+      preBeginTransform.includes("rotate(15deg)"),
+    `delayed scale base transform preview changed before begin: ${preBeginTransform}`,
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const runDelayedDefaultFillSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await importSvgMarkup(page, delayedDefaultFillSvg);
@@ -685,6 +738,7 @@ try {
   await runDuplicatePropertyWarningSmoke(browser);
   await runStaggeredDashoffsetSmoke(browser);
   await runDelayedBaseTransformSmoke(browser);
+  await runDelayedScaleBaseTransformSmoke(browser);
   await runDelayedDefaultFillSmoke(browser);
   await runDelayedInheritedFillSmoke(browser);
   console.log("animation import browser smoke passed");

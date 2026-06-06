@@ -260,9 +260,6 @@ const normalizeValue = (property: SvgNativeSaveProperty, value: string): string 
   return isFiniteNumberText(trimmed) && isValidNumericValue(property, trimmed) ? String(Number(trimmed)) : null;
 };
 
-const valuesChange = (track: NormalizedTrack): boolean =>
-  track.keyframes.some((keyframe) => keyframe.value !== track.keyframes[0]?.value);
-
 const keyframeTimeSignature = (track: NormalizedTrack): string => track.keyframes.map((keyframe) => String(keyframe.time)).join(";");
 
 const addWarning = (
@@ -351,17 +348,6 @@ const normalizeTrack = (track: SvgNativeSaveTrack, durationMs: number, warnings:
     keyframes: normalizedKeyframes,
   };
 
-  if ((track.property === "x" || track.property === "y") && !valuesChange(normalizedTrack)) {
-    addWarning(
-      warnings,
-      "static-translate-track",
-      "error",
-      `Track ${track.id} is a static translate component; the SVG importer would not recover it during editable import.`,
-      track.id,
-    );
-    return null;
-  }
-
   return normalizedTrack;
 };
 
@@ -371,6 +357,24 @@ const removePriorTadpoleNodes = (root: Element): void => {
   });
 };
 
+/**
+ * Returns keyframes for SVG animation serialization.
+ *
+ * When isLooping is false, this returns track.keyframes unchanged. When
+ * isLooping is true, it may prepend a time=0 hold keyframe or append a
+ * time=timelineEndMs hold keyframe, where timelineEndMs is
+ * Math.max(1, Math.round(timelineDurationMs)).
+ *
+ * The function never interpolates and never changes existing keyframe values or
+ * times. Empty tracks and single-keyframe tracks are returned with only the
+ * boundary padding that can be derived from their existing values.
+ *
+ * @param track Normalized track with sorted keyframes.
+ * @param isLooping Whether the serialized animation repeats indefinitely.
+ * @param timelineDurationMs Full timeline duration in milliseconds.
+ * @returns The original keyframes for non-looping output, or boundary-padded
+ * keyframes for looping output.
+ */
 const animationKeyframesFor = (
   track: NormalizedTrack,
   isLooping: boolean,
@@ -396,7 +400,15 @@ const animationKeyframesFor = (
   return keyframes;
 };
 
-const valueAtTime = (track: NormalizedTrack | null, time: number, fallback: string): string => {
+/**
+ * Returns an exact or boundary value for a track without interpolation.
+ *
+ * The lookup returns the exact keyframe value at time, the first value when
+ * time is before the first keyframe, the last value when time is after the last
+ * keyframe, or fallback for gaps between keyframes. This is only appropriate
+ * when the caller samples known aligned keyframe times.
+ */
+const exactValueAtTime = (track: NormalizedTrack | null, time: number, fallback: string): string => {
   if (track === null) {
     return fallback;
   }
@@ -483,7 +495,7 @@ const appendTranslateAnimation = (
     element,
     referenceTrack,
     keyframes,
-    keyframes.map((keyframe) => `${valueAtTime(xTrack, keyframe.time, "0")} ${valueAtTime(yTrack, keyframe.time, "0")}`),
+    keyframes.map((keyframe) => `${exactValueAtTime(xTrack, keyframe.time, "0")} ${exactValueAtTime(yTrack, keyframe.time, "0")}`),
     isLooping,
     timelineDurationMs,
   );
