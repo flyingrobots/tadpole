@@ -260,9 +260,6 @@ const normalizeValue = (property: SvgNativeSaveProperty, value: string): string 
   return isFiniteNumberText(trimmed) && isValidNumericValue(property, trimmed) ? String(Number(trimmed)) : null;
 };
 
-const valuesChange = (track: NormalizedTrack): boolean =>
-  track.keyframes.some((keyframe) => keyframe.value !== track.keyframes[0]?.value);
-
 const keyframeTimeSignature = (track: NormalizedTrack): string => track.keyframes.map((keyframe) => String(keyframe.time)).join(";");
 
 const addWarning = (
@@ -351,17 +348,6 @@ const normalizeTrack = (track: SvgNativeSaveTrack, durationMs: number, warnings:
     keyframes: normalizedKeyframes,
   };
 
-  if ((track.property === "x" || track.property === "y") && !valuesChange(normalizedTrack)) {
-    addWarning(
-      warnings,
-      "static-translate-track",
-      "error",
-      `Track ${track.id} is a static translate component; the SVG importer would not recover it during editable import.`,
-      track.id,
-    );
-    return null;
-  }
-
   return normalizedTrack;
 };
 
@@ -371,21 +357,96 @@ const removePriorTadpoleNodes = (root: Element): void => {
   });
 };
 
+/**
+ * Returns keyframes for SVG animation serialization.
+ *
+ * When isLooping is false, this returns track.keyframes unchanged. When
+ * isLooping is true, it may prepend a time=0 hold keyframe or append a
+ * time=timelineEndMs hold keyframe, where timelineEndMs is
+ * Math.max(1, Math.round(timelineDurationMs)).
+ *
+ * The function never interpolates and never changes existing keyframe values or
+ * times. Empty tracks and single-keyframe tracks are returned with only the
+ * boundary padding that can be derived from their existing values.
+ *
+ * @param track Normalized track with sorted keyframes.
+ * @param isLooping Whether the serialized animation repeats indefinitely.
+ * @param timelineDurationMs Full timeline duration in milliseconds.
+ * @returns The original keyframes for non-looping output, or boundary-padded
+ * keyframes for looping output.
+ */
+const animationKeyframesFor = (
+  track: NormalizedTrack,
+  isLooping: boolean,
+  timelineDurationMs: number,
+): readonly NormalizedKeyframe[] => {
+  if (!isLooping) {
+    return track.keyframes;
+  }
+
+  const timelineEndMs = Math.max(1, Math.round(timelineDurationMs));
+  const keyframes = [...track.keyframes];
+  const firstKeyframe = keyframes.at(0);
+  const lastKeyframe = keyframes.at(-1);
+  if (firstKeyframe === undefined || lastKeyframe === undefined) {
+    return keyframes;
+  }
+  if (firstKeyframe.time > 0) {
+    keyframes.unshift({ time: 0, value: firstKeyframe.value });
+  }
+  if (lastKeyframe.time < timelineEndMs) {
+    keyframes.push({ time: timelineEndMs, value: lastKeyframe.value });
+  }
+  return keyframes;
+};
+
+/**
+ * Returns an exact or boundary value for a track without interpolation.
+ *
+ * The lookup returns the exact keyframe value at time, the first value when
+ * time is before the first keyframe, the last value when time is after the last
+ * keyframe, or fallback for gaps between keyframes. This is only appropriate
+ * when the caller samples known aligned keyframe times.
+ */
+const exactValueAtTime = (track: NormalizedTrack | null, time: number, fallback: string): string => {
+  if (track === null) {
+    return fallback;
+  }
+  const exact = track.keyframes.find((keyframe) => keyframe.time === time);
+  if (exact) {
+    return exact.value;
+  }
+  const firstKeyframe = track.keyframes.at(0);
+  const lastKeyframe = track.keyframes.at(-1);
+  if (firstKeyframe === undefined || lastKeyframe === undefined) {
+    return fallback;
+  }
+  if (time <= firstKeyframe.time) {
+    return firstKeyframe.value;
+  }
+  if (time >= lastKeyframe.time) {
+    return lastKeyframe.value;
+  }
+  return fallback;
+};
+
 const applyAnimationAttributes = (
   element: Element,
   track: NormalizedTrack,
+  keyframes: readonly NormalizedKeyframe[],
   values: readonly string[],
   isLooping: boolean,
+  timelineDurationMs: number,
 ): void => {
-  const beginMs = track.keyframes[0]?.time ?? 0;
-  const endMs = track.keyframes[track.keyframes.length - 1]?.time ?? beginMs;
-  const durationMs = Math.max(1, endMs - beginMs);
+  const beginMs = isLooping ? 0 : keyframes[0]?.time ?? 0;
+  const endMs = keyframes[keyframes.length - 1]?.time ?? beginMs;
+  const durationMs = isLooping ? Math.max(1, Math.round(timelineDurationMs)) : Math.max(1, endMs - beginMs);
   element.setAttribute("begin", `${Math.round(beginMs)}ms`);
   element.setAttribute("dur", `${Math.round(durationMs)}ms`);
   element.setAttribute("calcMode", "linear");
   element.setAttribute("fill", "freeze");
   element.setAttribute("values", values.join(";"));
-  element.setAttribute("keyTimes", track.keyframes.map((keyframe) => formatKeyTime(keyframe.time, beginMs, durationMs)).join(";"));
+  element.setAttribute("keyTimes", keyframes.map((keyframe) => formatKeyTime(keyframe.time, beginMs, durationMs)).join(";"));
   element.setAttribute(authoredAttributeName, "true");
   element.setAttribute("data-tadpole-track-id", track.id);
   element.setAttribute("data-tadpole-property", track.property);
@@ -394,21 +455,28 @@ const applyAnimationAttributes = (
   }
 };
 
-const appendScalarAnimation = (document: Document, target: Element, track: NormalizedTrack, isLooping: boolean): void => {
+const appendScalarAnimation = (
+  document: Document,
+  target: Element,
+  track: NormalizedTrack,
+  isLooping: boolean,
+  timelineDurationMs: number,
+): void => {
   const element = document.createElementNS(svgNamespace, "animate");
   const attributeName = attributeNameForProperty(track.property);
+  const keyframes = animationKeyframesFor(track, isLooping, timelineDurationMs);
   element.setAttribute("attributeName", attributeName);
-  target.setAttribute(attributeName, track.keyframes[0]?.value ?? "");
+  target.setAttribute(attributeName, keyframes[0]?.value ?? "");
   applyAnimationAttributes(
     element,
     track,
-    track.keyframes.map((keyframe) => keyframe.value),
+    keyframes,
+    keyframes.map((keyframe) => keyframe.value),
     isLooping,
+    timelineDurationMs,
   );
   target.append(element);
 };
-
-const valueAtIndex = (track: NormalizedTrack | null, index: number, fallback: string): string => track?.keyframes[index]?.value ?? fallback;
 
 const appendTranslateAnimation = (
   document: Document,
@@ -417,15 +485,19 @@ const appendTranslateAnimation = (
   xTrack: NormalizedTrack | null,
   yTrack: NormalizedTrack | null,
   isLooping: boolean,
+  timelineDurationMs: number,
 ): void => {
   const element = document.createElementNS(svgNamespace, "animateTransform");
+  const keyframes = animationKeyframesFor(referenceTrack, isLooping, timelineDurationMs);
   element.setAttribute("attributeName", "transform");
   element.setAttribute("type", "translate");
   applyAnimationAttributes(
     element,
     referenceTrack,
-    referenceTrack.keyframes.map((_, index) => `${valueAtIndex(xTrack, index, "0")} ${valueAtIndex(yTrack, index, "0")}`),
+    keyframes,
+    keyframes.map((keyframe) => `${exactValueAtTime(xTrack, keyframe.time, "0")} ${exactValueAtTime(yTrack, keyframe.time, "0")}`),
     isLooping,
+    timelineDurationMs,
   );
   target.append(element);
 };
@@ -436,15 +508,19 @@ const appendSingleTransformAnimation = (
   track: NormalizedTrack,
   transformType: string,
   isLooping: boolean,
+  timelineDurationMs: number,
 ): void => {
   const element = document.createElementNS(svgNamespace, "animateTransform");
+  const keyframes = animationKeyframesFor(track, isLooping, timelineDurationMs);
   element.setAttribute("attributeName", "transform");
   element.setAttribute("type", transformType);
   applyAnimationAttributes(
     element,
     track,
-    track.keyframes.map((keyframe) => keyframe.value),
+    keyframes,
+    keyframes.map((keyframe) => keyframe.value),
     isLooping,
+    timelineDurationMs,
   );
   target.append(element);
 };
@@ -513,6 +589,7 @@ const appendAnimations = (
   root: Element,
   tracks: readonly NormalizedTrack[],
   isLooping: boolean,
+  timelineDurationMs: number,
 ): number => {
   const sortedTargets = Array.from(new Set(tracks.map((track) => track.targetId))).sort();
   let serializedTrackCount = 0;
@@ -526,7 +603,7 @@ const appendAnimations = (
     for (const property of scalarProperties) {
       const track = trackFor(tracks, targetId, property);
       if (track) {
-        appendScalarAnimation(document, target, track, isLooping);
+        appendScalarAnimation(document, target, track, isLooping, timelineDurationMs);
         serializedTrackCount += 1;
       }
     }
@@ -535,19 +612,19 @@ const appendAnimations = (
     const yTrack = trackFor(tracks, targetId, "y");
     const translateTrack = xTrack ?? yTrack;
     if (translateTrack) {
-      appendTranslateAnimation(document, target, translateTrack, xTrack, yTrack, isLooping);
+      appendTranslateAnimation(document, target, translateTrack, xTrack, yTrack, isLooping, timelineDurationMs);
       serializedTrackCount += (xTrack ? 1 : 0) + (yTrack ? 1 : 0);
     }
 
     const scaleTrack = trackFor(tracks, targetId, "scale");
     if (scaleTrack) {
-      appendSingleTransformAnimation(document, target, scaleTrack, "scale", isLooping);
+      appendSingleTransformAnimation(document, target, scaleTrack, "scale", isLooping, timelineDurationMs);
       serializedTrackCount += 1;
     }
 
     const rotationTrack = trackFor(tracks, targetId, "rotation");
     if (rotationTrack) {
-      appendSingleTransformAnimation(document, target, rotationTrack, "rotate", isLooping);
+      appendSingleTransformAnimation(document, target, rotationTrack, "rotate", isLooping, timelineDurationMs);
       serializedTrackCount += 1;
     }
   }
@@ -604,7 +681,7 @@ export const serializeSvgNativeSave = (request: SvgNativeSaveRequest): SvgNative
 
   removePriorTadpoleNodes(root);
   const sortedTracks = [...normalizedTracks].sort(compareNormalizedTracks);
-  const serializedTrackCount = appendAnimations(document, root, sortedTracks, request.isLooping);
+  const serializedTrackCount = appendAnimations(document, root, sortedTracks, request.isLooping, durationMs);
   root.insertBefore(createMetadataElement(document, durationMs, serializedTrackCount), root.firstChild);
   const svgText = new XMLSerializer().serializeToString(root);
   return SvgNativeSaveResult.success(svgText, warnings, serializedTrackCount);

@@ -11,6 +11,13 @@ const assert = (condition, message) => {
   }
 };
 
+const assertTrackValueAt = (track, time, value) => {
+  assert(
+    track.keyframes.some((keyframe) => keyframe.time === time && keyframe.value === value),
+    `track ${track.targetId}:${track.property} missing ${time}:${value}; saw ${JSON.stringify(track.keyframes)}`,
+  );
+};
+
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 const optionalTextOf = async (locator) => ((await locator.count()) === 0 ? "" : textOf(locator));
 
@@ -141,6 +148,32 @@ const staggeredDashoffsetSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.o
   <circle id="coC" data-tadpole-name="CO C" cx="86" cy="40" r="18" fill="#2563eb">
     <animate attributeName="opacity" values="0;1" dur="500ms" begin="1s" />
   </circle>
+</svg>`;
+
+const delayedBaseTransformSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Base Transform Fixture">
+  <rect id="base-transform" data-tadpole-name="Base Transform" x="8" y="8" width="28" height="18" fill="#2563eb" transform="translate(10 20)">
+    <animateTransform attributeName="transform" type="translate" values="40 60;80 100" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
+const delayedScaleBaseTransformSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Scale Base Transform Fixture">
+  <rect id="scale-base-transform" data-tadpole-name="Scale Base Transform" x="8" y="8" width="28" height="18" fill="#2563eb" transform="translate(40 10) scale(1.25) rotate(15)">
+    <animateTransform attributeName="transform" type="scale" values="1.5;2" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
+const delayedDefaultFillSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Default Fill Fixture">
+  <rect id="default-fill" data-tadpole-name="Default Fill" x="8" y="8" width="28" height="18">
+    <animate attributeName="fill" values="#ff0000;#00ff00" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
+const delayedInheritedFillSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Inherited Fill Fixture">
+  <g id="inherited-parent" fill="#123456">
+    <rect id="inherited-fill" data-tadpole-name="Inherited Fill" x="8" y="8" width="28" height="18">
+      <animate attributeName="fill" values="#ff0000;#00ff00" dur="500ms" begin="1s" />
+    </rect>
+  </g>
 </svg>`;
 
 const createPage = async (browser) => {
@@ -543,10 +576,141 @@ const runStaggeredDashoffsetSmoke = async (browser) => {
       opacityTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "1"),
     `opacity keyframes were not offset by begin time: ${JSON.stringify(opacityTrack.keyframes)}`,
   );
+  assert(
+    opacityTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "1") &&
+      opacityTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "1"),
+    `delayed opacity import did not preserve the pre-begin underlying value: ${JSON.stringify(opacityTrack.keyframes)}`,
+  );
 
   await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("750");
   const dashOffset = await page.locator(".preview-svg-host #tadpoleQ").evaluate((element) => element.style.strokeDashoffset);
   assert(dashOffset !== "" && Number(dashOffset) < 120 && Number(dashOffset) > 0, `stroke-dashoffset did not apply at playhead: ${dashOffset}`);
+  const preBeginOpacity = await page.locator(".preview-svg-host #coC").evaluate((element) => Number(element.style.opacity));
+  assert(preBeginOpacity === 1, `delayed opacity changed before SMIL begin: ${preBeginOpacity}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDelayedBaseTransformSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedBaseTransformSvg);
+  await page.waitForSelector(".preview-svg-host #base-transform");
+
+  const payload = await projectPayload(page);
+  const xTrack = payload.timeline.tracks.find((track) => track.targetId === "base-transform" && track.property === "x");
+  const yTrack = payload.timeline.tracks.find((track) => track.targetId === "base-transform" && track.property === "y");
+  assert(xTrack, "delayed base transform x track missing");
+  assert(yTrack, "delayed base transform y track missing");
+  assert(
+    xTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "10") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "10") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "40") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "80"),
+    `delayed base transform x track did not preserve pre-begin translate: ${JSON.stringify(xTrack.keyframes)}`,
+  );
+  assert(
+    yTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "20") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "20") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "60") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "100"),
+    `delayed base transform y track did not preserve pre-begin translate: ${JSON.stringify(yTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginTransform = await page.locator(".preview-svg-host #base-transform").evaluate((element) => element.style.transform);
+  assert(
+    preBeginTransform.includes("translate(10px, 20px)"),
+    `delayed base transform preview changed before begin: ${preBeginTransform}`,
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDelayedScaleBaseTransformSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedScaleBaseTransformSvg);
+  await page.waitForSelector(".preview-svg-host #scale-base-transform");
+
+  const payload = await projectPayload(page);
+  const xTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "x");
+  const yTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "y");
+  const scaleTrack = payload.timeline.tracks.find((track) => track.targetId === "scale-base-transform" && track.property === "scale");
+  const rotationTrack = payload.timeline.tracks.find(
+    (track) => track.targetId === "scale-base-transform" && track.property === "rotation",
+  );
+  assert(xTrack, "delayed scale base transform x companion track missing");
+  assert(yTrack, "delayed scale base transform y companion track missing");
+  assert(scaleTrack, "delayed scale base transform scale track missing");
+  assert(rotationTrack, "delayed scale base transform rotation companion track missing");
+  assertTrackValueAt(xTrack, 0, "40");
+  assertTrackValueAt(xTrack, 1500, "40");
+  assertTrackValueAt(yTrack, 0, "10");
+  assertTrackValueAt(yTrack, 1500, "10");
+  assertTrackValueAt(scaleTrack, 0, "1.25");
+  assertTrackValueAt(scaleTrack, 999, "1.25");
+  assertTrackValueAt(scaleTrack, 1000, "1.5");
+  assertTrackValueAt(scaleTrack, 1500, "2");
+  assertTrackValueAt(rotationTrack, 0, "15");
+  assertTrackValueAt(rotationTrack, 1500, "15");
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginTransform = await page.locator(".preview-svg-host #scale-base-transform").evaluate((element) => element.style.transform);
+  assert(
+    preBeginTransform.includes("translate(40px, 10px)") &&
+      preBeginTransform.includes("scale(1.25)") &&
+      preBeginTransform.includes("rotate(15deg)"),
+    `delayed scale base transform preview changed before begin: ${preBeginTransform}`,
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDelayedDefaultFillSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedDefaultFillSvg);
+  await page.waitForSelector(".preview-svg-host #default-fill");
+
+  const payload = await projectPayload(page);
+  const fillTrack = payload.timeline.tracks.find((track) => track.targetId === "default-fill" && track.property === "fill");
+  assert(fillTrack, "delayed default fill track missing");
+  assert(
+    fillTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "#000000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "#000000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "#ff0000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "#00ff00"),
+    `delayed default fill track did not preserve the SVG initial fill: ${JSON.stringify(fillTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginFill = await page.locator(".preview-svg-host #default-fill").evaluate((element) => element.style.fill);
+  assert(preBeginFill === "rgb(0, 0, 0)", `delayed default fill changed before begin: ${preBeginFill}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDelayedInheritedFillSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedInheritedFillSvg);
+  await page.waitForSelector(".preview-svg-host #inherited-fill");
+
+  const payload = await projectPayload(page);
+  const fillTrack = payload.timeline.tracks.find((track) => track.targetId === "inherited-fill" && track.property === "fill");
+  assert(fillTrack, "delayed inherited fill track missing");
+  assert(
+    fillTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "#123456") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "#123456") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "#ff0000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "#00ff00"),
+    `delayed inherited fill track did not preserve the inherited SVG fill: ${JSON.stringify(fillTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginFill = await page.locator(".preview-svg-host #inherited-fill").evaluate((element) => element.style.fill);
+  assert(preBeginFill === "rgb(18, 52, 86)", `delayed inherited fill changed before begin: ${preBeginFill}`);
 
   assertCleanBrowser(consoleErrors, pageErrors);
   await page.close();
@@ -573,6 +737,10 @@ try {
   await runRepeatedKeyTimesWarningSmoke(browser);
   await runDuplicatePropertyWarningSmoke(browser);
   await runStaggeredDashoffsetSmoke(browser);
+  await runDelayedBaseTransformSmoke(browser);
+  await runDelayedScaleBaseTransformSmoke(browser);
+  await runDelayedDefaultFillSmoke(browser);
+  await runDelayedInheritedFillSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
