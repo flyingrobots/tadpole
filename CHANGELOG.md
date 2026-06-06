@@ -84,6 +84,9 @@ All notable changes for Tadpole are documented here.
   scrubber polish cycle.
 - Added the v1 completion roadmap with seven goalpost design docs, GitHub
   umbrella issues, child user-story issues, and slice budgets.
+- Added a formal roadmap planning system document that defines versioned
+  releases, goalposts, umbrella issues, user stories, slice budgets, proof
+  policy, and the recommended `VISION.md`/`BEARING.md` split.
 
 ### Fixed
 
