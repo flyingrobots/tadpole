@@ -4,6 +4,7 @@ export type EditorCommandProperty =
   | "scale"
   | "rotation"
   | "opacity"
+  | "fillOpacity"
   | "fill"
   | "stroke"
   | "strokeWidth"

@@ -47,6 +47,7 @@
     | "scale"
     | "rotation"
     | "opacity"
+    | "fillOpacity"
     | "fill"
     | "stroke"
     | "strokeWidth"
@@ -290,6 +291,7 @@
     { id: "scale", label: "Scale", kind: "number", defaultValue: "1", min: 0.2, max: 2.2, step: 0.05 },
     { id: "rotation", label: "Rotate", kind: "number", defaultValue: "0", min: -360, max: 360, step: 1, unit: "°", snap: 1 },
     { id: "opacity", label: "Opacity", kind: "number", defaultValue: "1", min: 0, max: 1, step: 0.01 },
+    { id: "fillOpacity", label: "Fill Opacity", kind: "number", defaultValue: "1", min: 0, max: 1, step: 0.01 },
     { id: "fill", label: "Fill", kind: "color", defaultValue: "var(--color-6)" },
     { id: "stroke", label: "Stroke", kind: "color", defaultValue: "var(--color-4)" },
     { id: "strokeWidth", label: "Stroke Width", kind: "number", defaultValue: "1", min: 0.5, max: 8, step: 0.25, unit: "px", snap: 0.25 },
@@ -308,6 +310,7 @@
   type PreviewStyle = {
     transform: string;
     opacity: string;
+    fillOpacity: string;
     fill: string;
     stroke: string;
     strokeWidth: string;
@@ -318,6 +321,7 @@
     | "transform-origin"
     | "transform-box"
     | "opacity"
+    | "fill-opacity"
     | "fill"
     | "stroke"
     | "stroke-width"
@@ -438,6 +442,7 @@
     "transform-origin",
     "transform-box",
     "opacity",
+    "fill-opacity",
     "fill",
     "stroke",
     "stroke-width",
@@ -445,6 +450,8 @@
   ];
   const supportedSmilAttributeProperties = new Map<string, AnimationProperty>([
     ["opacity", "opacity"],
+    ["fill-opacity", "fillOpacity"],
+    ["fillopacity", "fillOpacity"],
     ["fill", "fill"],
     ["stroke", "stroke"],
     ["stroke-width", "strokeWidth"],
@@ -1428,7 +1435,7 @@
   const selectedTrackId = typeof timeline.selectedTrackId === "string" ? timeline.selectedTrackId : "";
   const duration = Math.max(1, Number(timeline.duration) || 1);
   const isLooping = timeline.isLooping !== false;
-  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "strokeWidth", "strokeDashoffset"]);
+  const numericProperties = new Set(["x", "y", "scale", "rotation", "opacity", "fillOpacity", "strokeWidth", "strokeDashoffset"]);
   const transformProperties = ["x", "y", "scale", "rotation"];
   const defaults = {
     x: "0",
@@ -1436,6 +1443,7 @@
     scale: "1",
     rotation: "0",
     opacity: "1",
+    fillOpacity: "1",
     fill: "none",
     stroke: "none",
     strokeWidth: "1.2",
@@ -1603,6 +1611,9 @@
 
       if (activeTrackFor(target.id, "opacity")) {
         element.style.opacity = trackValue(target.id, "opacity", defaults.opacity, time);
+      }
+      if (activeTrackFor(target.id, "fillOpacity")) {
+        element.style.fillOpacity = trackValue(target.id, "fillOpacity", defaults.fillOpacity, time);
       }
       if (activeTrackFor(target.id, "fill")) {
         element.style.fill = trackValue(target.id, "fill", defaults.fill, time);
@@ -2678,6 +2689,8 @@ ${runnableRuntimeScript}
         return "stroke-dashoffset";
       case "opacity":
         return "opacity";
+      case "fillOpacity":
+        return "fill-opacity";
       case "fill":
         return "fill";
       case "stroke":
@@ -2710,7 +2723,7 @@ ${runnableRuntimeScript}
     return "";
   };
 
-  const inheritedPresentationAttributeNames = new Set(["fill", "stroke", "stroke-width", "stroke-dashoffset"]);
+  const inheritedPresentationAttributeNames = new Set(["fill", "fill-opacity", "stroke", "stroke-width", "stroke-dashoffset"]);
   const inheritedCssPassthroughValues = new Set(["inherit", "unset"]);
   const inheritedPresentationPropertyValue = (element: Element, propertyName: string): string => {
     let current = element.parentElement;
@@ -2734,6 +2747,7 @@ ${runnableRuntimeScript}
   const defaultUnderlyingValueForProperty = (property: AnimationProperty): string => {
     switch (property) {
       case "opacity":
+      case "fillOpacity":
       case "scale":
       case "strokeWidth":
         return "1";
@@ -3024,11 +3038,119 @@ ${runnableRuntimeScript}
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
+  type SmilResolvedTiming = {
+    begin: number;
+    duration: number;
+    end: number;
+  };
+
+  const parseClockOffsetMs = (value: string): number | null => {
+    if (value === "") {
+      return 0;
+    }
+
+    const sign = value.startsWith("-") ? -1 : value.startsWith("+") ? 1 : 0;
+    if (sign === 0) {
+      return null;
+    }
+
+    const offset = parseClockValueMs(value.slice(1).trim());
+    return offset === null ? null : sign * offset;
+  };
+
   const smilList = (value: string | null): string[] =>
     (value ?? "")
       .split(";")
       .map((item) => item.trim())
       .filter(Boolean);
+
+  const resolveSmilBeginTimeMs = (
+    begin: string | null,
+    elementById: Map<string, Element>,
+    resolveTimingForElement: (element: Element) => SmilResolvedTiming | null,
+  ): number | null => {
+    const candidates = smilList(begin);
+    if (candidates.length === 0) {
+      return 0;
+    }
+    if (candidates.length > 1) {
+      return null;
+    }
+
+    for (const candidate of candidates) {
+      const clockValue = parseClockValueMs(candidate);
+      if (clockValue !== null) {
+        return clockValue;
+      }
+
+      const syncbase = /^(.+)\.(begin|end)\s*([+-]\s*.+)?$/u.exec(candidate);
+      if (!syncbase) {
+        continue;
+      }
+
+      const referenceId = syncbase[1]?.trim() ?? "";
+      const referencePoint = syncbase[2];
+      const referenceElement = elementById.get(referenceId);
+      if (!referenceElement) {
+        continue;
+      }
+
+      const referenceTiming = resolveTimingForElement(referenceElement);
+      const offset = parseClockOffsetMs(syncbase[3] ?? "");
+      if (!referenceTiming || offset === null) {
+        continue;
+      }
+
+      const resolved = (referencePoint === "begin" ? referenceTiming.begin : referenceTiming.end) + offset;
+      if (resolved >= 0) {
+        return resolved;
+      }
+    }
+
+    return null;
+  };
+
+  const resolveSmilAnimationTimings = (elements: Element[]): Map<Element, SmilResolvedTiming> => {
+    const elementById = new Map<string, Element>();
+    const resolvedTimings = new Map<Element, SmilResolvedTiming>();
+    const resolvingElements = new Set<Element>();
+
+    elements.forEach((element) => {
+      const id = element.getAttribute("id")?.trim() ?? "";
+      if (id && !elementById.has(id)) {
+        elementById.set(id, element);
+      }
+    });
+
+    const resolveTimingForElement = (element: Element): SmilResolvedTiming | null => {
+      const resolved = resolvedTimings.get(element);
+      if (resolved) {
+        return resolved;
+      }
+      if (resolvingElements.has(element)) {
+        return null;
+      }
+
+      resolvingElements.add(element);
+      const duration = parseClockValueMs(element.getAttribute("dur") ?? "");
+      const begin = resolveSmilBeginTimeMs(element.getAttribute("begin"), elementById, resolveTimingForElement);
+      resolvingElements.delete(element);
+
+      if (!duration || duration <= 0 || begin === null || begin < 0) {
+        return null;
+      }
+
+      const timing: SmilResolvedTiming = { begin, duration, end: begin + duration };
+      resolvedTimings.set(element, timing);
+      return timing;
+    };
+
+    elements.forEach((element) => {
+      resolveTimingForElement(element);
+    });
+
+    return resolvedTimings;
+  };
 
   const resolveSmilValues = (element: Element): string[] => {
     const values = smilList(element.getAttribute("values"));
@@ -3360,6 +3482,7 @@ ${runnableRuntimeScript}
       const tag = element.tagName.toLowerCase();
       return tag === "animate" || tag === "animatetransform" || unsupportedAnimationTags.has(tag);
     });
+    const smilTimings = resolveSmilAnimationTimings(animationElements);
 
     doc.querySelectorAll("style").forEach((styleElement) => {
       const styleText = styleElement.textContent ?? "";
@@ -3389,13 +3512,6 @@ ${runnableRuntimeScript}
       }
       const targetElement = sourceElementById(doc, targetId);
 
-      const begin = element.getAttribute("begin");
-      const beginOffset = begin ? parseClockValueMs(begin) : 0;
-      if (beginOffset === null || beginOffset < 0) {
-        warnings.push(`Unsupported begin time on #${targetId}.`);
-        return;
-      }
-
       const calcMode = element.getAttribute("calcMode")?.trim().toLowerCase();
       if (calcMode && calcMode !== "linear") {
         warnings.push(`Unsupported calcMode "${calcMode}" on #${targetId}.`);
@@ -3419,6 +3535,12 @@ ${runnableRuntimeScript}
         warnings.push(`Unsupported or missing duration on #${targetId}.`);
         return;
       }
+      const timing = smilTimings.get(element);
+      if (!timing) {
+        warnings.push(`Unsupported begin time on #${targetId}.`);
+        return;
+      }
+      const beginOffset = timing.begin;
 
       if (tag === "animate") {
         const track = extractAnimateElementTrack(element, targetId, targetElement, duration, beginOffset, warnings);
@@ -4116,6 +4238,7 @@ ${runnableRuntimeScript}
     return {
       transform: "translate(0px, 0px) scale(1) rotate(0deg)",
       opacity: "1",
+      fillOpacity: "1",
       fill: baseFill,
       stroke: baseStroke,
       strokeWidth: targetId === "arc" ? "2.5" : "1.2",
@@ -4130,6 +4253,7 @@ ${runnableRuntimeScript}
     const scale = resolveNumericTrackValue(targetId, "scale", 1);
     const rotation = resolveNumericTrackValue(targetId, "rotation", 0);
     const opacity = resolveTrackValue(targetId, "opacity", base.opacity);
+    const fillOpacity = resolveTrackValue(targetId, "fillOpacity", base.fillOpacity);
     const fill = resolveTrackValue(targetId, "fill", base.fill);
     const stroke = resolveTrackValue(targetId, "stroke", base.stroke);
     const strokeWidth = resolveTrackValue(targetId, "strokeWidth", base.strokeWidth);
@@ -4137,6 +4261,7 @@ ${runnableRuntimeScript}
     return {
       transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
       opacity,
+      fillOpacity,
       fill,
       stroke,
       strokeWidth: `${strokeWidth}`,
@@ -4213,6 +4338,12 @@ ${runnableRuntimeScript}
         setPreviewStyleProperty(element, "opacity", style.opacity);
       } else {
         restorePreviewStyleProperty(element, "opacity");
+      }
+
+      if (getActiveTrackForTarget(target.id, "fillOpacity")) {
+        setPreviewStyleProperty(element, "fill-opacity", style.fillOpacity);
+      } else {
+        restorePreviewStyleProperty(element, "fill-opacity");
       }
 
       if (getActiveTrackForTarget(target.id, "fill")) {

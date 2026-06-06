@@ -101,6 +101,9 @@ All notable changes for Tadpole are documented here.
   reopen, including delayed base transforms, delayed default-fill animations,
   and delayed animations that inherit scalar presentation values from ancestor
   elements.
+- Fixed Coqui-style SVG animation imports by supporting `fill-opacity` as an
+  editable, previewable, runnable, and SVG-native-saveable timeline property and
+  resolving SMIL syncbase begin expressions such as `animation.end+0.2s`.
 
 ## [0.1.0] - 2026-05-31
 

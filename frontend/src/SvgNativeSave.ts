@@ -4,6 +4,7 @@ export type SvgNativeSaveProperty =
   | "scale"
   | "rotation"
   | "opacity"
+  | "fillOpacity"
   | "fill"
   | "stroke"
   | "strokeWidth"
@@ -121,6 +122,7 @@ const authoredAttributeName = "data-tadpole-authored";
 const metadataAttributeName = "data-tadpole-native-save-metadata";
 const propertyOrder: SvgNativeSaveProperty[] = [
   "opacity",
+  "fillOpacity",
   "fill",
   "stroke",
   "strokeWidth",
@@ -130,7 +132,7 @@ const propertyOrder: SvgNativeSaveProperty[] = [
   "scale",
   "rotation",
 ];
-const scalarProperties: SvgNativeSaveProperty[] = ["opacity", "fill", "stroke", "strokeWidth", "strokeDashoffset"];
+const scalarProperties: SvgNativeSaveProperty[] = ["opacity", "fillOpacity", "fill", "stroke", "strokeWidth", "strokeDashoffset"];
 const unsafeStyleValuePattern = /(?:url\s*\(|@import|expression\s*\(|(?:java|vb)script:|data:|https?:|\/\/|[;{}<>])/i;
 
 const attributeNameForProperty = (property: SvgNativeSaveProperty): string => {
@@ -139,6 +141,8 @@ const attributeNameForProperty = (property: SvgNativeSaveProperty): string => {
       return "stroke-width";
     case "strokeDashoffset":
       return "stroke-dashoffset";
+    case "fillOpacity":
+      return "fill-opacity";
     case "opacity":
       return "opacity";
     case "fill":
@@ -211,6 +215,7 @@ const isValidNumericValue = (property: SvgNativeSaveProperty, value: string): bo
 
   switch (property) {
     case "opacity":
+    case "fillOpacity":
       return isNumberInRange(parsed, 0, 1);
     case "strokeWidth":
       return isNumberInRange(parsed, 0.5, 8);
