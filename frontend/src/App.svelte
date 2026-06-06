@@ -2719,9 +2719,57 @@ ${runnableRuntimeScript}
       case "rotation":
         return "0";
       case "fill":
+        return "#000000";
       case "stroke":
         return "";
     }
+  };
+
+  const transformTextForElement = (element: Element): string =>
+    inlineStylePropertyValue(element, "transform") || element.getAttribute("transform")?.trim() || "";
+
+  const transformFunctionValues = (transformText: string, functionName: "translate" | "scale" | "rotate"): number[] => {
+    const match = new RegExp(`(?:^|\\s)${functionName}\\s*\\(([^)]*)\\)`, "iu").exec(transformText);
+    if (!match) {
+      return [];
+    }
+    const numberMatches = match[1]?.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/giu) ?? [];
+    const values = numberMatches.map((value) => Number(value));
+    return values.every((value) => Number.isFinite(value)) ? values : [];
+  };
+
+  const baseTransformUnderlyingValue = (property: AnimationProperty, targetElement: Element | null): string | null => {
+    if (!targetElement) {
+      return null;
+    }
+
+    const transformText = transformTextForElement(targetElement);
+    if (transformText === "") {
+      return null;
+    }
+
+    if (property === "x" || property === "y") {
+      const translateValues = transformFunctionValues(transformText, "translate");
+      if (translateValues.length === 0) {
+        return null;
+      }
+      const value = property === "x" ? translateValues[0] : translateValues[1] ?? 0;
+      return value === undefined ? null : String(value);
+    }
+
+    if (property === "scale") {
+      const scaleValues = transformFunctionValues(transformText, "scale");
+      const value = scaleValues[0];
+      return value === undefined ? null : String(value);
+    }
+
+    if (property === "rotation") {
+      const rotateValues = transformFunctionValues(transformText, "rotate");
+      const value = rotateValues[0];
+      return value === undefined ? null : String(value);
+    }
+
+    return null;
   };
 
   const normalizeProjectKeyframeValue = (property: AnimationProperty, value: string): string | null => {
@@ -2764,13 +2812,15 @@ ${runnableRuntimeScript}
 
   const underlyingAnimationValue = (property: AnimationProperty, targetElement: Element | null): string | null => {
     const attributeName = smilAttributeNameForProperty(property);
-    const candidates = targetElement
-      ? [
-          inlineStylePropertyValue(targetElement, attributeName),
-          targetElement.getAttribute(attributeName)?.trim() ?? "",
-          defaultUnderlyingValueForProperty(property),
-        ]
-      : [defaultUnderlyingValueForProperty(property)];
+    const candidates = transformProperties.includes(property)
+      ? [baseTransformUnderlyingValue(property, targetElement) ?? "", defaultUnderlyingValueForProperty(property)]
+      : targetElement
+        ? [
+            inlineStylePropertyValue(targetElement, attributeName),
+            targetElement.getAttribute(attributeName)?.trim() ?? "",
+            defaultUnderlyingValueForProperty(property),
+          ]
+        : [defaultUnderlyingValueForProperty(property)];
 
     for (const candidate of candidates) {
       if (candidate === "") {

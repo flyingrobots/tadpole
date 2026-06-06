@@ -143,6 +143,18 @@ const staggeredDashoffsetSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.o
   </circle>
 </svg>`;
 
+const delayedBaseTransformSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Base Transform Fixture">
+  <rect id="base-transform" data-tadpole-name="Base Transform" x="8" y="8" width="28" height="18" fill="#2563eb" transform="translate(10 20)">
+    <animateTransform attributeName="transform" type="translate" values="40 60;80 100" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
+const delayedDefaultFillSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Default Fill Fixture">
+  <rect id="default-fill" data-tadpole-name="Default Fill" x="8" y="8" width="28" height="18">
+    <animate attributeName="fill" values="#ff0000;#00ff00" dur="500ms" begin="1s" />
+  </rect>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -559,6 +571,66 @@ const runStaggeredDashoffsetSmoke = async (browser) => {
   await page.close();
 };
 
+const runDelayedBaseTransformSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedBaseTransformSvg);
+  await page.waitForSelector(".preview-svg-host #base-transform");
+
+  const payload = await projectPayload(page);
+  const xTrack = payload.timeline.tracks.find((track) => track.targetId === "base-transform" && track.property === "x");
+  const yTrack = payload.timeline.tracks.find((track) => track.targetId === "base-transform" && track.property === "y");
+  assert(xTrack, "delayed base transform x track missing");
+  assert(yTrack, "delayed base transform y track missing");
+  assert(
+    xTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "10") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "10") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "40") &&
+      xTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "80"),
+    `delayed base transform x track did not preserve pre-begin translate: ${JSON.stringify(xTrack.keyframes)}`,
+  );
+  assert(
+    yTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "20") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "20") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "60") &&
+      yTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "100"),
+    `delayed base transform y track did not preserve pre-begin translate: ${JSON.stringify(yTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginTransform = await page.locator(".preview-svg-host #base-transform").evaluate((element) => element.style.transform);
+  assert(
+    preBeginTransform.includes("translate(10px, 20px)"),
+    `delayed base transform preview changed before begin: ${preBeginTransform}`,
+  );
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
+const runDelayedDefaultFillSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedDefaultFillSvg);
+  await page.waitForSelector(".preview-svg-host #default-fill");
+
+  const payload = await projectPayload(page);
+  const fillTrack = payload.timeline.tracks.find((track) => track.targetId === "default-fill" && track.property === "fill");
+  assert(fillTrack, "delayed default fill track missing");
+  assert(
+    fillTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "#000000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "#000000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "#ff0000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "#00ff00"),
+    `delayed default fill track did not preserve the SVG initial fill: ${JSON.stringify(fillTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginFill = await page.locator(".preview-svg-host #default-fill").evaluate((element) => element.style.fill);
+  assert(preBeginFill === "rgb(0, 0, 0)", `delayed default fill changed before begin: ${preBeginFill}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -580,6 +652,8 @@ try {
   await runRepeatedKeyTimesWarningSmoke(browser);
   await runDuplicatePropertyWarningSmoke(browser);
   await runStaggeredDashoffsetSmoke(browser);
+  await runDelayedBaseTransformSmoke(browser);
+  await runDelayedDefaultFillSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();
