@@ -2707,6 +2707,27 @@ ${runnableRuntimeScript}
     return "";
   };
 
+  const inheritedPresentationAttributeNames = new Set(["fill", "stroke", "stroke-width", "stroke-dashoffset"]);
+  const inheritedCssPassthroughValues = new Set(["inherit", "unset"]);
+  const inheritedPresentationPropertyValue = (element: Element, propertyName: string): string => {
+    let current = element.parentElement;
+    while (current) {
+      const inlineValue = inlineStylePropertyValue(current, propertyName);
+      if (inlineValue !== "" && !inheritedCssPassthroughValues.has(inlineValue.toLowerCase())) {
+        return inlineValue;
+      }
+
+      const attributeValue = current.getAttribute(propertyName)?.trim() ?? "";
+      if (attributeValue !== "" && !inheritedCssPassthroughValues.has(attributeValue.toLowerCase())) {
+        return attributeValue;
+      }
+
+      current = current.parentElement;
+    }
+
+    return "";
+  };
+
   const defaultUnderlyingValueForProperty = (property: AnimationProperty): string => {
     switch (property) {
       case "opacity":
@@ -2812,12 +2833,17 @@ ${runnableRuntimeScript}
 
   const underlyingAnimationValue = (property: AnimationProperty, targetElement: Element | null): string | null => {
     const attributeName = smilAttributeNameForProperty(property);
+    const inheritedValue =
+      targetElement && inheritedPresentationAttributeNames.has(attributeName)
+        ? inheritedPresentationPropertyValue(targetElement, attributeName)
+        : "";
     const candidates = transformProperties.includes(property)
       ? [baseTransformUnderlyingValue(property, targetElement) ?? "", defaultUnderlyingValueForProperty(property)]
       : targetElement
         ? [
             inlineStylePropertyValue(targetElement, attributeName),
             targetElement.getAttribute(attributeName)?.trim() ?? "",
+            inheritedValue,
             defaultUnderlyingValueForProperty(property),
           ]
         : [defaultUnderlyingValueForProperty(property)];

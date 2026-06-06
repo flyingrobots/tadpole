@@ -155,6 +155,14 @@ const delayedDefaultFillSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.or
   </rect>
 </svg>`;
 
+const delayedInheritedFillSvg = `<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg" aria-label="Delayed Inherited Fill Fixture">
+  <g id="inherited-parent" fill="#123456">
+    <rect id="inherited-fill" data-tadpole-name="Inherited Fill" x="8" y="8" width="28" height="18">
+      <animate attributeName="fill" values="#ff0000;#00ff00" dur="500ms" begin="1s" />
+    </rect>
+  </g>
+</svg>`;
+
 const createPage = async (browser) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const consoleErrors = [];
@@ -631,6 +639,30 @@ const runDelayedDefaultFillSmoke = async (browser) => {
   await page.close();
 };
 
+const runDelayedInheritedFillSmoke = async (browser) => {
+  const { page, consoleErrors, pageErrors } = await createPage(browser);
+  await importSvgMarkup(page, delayedInheritedFillSvg);
+  await page.waitForSelector(".preview-svg-host #inherited-fill");
+
+  const payload = await projectPayload(page);
+  const fillTrack = payload.timeline.tracks.find((track) => track.targetId === "inherited-fill" && track.property === "fill");
+  assert(fillTrack, "delayed inherited fill track missing");
+  assert(
+    fillTrack.keyframes.some((keyframe) => keyframe.time === 0 && keyframe.value === "#123456") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 999 && keyframe.value === "#123456") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1000 && keyframe.value === "#ff0000") &&
+      fillTrack.keyframes.some((keyframe) => keyframe.time === 1500 && keyframe.value === "#00ff00"),
+    `delayed inherited fill track did not preserve the inherited SVG fill: ${JSON.stringify(fillTrack.keyframes)}`,
+  );
+
+  await page.locator(".timeline-controls .inline-label", { hasText: "Current" }).locator("input").fill("500");
+  const preBeginFill = await page.locator(".preview-svg-host #inherited-fill").evaluate((element) => element.style.fill);
+  assert(preBeginFill === "rgb(18, 52, 86)", `delayed inherited fill changed before begin: ${preBeginFill}`);
+
+  assertCleanBrowser(consoleErrors, pageErrors);
+  await page.close();
+};
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runAnimationImportSmoke(browser);
@@ -654,6 +686,7 @@ try {
   await runStaggeredDashoffsetSmoke(browser);
   await runDelayedBaseTransformSmoke(browser);
   await runDelayedDefaultFillSmoke(browser);
+  await runDelayedInheritedFillSmoke(browser);
   console.log("animation import browser smoke passed");
 } finally {
   await browser.close();

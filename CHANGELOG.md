@@ -98,8 +98,9 @@ All notable changes for Tadpole are documented here.
 - Fixed delayed and partial SVG-native animation roundtrips so delayed imports
   preserve pre-begin underlying values, saved looping tracks repeat over the
   full timeline period, and native-save metadata preserves timeline duration on
-  reopen, including delayed base transforms and delayed default-fill
-  animations.
+  reopen, including delayed base transforms, delayed default-fill animations,
+  and delayed animations that inherit scalar presentation values from ancestor
+  elements.
 
 ## [0.1.0] - 2026-05-31
 
