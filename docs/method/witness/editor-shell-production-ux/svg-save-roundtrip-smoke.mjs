@@ -14,8 +14,9 @@ const assert = (condition, message) => {
 const textOf = async (locator) => ((await locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
 
 const saveRoundtripSvg = `<svg viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg" aria-label="SVG Native Save Fixture">
-  <rect id="save-box" data-tadpole-name="Save Box" x="16" y="20" width="48" height="28" fill="#0f766e" stroke="#111827" stroke-width="1">
+  <rect id="save-box" data-tadpole-name="Save Box" x="16" y="20" width="48" height="28" fill="#0f766e" fill-opacity="0.4" stroke="#111827" stroke-width="1">
     <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.5;1" dur="1000ms" repeatCount="indefinite" />
+    <animate attributeName="fill-opacity" values="0.4;1;0.4" keyTimes="0;0.5;1" dur="1000ms" />
     <animate attributeName="fill" values="#0f766e;#2563eb;#0f766e" keyTimes="0;0.5;1" dur="1000ms" />
     <animate attributeName="stroke-width" values="1;4;1" keyTimes="0;0.5;1" dur="1000ms" />
   </rect>
@@ -155,7 +156,7 @@ const runSvgSaveRoundtripSmoke = async (browser) => {
   await importViaSourcePanel(page, saveRoundtripSvg, "[data-tadpole-canvas-stage] #save-box");
   const readySave = await openSaveDialog(page);
   assert((await readySave.getAttribute("data-tadpole-svg-save-state")) === "ready", "supported SVG save did not become ready");
-  assert((await readySave.getAttribute("data-tadpole-svg-save-track-count")) === "7", "serialized track count mismatch");
+  assert((await readySave.getAttribute("data-tadpole-svg-save-track-count")) === "8", "serialized track count mismatch");
   assert((await readySave.getAttribute("data-tadpole-svg-save-warning-count")) === "0", "supported SVG save emitted warnings");
 
   const savedSvg = await page.locator("[data-tadpole-svg-save-output]").textContent();
@@ -165,16 +166,18 @@ const runSvgSaveRoundtripSmoke = async (browser) => {
   assert(!savedSvg.includes("<html"), "saved SVG emitted an HTML sidecar");
   assert(savedSvg.includes("<animate "), "saved SVG lacks scalar animate nodes");
   assert(savedSvg.includes("<animateTransform "), "saved SVG lacks transform animation nodes");
+  assert(savedSvg.includes('attributeName="fill-opacity"'), "saved SVG lost fill-opacity animation");
   assert(savedSvg.includes('data-tadpole-native-save-metadata="true"'), "saved SVG lacks native save metadata");
-  assert(authoredNodeCount(savedSvg) === 6, `expected six authored animation nodes, got ${authoredNodeCount(savedSvg)}`);
+  assert(authoredNodeCount(savedSvg) === 7, `expected seven authored animation nodes, got ${authoredNodeCount(savedSvg)}`);
   await closeActiveDialog(page);
 
   await importViaPasteDialog(page, savedSvg, "[data-tadpole-canvas-stage] #save-box");
   const payload = await projectPayload(page);
   assert(payload.timeline.duration === 1000, `reopened duration mismatch: ${payload.timeline.duration}`);
   assert(payload.timeline.isLooping === true, "reopened SVG did not preserve indefinite loop state");
-  assert(payload.timeline.tracks.length === 7, `reopened track count mismatch: ${payload.timeline.tracks.length}`);
+  assert(payload.timeline.tracks.length === 8, `reopened track count mismatch: ${payload.timeline.tracks.length}`);
   assertTrack(payload, "save-box", "opacity", ["0:0", "500:1", "1000:0"]);
+  assertTrack(payload, "save-box", "fillOpacity", ["0:0.4", "500:1", "1000:0.4"]);
   assertTrack(payload, "save-box", "fill", ["0:#0f766e", "500:#2563eb", "1000:#0f766e"]);
   assertTrack(payload, "save-box", "strokeWidth", ["0:1", "500:4", "1000:1"]);
   assertTrack(payload, "mover", "x", ["0:0", "500:24", "1000:0"]);
@@ -186,7 +189,7 @@ const runSvgSaveRoundtripSmoke = async (browser) => {
   assert((await secondReadySave.getAttribute("data-tadpole-svg-save-state")) === "ready", "reopened SVG cannot be saved again");
   const secondSavedSvg = await page.locator("[data-tadpole-svg-save-output]").textContent();
   assert(secondSavedSvg, "second saved SVG output missing");
-  assert(authoredNodeCount(secondSavedSvg) === 6, "second save duplicated Tadpole-authored animation nodes");
+  assert(authoredNodeCount(secondSavedSvg) === 7, "second save duplicated Tadpole-authored animation nodes");
   await closeActiveDialog(page);
 
   assertCleanBrowser(consoleErrors, pageErrors);

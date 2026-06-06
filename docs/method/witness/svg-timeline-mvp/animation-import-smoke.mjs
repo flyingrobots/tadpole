@@ -236,6 +236,11 @@ const projectPayload = async (page) => {
   return JSON.parse(payloadText);
 };
 
+const assertNoImportWarnings = async (page, context) => {
+  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
+  assert(warningsText === "", `${context} emitted import warnings: ${warningsText}`);
+};
+
 const runAnimationImportSmoke = async (browser) => {
   const { page, consoleErrors, pageErrors } = await createPage(browser);
   await importSvgMarkup(page, animatedSvg);
@@ -565,8 +570,7 @@ const runFillOpacityImportSmoke = async (browser) => {
   await importSvgMarkup(page, fillOpacityAnimationSvg);
   await page.waitForSelector(".preview-svg-host #fill-alpha");
 
-  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
-  assert(!warningsText.includes("Unsupported animate attribute"), `fill-opacity import emitted warning: ${warningsText}`);
+  await assertNoImportWarnings(page, "fill-opacity import");
   const payload = await projectPayload(page);
   const fillOpacityTrack = payload.timeline.tracks.find(
     (track) => track.targetId === "fill-alpha" && track.property === "fillOpacity",
@@ -589,8 +593,7 @@ const runSyncbaseBeginImportSmoke = async (browser) => {
   await importSvgMarkup(page, syncbaseBeginSvg);
   await page.waitForSelector(".preview-svg-host #sync-path", { state: "attached" });
 
-  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
-  assert(!warningsText.includes("Unsupported begin time"), `syncbase begin import emitted warning: ${warningsText}`);
+  await assertNoImportWarnings(page, "syncbase begin import");
   const payload = await projectPayload(page);
   const fillOpacityTrack = payload.timeline.tracks.find(
     (track) => track.targetId === "sync-path" && track.property === "fillOpacity",
@@ -619,9 +622,7 @@ const runStaggeredDashoffsetSmoke = async (browser) => {
   await importSvgMarkup(page, staggeredDashoffsetSvg);
   await page.waitForSelector(".preview-svg-host #tadpoleQ");
 
-  const warningsText = await optionalTextOf(page.locator("[data-tadpole-animation-import-warnings]"));
-  assert(!warningsText.includes("Unsupported animate attribute"), `staggered dashoffset import emitted attribute warning: ${warningsText}`);
-  assert(!warningsText.includes("Unsupported non-zero begin time"), `staggered dashoffset import emitted begin warning: ${warningsText}`);
+  await assertNoImportWarnings(page, "staggered dashoffset import");
 
   const payload = await projectPayload(page);
   const dashTrack = payload.timeline.tracks.find(
