@@ -21,7 +21,7 @@ an executable or inspectable software surface.
 | Entity | Purpose | Location |
 | --- | --- | --- |
 | Roadmap | Orders a release path | Roadmap doc |
-| Versioned Release | Bounded product target | Roadmap directory |
+| Versioned Release | SemVer product target | Roadmap directory |
 | Goalpost | Major milestone | Goalpost doc and umbrella issue |
 | Umbrella Issue | Goalpost tracking root | GitHub issue with `goalpost` |
 | User Story | User-centered behavior | Child issue and doc section |
@@ -34,7 +34,100 @@ an executable or inspectable software surface.
 
 ## Relationship Model
 
-The hierarchy is:
+The relationship model is:
+
+```mermaid
+erDiagram
+  ROADMAP ||--o{ VERSIONED_RELEASE : organizes
+  VERSIONED_RELEASE ||--o{ GOALPOST : contains
+  VERSIONED_RELEASE ||--|| RELEASE_GATE : defines
+  GOALPOST ||--|| GOALPOST_DOC : specifies
+  GOALPOST ||--|| UMBRELLA_ISSUE : tracks
+  GOALPOST ||--o{ USER_STORY : contains
+  UMBRELLA_ISSUE ||--o{ USER_STORY_ISSUE : collects
+  USER_STORY ||--|| USER_STORY_ISSUE : represented_by
+  USER_STORY ||--o{ SLICE : budgets
+  SLICE ||--o{ COMMIT : implemented_by
+  PULL_REQUEST ||--o{ COMMIT : contains
+  PULL_REQUEST }o--o{ GOALPOST : lands
+  PULL_REQUEST ||--o{ VALIDATION_RESULT : reports
+  PULL_REQUEST ||--o{ CHANGELOG_ENTRY : records
+
+  ROADMAP {
+    string id PK
+    string title
+    string status
+  }
+
+  VERSIONED_RELEASE {
+    string id PK
+    string semver
+    string name
+    string status
+    int totalSliceBudget
+  }
+
+  RELEASE_GATE {
+    string id PK
+    string checklist
+  }
+
+  GOALPOST {
+    string id PK
+    string title
+    string status
+    int sliceBudget
+  }
+
+  GOALPOST_DOC {
+    string path PK
+    string status
+  }
+
+  UMBRELLA_ISSUE {
+    int number PK
+    string labels
+  }
+
+  USER_STORY {
+    string id PK
+    string actor
+    string need
+  }
+
+  USER_STORY_ISSUE {
+    int number PK
+    string labels
+  }
+
+  SLICE {
+    int number PK
+    string description
+    string status
+  }
+
+  COMMIT {
+    string sha PK
+    string message
+  }
+
+  PULL_REQUEST {
+    int number PK
+    string state
+  }
+
+  VALIDATION_RESULT {
+    string command PK
+    string status
+  }
+
+  CHANGELOG_ENTRY {
+    string path PK
+    string summary
+  }
+```
+
+The same hierarchy in words is:
 
 ```text
 Roadmap
@@ -86,7 +179,13 @@ Roadmap doc
 ## Versioned Releases
 
 A roadmap organizes goalposts into versioned releases. A versioned release is a
-bounded product target with a named completion gate, for example `v1`.
+bounded product target with a SemVer release identifier, for example `v1.0.0`.
+
+Release identifiers must use leading-`v` SemVer:
+
+```text
+vMAJOR.MINOR.PATCH
+```
 
 Versioned release planning has four jobs:
 
@@ -96,7 +195,7 @@ Versioned release planning has four jobs:
 4. Define the release gate that must be true before the version can be called
    landed.
 
-The current roadmap instance is the `v1` completion roadmap:
+The current roadmap instance is the `v1.0.0` completion roadmap:
 
 - Roadmap index:
   `docs/method/design/v1-completion-roadmap/roadmap.md`
@@ -111,8 +210,8 @@ The current roadmap instance is the `v1` completion roadmap:
 
 ```text
 VersionedRelease = {
-  id: "v1",
-  name: "V1 Completion Roadmap",
+  id: "v1.0.0",
+  name: "V1.0.0 Completion Roadmap",
   roadmapDoc: MarkdownDocument,
   goalposts: Goalpost[],
   releaseGate: ChecklistItem[],
@@ -126,7 +225,7 @@ VersionedRelease = {
 A versioned release is ready when every goalpost in the release is landed and
 the release-level gate is satisfied.
 
-For Tadpole `v1`, the release gate is:
+For Tadpole `v1.0.0`, the release gate is:
 
 - [ ] Supported SVG animation semantics are documented and fixture-proven.
 - [ ] Importer and serializer behavior live in runtime-backed core modules.
@@ -135,20 +234,21 @@ For Tadpole `v1`, the release gate is:
 - [ ] Timeline editing supports high-density animation workflows.
 - [ ] Suggested and repaired animation data never masquerades as imported
       source truth.
-- [ ] A single validation command and release checklist prove v1 readiness.
+- [ ] A single validation command and release checklist prove `v1.0.0`
+      readiness.
 
 ### Release Sequencing
 
 ```mermaid
 flowchart LR
-  V1[V1 Release]
-  V1 --> GP1[GP1 SVG Profile And Corpus]
-  V1 --> GP2[GP2 Runtime Core Extraction]
-  V1 --> GP3[GP3 Production Workspace And Docking UI]
-  V1 --> GP4[GP4 Native File Lifecycle]
-  V1 --> GP5[GP5 Timeline Editing Power Tools]
-  V1 --> GP6[GP6 Import Repair And Starter Motion]
-  V1 --> GP7[GP7 Release Quality And Packaging]
+  V100[v1.0.0 Release]
+  V100 --> GP1[GP1 SVG Profile And Corpus]
+  V100 --> GP2[GP2 Runtime Core Extraction]
+  V100 --> GP3[GP3 Production Workspace And Docking UI]
+  V100 --> GP4[GP4 Native File Lifecycle]
+  V100 --> GP5[GP5 Timeline Editing Power Tools]
+  V100 --> GP6[GP6 Import Repair And Starter Motion]
+  V100 --> GP7[GP7 Release Quality And Packaging]
 
   GP1 --> GP2
   GP2 --> GP3
@@ -162,12 +262,19 @@ flowchart LR
 
 ### Version Naming
 
-Use versioned roadmap names when a body of work has a release-level definition
-of complete:
+Use SemVer roadmap names when a body of work has a release-level definition of
+complete. Release IDs must include the leading `v` and all three SemVer
+positions:
 
-- `v1`: first version that can reasonably be called complete.
-- `v1.1`: follow-on quality or workflow release after `v1`.
-- `v2`: a product or architecture expansion that changes the release promise.
+- `v1.0.0`: first version that can reasonably be called complete.
+- `v1.1.0`: compatible feature or workflow release after `v1.0.0`.
+- `v1.1.1`: patch release for fixes, docs, or proof hardening.
+- `v2.0.0`: product or architecture expansion that changes the release
+  promise.
+
+Do not use shorthand release IDs such as `v1`, `v1.1`, or `v2` in roadmap
+metadata, issue fields, release gates, or release-status reporting. Those forms
+may appear only as informal prose when referring to a major release line.
 
 Do not create a new version for every feature. Feature work belongs inside the
 current active version unless it changes the release promise.
@@ -347,11 +454,14 @@ contract works.
 | V1-GP6 Intelligent Import Repair And Starter Motion | 20 | #63 |
 | V1-GP7 Release Quality And Packaging | 16 | #64 |
 
+Current release: `v1.0.0`.
+
 Total planned budget: 140 slices.
 
 ## Operating Invariants
 
 - Every versioned release has a roadmap document.
+- Every versioned release uses leading-`v` SemVer: `vMAJOR.MINOR.PATCH`.
 - Every major milestone has a goalpost Markdown document.
 - Every goalpost has one umbrella GitHub issue.
 - Every umbrella issue collects child user-story issues as checklist items.

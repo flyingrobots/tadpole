@@ -1,5 +1,5 @@
 ---
-title: "V1 Completion Roadmap"
+title: "v1.0.0 Completion Roadmap"
 legend: "V1"
 lane: "design"
 status: "active"
@@ -11,15 +11,15 @@ updated: "2026-06-06"
 
 <!-- markdownlint-disable-file MD025 -->
 
-# V1 Completion Roadmap
+# v1.0.0 Completion Roadmap
 
 ## Decision Summary
 
-Tadpole is now an MVP-plus SVG timeline editor. The v1 completion roadmap
-defines seven goalposts that turn the current working editor into a tool that
-can be called complete: documented SVG support, extracted core architecture,
-production workspace UX, native file lifecycle, deeper timeline editing,
-intelligent import help, and release quality.
+Tadpole is now an MVP-plus SVG timeline editor. The `v1.0.0` completion
+roadmap defines seven goalposts that turn the current working editor into a
+tool that can be called complete: documented SVG support, extracted core
+architecture, production workspace UX, native file lifecycle, deeper timeline
+editing, intelligent import help, and release quality.
 
 Each goalpost has one umbrella GitHub issue. Associated story issues are
 collected as checklist children in the umbrella issue body.
@@ -63,4 +63,5 @@ Tadpole v1 is complete when:
 - [ ] Timeline editing supports high-density animation workflows.
 - [ ] Suggested and repaired animation data never masquerades as imported
       source truth.
-- [ ] A single validation command and release checklist prove v1 readiness.
+- [ ] A single validation command and release checklist prove `v1.0.0`
+      readiness.

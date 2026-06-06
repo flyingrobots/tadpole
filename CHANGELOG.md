@@ -82,11 +82,12 @@ All notable changes for Tadpole are documented here.
   through `track.addMany`.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
-- Added the v1 completion roadmap with seven goalpost design docs, GitHub
+- Added the `v1.0.0` completion roadmap with seven goalpost design docs, GitHub
   umbrella issues, child user-story issues, and slice budgets.
-- Added a formal roadmap planning system document that defines versioned
-  releases, goalposts, umbrella issues, user stories, slice budgets, proof
-  policy, and the recommended `VISION.md`/`BEARING.md` split.
+- Added a formal roadmap planning system document that defines leading-`v`
+  SemVer releases, a Mermaid entity relationship model, goalposts, umbrella
+  issues, user stories, slice budgets, proof policy, and the recommended
+  `VISION.md`/`BEARING.md` split.
 
 ### Fixed
 
