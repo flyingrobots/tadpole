@@ -82,6 +82,8 @@ All notable changes for Tadpole are documented here.
   through `track.addMany`.
 - Added METHOD design/witness/retro documentation packet for the preview
   scrubber polish cycle.
+- Added the v1 completion roadmap with seven goalpost design docs, GitHub
+  umbrella issues, child user-story issues, and slice budgets.
 
 ### Fixed
 

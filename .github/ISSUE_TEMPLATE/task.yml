@@ -29,6 +29,13 @@ body:
         - "Goal 17: Layers Panel Navigation"
         - "Goal 18: Inspector Editing Surface"
         - "Goal 19: Keyboard Accessibility Witnesses"
+        - "V1-GP1: SVG Animation Profile And Corpus"
+        - "V1-GP2: Runtime Core Extraction"
+        - "V1-GP3: Production Workspace And Docking UI"
+        - "V1-GP4: Native File Lifecycle"
+        - "V1-GP5: Timeline Editing Power Tools"
+        - "V1-GP6: Intelligent Import Repair And Starter Motion"
+        - "V1-GP7: Release Quality And Packaging"
         - "Process / maintenance"
         - "Not roadmap-related"
     validations:
